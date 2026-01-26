@@ -298,10 +298,10 @@ func TestRateLimiting(t *testing.T) {
 	}
 
 	// Multiple rapid requests should eventually hit rate limit
-	// The exact limit depends on configuration (30/minute in production)
+	// The exact limit depends on configuration (5/minute in production)
 	// Test that rate limiting mechanism works, not specific threshold
 	rateLimitHit := false
-	for i := 0; i < 35; i++ {
+	for i := 0; i < 7; i++ {
 		_, err := GenerateChallenge(ip)
 		if err != nil && err.Error() == "rate limit exceeded for IP "+ip {
 			rateLimitHit = true
@@ -457,8 +457,8 @@ func TestAdaptiveDifficulty(t *testing.T) {
 		t.Fatalf("Failed to generate challenge: %v", err)
 	}
 	
-	// The difficulty should be within the expected range (16-22 with default of 18)
-	if challenge.Difficulty < 16 || challenge.Difficulty > 22 {
-		t.Fatalf("Difficulty out of expected range [16-22]: %d", challenge.Difficulty)
+	// The difficulty should be within the expected range (18-24 with default of 20)
+	if challenge.Difficulty < 18 || challenge.Difficulty > 24 {
+		t.Fatalf("Difficulty out of expected range [18-24]: %d", challenge.Difficulty)
 	}
 }

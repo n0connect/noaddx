@@ -24,7 +24,7 @@ type RateLimiter struct {
 	maxTokens      int
 	refillTime     time.Time
 	refillInterval time.Duration
-	lastAccess     time.Time  // For cleanup tracking
+	lastAccess     time.Time // For cleanup tracking
 	mutex          sync.Mutex
 }
 
@@ -91,9 +91,10 @@ func GenerateChallenge(ip string) (*models.PoWChallenge, error) {
 	rateLimiterMutex.Lock()
 	limiter, exists := challengeRateLimiters[ip]
 	if !exists {
-		// Create new rate limiter: 30 challenges per minute (refills every 2 seconds)
-		// PoW challenges are low-risk (CPU-bound), generous limit allows user retries
-		limiter = NewRateLimiter(30, 1*time.Minute)
+		// Create new rate limiter: 5 challenges per minute
+		// Allows legitimate user retries while preventing DoS abuse
+		// Normal registration: 2 requests (phase1 + phase2), 3 remaining for retries
+		limiter = NewRateLimiter(5, 1*time.Minute)
 		challengeRateLimiters[ip] = limiter
 		powLogger.Debug("Created new rate limiter for IP: %s", ip)
 	}
@@ -112,6 +113,7 @@ func GenerateChallenge(ip string) (*models.PoWChallenge, error) {
 		return nil, fmt.Errorf("failed to generate challenge: %w", err)
 	}
 
+	// ONLY OPENSSL USE FOR ANY CRIPTOGRAFIC STATES. FIX IT.
 	saltBytes := make([]byte, 16)
 	_, err = rand.Read(saltBytes)
 	if err != nil {
@@ -294,7 +296,7 @@ func hasNLeadingZeros(hash []byte, n int) bool {
 	}
 
 	zeroBits := 0
-	
+
 	for _, b := range hash {
 		if b == 0 {
 			zeroBits += 8
@@ -309,12 +311,12 @@ func hasNLeadingZeros(hash []byte, n int) bool {
 			}
 			break
 		}
-		
+
 		if zeroBits >= n {
 			break
 		}
 	}
-	
+
 	return zeroBits >= n
 }
 
@@ -342,5 +344,3 @@ func getAdaptiveDifficulty() int {
 func GetPoWDifficulty() int {
 	return getAdaptiveDifficulty()
 }
-
-
