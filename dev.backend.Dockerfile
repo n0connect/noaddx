@@ -1,38 +1,28 @@
-FROM golang:1.21-bookworm AS builder
+# Build: pure Go (CGO disabled, crypto from the standard library - RULES.md §1.1).
+# 1.27.3+ carries the crypto/x509 fix (GO-2026-6809).
+FROM golang:1.27.3-bookworm AS builder
 
-WORKDIR /app
+WORKDIR /src
 
-# Copy go mod files first for better layer caching
-COPY backend/go.mod ./
-# Copy go.sum if it exists (optional for first build)
-COPY backend/go.sum* ./
+# Dependencies first for layer caching; go.sum pins and verifies every module
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download && go mod verify
 
-# Download dependencies (cache layer if go.mod/go.sum unchanged)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-RUN go mod download
-
-# Copy source code
 COPY backend/ .
 
-# Build the application with CGO disabled (pure Go crypto - RULES.md §1.1)
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/server
+# Reproducible, stripped, static binary (RULES.md §14.1)
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -buildvcs=false -ldflags="-s -w" -o /out/noaddx ./cmd/server
 
-# Final stage
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    wget \
-  && rm -rf /var/lib/apt/lists/*
+# wget only serves the compose healthcheck; the service runs as an unprivileged user
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates wget \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin noaddx
 
-WORKDIR /root/
+COPY --from=builder /out/noaddx /usr/local/bin/noaddx
 
-# Copy the binary from builder
-COPY --from=builder /app/main .
-
+USER 10001:10001
 EXPOSE 8080
 
-CMD ["./main"]
+CMD ["/usr/local/bin/noaddx"]

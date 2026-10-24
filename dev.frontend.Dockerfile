@@ -1,12 +1,10 @@
-FROM nginx:alpine
+FROM nginx:1.30-alpine
 
-# Copy frontend files to nginx html directory
+# Static files: readable by the nginx worker, writable by nobody
 COPY frontend/ /usr/share/nginx/html/
+RUN find /usr/share/nginx/html -type d -exec chmod 755 {} + \
+  && find /usr/share/nginx/html -type f -exec chmod 644 {} +
 
-# Ensure proper permissions for all files
-RUN chmod -R 755 /usr/share/nginx/html/
-
-# Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

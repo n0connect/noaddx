@@ -1,20 +1,15 @@
-# test.Dockerfile - Test image with pure Go crypto (no OpenSSL)
-
-FROM golang:1.21-bookworm
+# test.Dockerfile - the complete Go test suite against the disposable PostgreSQL of
+# docker-compose.test.yaml (pure Go crypto, CGO disabled - RULES.md §1.1)
+FROM golang:1.27.3-bookworm
 
 WORKDIR /app
 
-# Build dependencies (minimal - no OpenSSL needed)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY backend/go.mod backend/go.sum* ./
-RUN go mod download
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download && go mod verify
 
 COPY backend/ .
 
 RUN mkdir -p /test-results
 
-# Run unit tests with CGO disabled (pure Go crypto - RULES.md §1.1)
-CMD ["bash", "-c", "CGO_ENABLED=0 go test -tags=test -v ./internal/pow/... ./tests/handlers/... ./tests/utils/... ./tests/middleware/... ./tests/encryption/... ./tests/auth/... 2>&1 | tee /test-results/output.log; exit ${PIPESTATUS[0]}"]
+# -p 1: the database packages share one database and must not run concurrently
+CMD ["bash", "-c", "CGO_ENABLED=0 go test -p 1 -count=1 -tags=test ./... 2>&1 | tee /test-results/output.log; exit ${PIPESTATUS[0]}"]

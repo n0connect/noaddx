@@ -37,10 +37,10 @@ help:
 	@echo "Testing Targets:"
 	@echo "  test          Run full test suite in isolated Docker container"
 	@echo "  test-run      Run Docker test suite; if passed, start services"
-	@echo "  test-unit     Run Go unit tests locally (instant, no database needed)"
+	@echo "  test-unit     Run Go unit tests locally (no database needed)"
 	@echo "  test-crypto   Run frontend WebCrypto derivation tests (Node.js 20+)"
 	@echo "  test-all      Run local Go unit tests and frontend crypto tests"
-	@echo "  test-db       Run Go database migration tests (requires local PostgreSQL)"
+	@echo "  test-db       Run Go database and integration tests (requires local PostgreSQL)"
 	@echo ""
 	@echo "Utility Targets:"
 	@echo "  shell-backend Open interactive shell inside backend container"
@@ -56,23 +56,7 @@ setup:
 		exit 1; \
 	fi
 	@if ! command -v openssl >/dev/null 2>&1; then \
-		echo "ERROR: OpenSSL is required but not found in PATH."; \
-		exit 1; \
-	fi
-	@VERSION_RAW=$$(openssl version 2>/dev/null | awk '{print $$2}'); \
-	if [[ "$$VERSION_RAW" == LibreSSL* ]] || [ -z "$$VERSION_RAW" ]; then \
-		echo "ERROR: OpenSSL >= 3.2.0 is required (LibreSSL is not supported)."; \
-		echo "macOS: brew install openssl@3 and ensure PATH points to it:"; \
-		echo "       export PATH=\"$$(brew --prefix openssl@3 2>/dev/null || echo /opt/homebrew/opt/openssl@3)/bin:\$$PATH\""; \
-		exit 1; \
-	fi; \
-	VERSION_CLEAN=$${VERSION_RAW%%[!0-9.]*}; \
-	IFS='.' read -r MAJOR MINOR PATCH <<< "$$VERSION_CLEAN"; \
-	MAJOR=$${MAJOR:-0}; MINOR=$${MINOR:-0}; PATCH=$${PATCH:-0}; \
-	if [ "$$MAJOR" -lt 3 ] || [ "$$MAJOR" -eq 3 -a "$$MINOR" -lt 2 ]; then \
-		echo "ERROR: OpenSSL >= 3.2.0 is required (found $$VERSION_RAW)."; \
-		echo "macOS: brew install openssl@3 and export PATH=\"$$(brew --prefix openssl@3 2>/dev/null)/bin:\$$PATH\""; \
-		echo "Linux: install OpenSSL 3.2.x from your distribution or source."; \
+		echo "ERROR: openssl is required (only 'openssl rand' is used; OpenSSL or LibreSSL both work)."; \
 		exit 1; \
 	fi
 	@if [ -f "$(ENV_FILE)" ]; then \
@@ -80,16 +64,18 @@ setup:
 		echo "       To regenerate keys, remove $(ENV_FILE) first: rm $(ENV_FILE)"; \
 	else \
 		echo "[INFO] Generating fresh cryptographic keys and $(ENV_FILE)..."; \
+		umask 077; \
 		JWT_SECRET=$$(openssl rand -hex 32); \
 		PEPPER=$$(openssl rand -hex 32); \
 		MASTER_KEY=$$(openssl rand -hex 32); \
 		MASTER_KEY_ID=$$(openssl rand -hex 4); \
-		cp $(ENV_EXAMPLE) $(ENV_FILE); \
-		sed -i.bak -e "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" \
-		           -e "s|^ACCOUNT_LOOKUP_PEPPER=.*|ACCOUNT_LOOKUP_PEPPER=$$PEPPER|" \
-		           -e "s|^MASTER_KEY_ACTIVE=.*|MASTER_KEY_ACTIVE=$$MASTER_KEY|" \
-		           -e "s|^MASTER_KEY_ACTIVE_ID=.*|MASTER_KEY_ACTIVE_ID=$$MASTER_KEY_ID|" \
-		           $(ENV_FILE) && rm -f $(ENV_FILE).bak; \
+		DB_PASSWORD=$$(openssl rand -hex 24); \
+		sed -e "s|^JWT_SECRET=.*|JWT_SECRET=$$JWT_SECRET|" \
+		    -e "s|^ACCOUNT_LOOKUP_PEPPER=.*|ACCOUNT_LOOKUP_PEPPER=$$PEPPER|" \
+		    -e "s|^MASTER_KEY_ACTIVE=.*|MASTER_KEY_ACTIVE=$$MASTER_KEY|" \
+		    -e "s|^MASTER_KEY_ACTIVE_ID=.*|MASTER_KEY_ACTIVE_ID=$$MASTER_KEY_ID|" \
+		    -e "s|^DB_PASSWORD=.*|DB_PASSWORD=$$DB_PASSWORD|" \
+		    $(ENV_EXAMPLE) > $(ENV_FILE); \
 		chmod 600 $(ENV_FILE); \
 		echo "[OK] $(ENV_FILE) created successfully with secure permissions (0600)."; \
 	fi
@@ -143,7 +129,6 @@ clean:
 	@$(DOCKER_COMPOSE) -f docker-compose.test.yaml down -v --rmi local 2>/dev/null || true
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml down -v --rmi local 2>/dev/null || true
 	@docker images --filter "reference=*noaddx*" -q | xargs docker rmi -f 2>/dev/null || true
-	@docker builder prune -f 2>/dev/null || true
 	@rm -rf test-results
 	@echo "[OK] Clean complete"
 
@@ -168,8 +153,8 @@ test:
 test-run: test up
 
 test-unit:
-	@echo "[INFO] Running local Go unit tests..."
-	@cd backend && go test -tags=test -v ./internal/pow/... ./internal/handlers/... ./tests/identity/... ./tests/encryption/... ./tests/utils/...
+	@echo "[INFO] Running local Go unit tests (no database)..."
+	@cd backend && go test -tags=test ./internal/... ./tests/auth/... ./tests/encryption/... ./tests/identity/... ./tests/middleware/... ./tests/utils/...
 
 test-crypto:
 	@echo "[INFO] Running frontend WebCrypto verification tests..."
@@ -177,9 +162,18 @@ test-crypto:
 
 test-all: test-crypto test-unit
 
+# Database and integration tests against a local PostgreSQL (override: make test-db TEST_DB_PORT=5433)
+TEST_DB_HOST ?= 127.0.0.1
+TEST_DB_PORT ?= 5432
+TEST_DB_USER ?= postgres
+TEST_DB_PASSWORD ?= postgres
+TEST_DB_NAME ?= noaddx_test
+
 test-db:
-	@echo "[INFO] Running database migration tests (requires local PostgreSQL)..."
-	@cd backend && DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noaddx_test go test ./tests/database -v
+	@echo "[INFO] Running database and integration tests (requires local PostgreSQL)..."
+	@cd backend && DB_HOST=$(TEST_DB_HOST) DB_PORT=$(TEST_DB_PORT) DB_USER=$(TEST_DB_USER) \
+		DB_PASSWORD=$(TEST_DB_PASSWORD) DB_NAME=$(TEST_DB_NAME) \
+		go test -p 1 -count=1 -tags=test ./tests/database/... ./tests/integration/...
 
 ## -----------------------------------------------------------------------------
 ## Debug & Utilities

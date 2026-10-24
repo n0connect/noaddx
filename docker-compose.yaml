@@ -4,6 +4,8 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: noaddx-postgres
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -24,9 +26,17 @@ services:
       context: .
       dockerfile: dev.backend.Dockerfile
     container_name: noaddx-backend
+    # Static binary running as a non-root user: nothing to write, no capabilities needed
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
-      TRUSTED_PROXIES: ${TRUSTED_PROXIES}
+      # Only nginx (fixed address below) may supply the client address; otherwise every
+      # user would share nginx's address and therefore one rate-limit bucket
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-${PROXY_IP:-172.29.73.10}}
       DB_HOST: ${DOCKER_DB_HOST:-postgres}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -52,6 +62,7 @@ services:
       MESSAGE_PAGE_LIMIT: ${MESSAGE_PAGE_LIMIT:-200}
       MESSAGE_TTL_DAYS: ${MESSAGE_TTL_DAYS:-7}
       POW_DIFFICULTY: ${POW_DIFFICULTY:-20}
+      POW_CHALLENGE_TTL_SEC: ${POW_CHALLENGE_TTL_SEC:-300}
       ARGON2_MEMORY_KIB: ${ARGON2_MEMORY_KIB}
       ARGON2_TIME: ${ARGON2_TIME}
       ARGON2_PARALLELISM: ${ARGON2_PARALLELISM}
@@ -92,11 +103,26 @@ services:
       context: .
       dockerfile: dev.frontend.Dockerfile
     container_name: noaddx-frontend
+    security_opt:
+      - no-new-privileges:true
+    # Loopback only, like the other services: WebCrypto needs a secure context, so plain HTTP
+    # is only ever usable as http://localhost; expose it to a network through TLS instead
     ports:
-      - "80:80"
+      - "127.0.0.1:${HTTP_PORT:-80}:80"
+    networks:
+      default:
+        ipv4_address: ${PROXY_IP:-172.29.73.10}
     depends_on:
       - backend
     restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        # Fixed so nginx has a known address (PROXY_IP) for TRUSTED_PROXIES; change both in
+        # .env if this range collides with another network on the host
+        - subnet: ${COMPOSE_SUBNET:-172.29.73.0/24}
 
 volumes:
   postgres_data:
