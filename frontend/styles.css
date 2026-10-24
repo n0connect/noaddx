@@ -853,7 +853,7 @@ header {
     list-style: none;
 }
 /* ========================================
-   NOADDRESS — IDENTITY (AURA)
+   NOADDX — IDENTITY (AURA)
    ======================================== */
 
 /* Key-derived 5x5 glyph: drawn at 5px, scaled up crisp */
@@ -889,7 +889,7 @@ header {
 }
 
 /* ========================================
-   NOADDRESS — PAIRING
+   NOADDX — PAIRING
    ======================================== */
 
 .pair-actions {
@@ -939,7 +939,7 @@ header {
 }
 
 /* ========================================
-   NOADDRESS — CONVERSATION LIST
+   NOADDX — CONVERSATION LIST
    ======================================== */
 
 .conversation-list {
@@ -987,7 +987,7 @@ header {
 }
 
 /* ========================================
-   NOADDRESS — CONVERSATION
+   NOADDX — CONVERSATION
    ======================================== */
 
 @keyframes messageIn {
@@ -1132,7 +1132,7 @@ header {
 }
 
 /* ========================================
-   NOADDRESS — VERIFICATION & INTEGRITY
+   NOADDX — VERIFICATION & INTEGRITY
    ======================================== */
 
 .verified-mark {

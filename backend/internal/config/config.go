@@ -11,8 +11,8 @@ import (
 
 const (
 	defaultJWTSecretMinLen         = 32
-	defaultJWTIssuer               = "noaddress-backend"
-	defaultJWTAudience             = "noaddress-web"
+	defaultJWTIssuer               = "noaddx-backend"
+	defaultJWTAudience             = "noaddx-web"
 	defaultJWTExpirationMinutes    = 15
 	defaultAllowedOrigins          = "http://localhost"
 	defaultAppEnv                  = "development"
@@ -21,7 +21,7 @@ const (
 	defaultDBPort                  = "5432"
 	defaultDBUser                  = "postgres"
 	defaultDBPassword              = "postgres"
-	defaultDBName                  = "noaddress"
+	defaultDBName                  = "noaddx"
 	defaultDBSSLMode               = "disable"
 	defaultBackendPort             = "8080"
 	defaultMaxRequestBodyBytes     = 1048576

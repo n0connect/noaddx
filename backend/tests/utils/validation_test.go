@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"testing"
 
-	"noaddress/internal/utils"
-	"noaddress/tests/testutil"
+	"noaddx/internal/utils"
+	"noaddx/tests/testutil"
 )
 
 func TestGenerateAccountNumber_LengthAndCharset(t *testing.T) {

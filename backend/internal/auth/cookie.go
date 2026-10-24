@@ -4,14 +4,14 @@ import (
 	"net/http"
 	"time"
 
-	"noaddress/internal/config"
+	"noaddx/internal/config"
 )
 
 const (
 	// __Host- prefix requires: Secure flag, no Domain, Path=/ (blocks subdomain/MITM cookie injection)
 	productionCookieName = "__Host-Session"
 	// Browsers reject __Host- cookies without Secure, so plain-HTTP development uses an unprefixed name
-	developmentCookieName = "noaddress_session"
+	developmentCookieName = "noaddx_session"
 )
 
 // AuthCookieName returns the session cookie name for the current mode

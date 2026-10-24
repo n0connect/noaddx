@@ -60,7 +60,7 @@ make test-db
 
 # Step 2: Full Suite with Race Condition Detector
 cd backend
-DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noaddress_test go test -p 1 -race -tags=test ./...
+DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noaddx_test go test -p 1 -race -tags=test ./...
 ```
 
 ---

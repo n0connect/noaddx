@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"noaddress/internal/config"
-	"noaddress/internal/models"
-	"noaddress/internal/utils"
-	"noaddress/tests/testutil"
+	"noaddx/internal/config"
+	"noaddx/internal/models"
+	"noaddx/internal/utils"
+	"noaddx/tests/testutil"
 )
 
 func setupJSONTestEnv(t *testing.T) {

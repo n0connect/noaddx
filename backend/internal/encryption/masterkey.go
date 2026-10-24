@@ -7,8 +7,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"noaddress/internal/config"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/utils"
 )
 
 var masterKeyLogger = utils.NewLogger("MASTER_KEY")

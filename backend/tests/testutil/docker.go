@@ -52,7 +52,7 @@ func SetupTestDatabaseEnvForDocker() {
 		os.Setenv("DB_PASSWORD", "postgres")
 	}
 	if os.Getenv("DB_NAME") == "" {
-		os.Setenv("DB_NAME", "noaddress_test")
+		os.Setenv("DB_NAME", "noaddx_test")
 	}
 	if os.Getenv("DB_SSL_MODE") == "" {
 		os.Setenv("DB_SSL_MODE", "disable")

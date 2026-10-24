@@ -3,8 +3,8 @@ package encryption
 import (
 	"fmt"
 
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/utils"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/utils"
 
 	"github.com/google/uuid"
 )

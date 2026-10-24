@@ -1,6 +1,6 @@
-# noaddress. Documentation Hub
+# noaddx. Documentation Hub
 
-Welcome to the **noaddress.** documentation. This documentation suite is designed to be **accurate to the source code**, **modular**, **human-centric**, and **exhaustive**. It explicitly anticipates common developer/operator pitfalls, hardware constraints, operating system idiosyncrasies, and cryptographic nuances.
+Welcome to the **noaddx.** documentation. This documentation suite is designed to be **accurate to the source code**, **modular**, **human-centric**, and **exhaustive**. It explicitly anticipates common developer/operator pitfalls, hardware constraints, operating system idiosyncrasies, and cryptographic nuances.
 
 ---
 
@@ -24,7 +24,7 @@ Welcome to the **noaddress.** documentation. This documentation suite is designe
 
 1. **Zero Knowledge of Accounts:** The server generates a 256-bit CSPRNG `AccountNumber` during signup and reveals it once. The browser derives an `auth_key` (sent at login) and an `X25519` identity key (which **never** leaves the browser). The server never stores the `AccountNumber`.
 2. **Zero Plaintext & Zero Metadata Storage:** Messages are encrypted in the browser using AES-256-GCM. The server stores only opaque ciphertexts padded to 256-byte multiples. User accounts contain **no creation or update timestamps**. Message send times reside solely inside the ciphertext; the server only tracks a coarse, day-granular expiry date.
-3. **Graph Unlinkability:** Unlike legacy designs where a member tag is shared across all rooms, **noaddress generates a unique, isolated HMAC member tag per conversation**. Even a complete database dump cannot correlate that a user in Conversation A is the participant in Conversation B.
+3. **Graph Unlinkability:** Unlike legacy designs where a member tag is shared across all rooms, **noaddx generates a unique, isolated HMAC member tag per conversation**. Even a complete database dump cannot correlate that a user in Conversation A is the participant in Conversation B.
 4. **Scoped Ordering:** Sequence numbers (`seq`) are calculated **per conversation**, eliminating global activity correlation across different channels.
 5. **Ephemerality by Default:** All messages automatically expire and are purged by an hourly background daemon based on `MESSAGE_TTL_DAYS` (default 7 days). Complete, bilateral conversation wiping ("Burn") is supported at any time.
 

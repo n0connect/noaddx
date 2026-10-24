@@ -1,6 +1,6 @@
 # Threat Model & Security Architecture
 
-This document formalizes the security guarantees, adversary capabilities, and cryptographic boundaries of **noaddress.**
+This document formalizes the security guarantees, adversary capabilities, and cryptographic boundaries of **noaddx.**
 
 ---
 

@@ -40,8 +40,8 @@ func SetupTestEnv(t *testing.T) {
 	os.Setenv("JWT_SECRET", testJWTSecret)
 	os.Setenv("JWT_SECRET_MIN_LEN", "32")
 	os.Setenv("JWT_EXPIRATION_MINUTES", "15")
-	os.Setenv("JWT_ISSUER", "noaddress-backend")
-	os.Setenv("JWT_AUDIENCE", "noaddress-web")
+	os.Setenv("JWT_ISSUER", "noaddx-backend")
+	os.Setenv("JWT_AUDIENCE", "noaddx-web")
 	os.Setenv("MASTER_KEY_ACTIVE", testEncryptionKey)
 	os.Setenv("MASTER_KEY_ACTIVE_ID", "test-key-1")
 	os.Setenv("MASTER_KEY_OLD", "")
@@ -88,7 +88,7 @@ func SetupTestEnv(t *testing.T) {
 		os.Setenv("DB_PASSWORD", "postgres")
 	}
 	if os.Getenv("DB_NAME") == "" {
-		os.Setenv("DB_NAME", "noaddress_test")
+		os.Setenv("DB_NAME", "noaddx_test")
 	}
 	if os.Getenv("DB_SSL_MODE") == "" {
 		os.Setenv("DB_SSL_MODE", "disable")

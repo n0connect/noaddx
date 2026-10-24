@@ -1,6 +1,6 @@
 # Cryptography Specification
 
-This document details the exact cryptographic standards, key derivation functions, wire framing, and authenticated encryption employed by **noaddress.**
+This document details the exact cryptographic standards, key derivation functions, wire framing, and authenticated encryption employed by **noaddx.**
 
 ---
 
@@ -32,11 +32,11 @@ The account number is a 32-byte (256-bit) cryptographically secure random value 
          +-------------------------+-------------------------+
          v                                                   v
    HKDF-Extract                                        HKDF-Extract
-(Salt: "noaddress.v1")                             (Salt: "noaddress.v1")
+(Salt: "noaddx.v1")                             (Salt: "noaddx.v1")
          |                                                   |
          v                                                   v
     HKDF-Expand                                         HKDF-Expand
-(Info: "noaddress/auth", L: 32)            (Info: "noaddress/identity/x25519", L: 32)
+(Info: "noaddx/auth", L: 32)            (Info: "noaddx/identity/x25519", L: 32)
          |                                                   |
          v                                                   v
       auth_key                                       X25519 Private Key
@@ -82,7 +82,7 @@ Shared Secret = X25519(myPrivateKey, peerPublicKey)
 Conversation Key = HKDF-SHA256(
     IKM:   Shared Secret (32 bytes),
     Salt:  Conversation ID (16 bytes UUID raw binary),
-    Info:  "noaddress/conv/v1",
+    Info:  "noaddx/conv/v1",
     L:     32 bytes
 )
 ```
@@ -156,11 +156,11 @@ The solution is valid if and only if `hash` contains at least `Difficulty` leadi
 
 ## Visual Identity Verification (Aura & Safety Numbers)
 
-Because users have no usernames, `noaddress.` provides two symmetric, deterministic verification mechanisms:
+Because users have no usernames, `noaddx.` provides two symmetric, deterministic verification mechanisms:
 
 1. **Aura (`frontend/js/utils.js`):**
    - A friendly adjective-noun combination (e.g., *"Amber Fox"*, *"Quiet Orbit"*) + a symmetric 5x5 pixel SVG glyph.
-   - Derived deterministically from `HKDF-SHA256(peerPublicKey, salt="noaddress.v1", info="noaddress/aura")`.
+   - Derived deterministically from `HKDF-SHA256(peerPublicKey, salt="noaddx.v1", info="noaddx/aura")`.
 2. **Safety Number:**
    - A 12-digit number derived from sorted public keys:
      `fingerprint = SHA-256(min(key_A, key_B) || max(key_A, key_B))`

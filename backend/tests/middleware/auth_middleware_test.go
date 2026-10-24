@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"noaddress/internal/middleware"
-	"noaddress/tests/testutil"
+	"noaddx/internal/middleware"
+	"noaddx/tests/testutil"
 )
 
 func TestJWTMiddleware_MissingHeader(t *testing.T) {

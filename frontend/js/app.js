@@ -45,10 +45,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupEventListeners();
 
     // WebCrypto X25519 + secure context are hard requirements (no JS crypto fallbacks)
-    if (!window.isSecureContext || !(await NoaddressCrypto.isSupported())) {
+    if (!window.isSecureContext || !(await NoaddxCrypto.isSupported())) {
         showMainMenu();
         document.getElementById('unsupportedNotice').textContent =
-            'this browser cannot run noaddress. securely (needs https and WebCrypto X25519). update your browser.';
+            'this browser cannot run noaddx. securely (needs https and WebCrypto X25519). update your browser.';
         document.getElementById('showLoginBtn').disabled = true;
         document.getElementById('showRegisterFormBtn').disabled = true;
         return;

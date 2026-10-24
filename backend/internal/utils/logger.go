@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"noaddress/internal/config"
+	"noaddx/internal/config"
 )
 
 // LogLevel represents the severity of a log message

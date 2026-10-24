@@ -49,7 +49,7 @@ const Chat = (() => {
 
     function isPublicKey(value) {
         try {
-            NoaddressCrypto.b64urlDecode(value, 32);
+            NoaddxCrypto.b64urlDecode(value, 32);
             return true;
         } catch (e) {
             return false;
@@ -58,7 +58,7 @@ const Chat = (() => {
 
     function conversationKey(conv) {
         if (!conv.key) {
-            conv.key = NoaddressCrypto.conversationKey(me.privateKey, conv.peerPublicKey, conv.id);
+            conv.key = NoaddxCrypto.conversationKey(me.privateKey, conv.peerPublicKey, conv.id);
         }
         return conv.key;
     }
@@ -68,7 +68,7 @@ const Chat = (() => {
         conversations.forEach(conv => {
             if (conv.id !== activeId && conv.lastSeq > conv.readSeq) unread++;
         });
-        document.title = unread > 0 ? `(${unread}) noaddress.` : 'noaddress.';
+        document.title = unread > 0 ? `(${unread}) noaddx.` : 'noaddx.';
     }
 
     // The server keeps no cross-conversation recency, so ordering is decided here:
@@ -97,7 +97,7 @@ const Chat = (() => {
         me = {
             privateKey: identity.privateKey,
             publicKey: identity.publicKey,
-            aura: await NoaddressCrypto.aura(identity.publicKey),
+            aura: await NoaddxCrypto.aura(identity.publicKey),
             ttlDays: ttlDays
         };
         renderMe(me.aura);
@@ -122,7 +122,7 @@ const Chat = (() => {
         document.getElementById('inviteCode').textContent = '';
         document.getElementById('inviteInput').value = '';
         document.getElementById('messageInput').value = '';
-        document.title = 'noaddress.';
+        document.title = 'noaddx.';
     }
 
     // ---------- conversations ----------
@@ -160,7 +160,7 @@ const Chat = (() => {
                 conversations.set(item.id, {
                     id: item.id,
                     peerPublicKey: item.peer_public_key,
-                    aura: await NoaddressCrypto.aura(item.peer_public_key),
+                    aura: await NoaddxCrypto.aura(item.peer_public_key),
                     verified: await Keystore.isVerified(item.id, item.peer_public_key),
                     myMaxN: 0,
                     peerLastN: 0,
@@ -254,7 +254,7 @@ const Chat = (() => {
         const key = await conversationKey(conv);
         const fresh = [];
         for (const raw of result.data.messages) {
-            if (!raw || !NoaddressCrypto.isUuidV4(raw.id) || !isSeq(raw.seq) || raw.seq === 0 ||
+            if (!raw || !NoaddxCrypto.isUuidV4(raw.id) || !isSeq(raw.seq) || raw.seq === 0 ||
                 typeof raw.mine !== 'boolean' || typeof raw.ciphertext !== 'string' ||
                 raw.ciphertext.length > MAX_CIPHERTEXT_CHARS || conv.seqs.has(raw.seq) || raw.seq <= conv.maxSeq ||
                 conv.ids.has(raw.id)) {
@@ -264,7 +264,7 @@ const Chat = (() => {
             const sender = raw.mine ? me.publicKey : conv.peerPublicKey;
             let message;
             try {
-                const plain = await NoaddressCrypto.decryptMessage(key, conv.id, raw.id, sender, raw.ciphertext);
+                const plain = await NoaddxCrypto.decryptMessage(key, conv.id, raw.id, sender, raw.ciphertext);
                 message = { seq: raw.seq, mine: raw.mine, text: plain.text, sentAt: plain.sentAt };
                 if (raw.mine) {
                     conv.myMaxN = Math.max(conv.myMaxN, plain.counter);
@@ -312,10 +312,10 @@ const Chat = (() => {
 
         sendBtn.disabled = true;
         try {
-            const id = NoaddressCrypto.newMessageId();
+            const id = NoaddxCrypto.newMessageId();
             const sentAt = Date.now();
             const key = await conversationKey(conv);
-            const ciphertext = await NoaddressCrypto.encryptMessage(key, conv.id, id, me.publicKey, validation.sanitized, sentAt, conv.myMaxN + 1);
+            const ciphertext = await NoaddxCrypto.encryptMessage(key, conv.id, id, me.publicKey, validation.sanitized, sentAt, conv.myMaxN + 1);
             const result = await api('POST', `/conversations/${conv.id}/messages`, { id: id, ciphertext: ciphertext });
 
             if (result.ok && result.data && isSeq(result.data.seq) && result.data.seq > 0) {
@@ -352,7 +352,7 @@ const Chat = (() => {
         }
         let code;
         try {
-            code = await NoaddressCrypto.buildInviteCode(result.data.token, me.publicKey);
+            code = await NoaddxCrypto.buildInviteCode(result.data.token, me.publicKey);
         } catch (e) {
             showError('server returned a malformed invite');
             return;
@@ -374,7 +374,7 @@ const Chat = (() => {
             return;
         }
         const invite = validation.sanitized;
-        if (await NoaddressCrypto.fingerprintMatches(invite, me.publicKey)) {
+        if (await NoaddxCrypto.fingerprintMatches(invite, me.publicKey)) {
             showWarning('that is your own invite — send it to someone else');
             return;
         }
@@ -395,7 +395,7 @@ const Chat = (() => {
         }
 
         // The server chose which key we got; the invite code says which key we should get
-        if (!(await NoaddressCrypto.fingerprintMatches(invite, conv.peer_public_key))) {
+        if (!(await NoaddxCrypto.fingerprintMatches(invite, conv.peer_public_key))) {
             await api('DELETE', `/conversations/${conv.id}`);
             showError('verification FAILED: the server substituted the peer key. conversation burned.');
             return;
@@ -431,7 +431,7 @@ const Chat = (() => {
             panel.style.display = 'none';
             return;
         }
-        renderSafetyNumber(await NoaddressCrypto.safetyNumber(me.publicKey, conv.peerPublicKey));
+        renderSafetyNumber(await NoaddxCrypto.safetyNumber(me.publicKey, conv.peerPublicKey));
         panel.style.display = 'block';
     }
 

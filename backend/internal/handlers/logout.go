@@ -3,11 +3,11 @@ package handlers
 import (
 	"net/http"
 
-	"noaddress/internal/auth"
-	"noaddress/internal/identity"
-	"noaddress/internal/models"
-	"noaddress/internal/realtime"
-	"noaddress/internal/utils"
+	"noaddx/internal/auth"
+	"noaddx/internal/identity"
+	"noaddx/internal/models"
+	"noaddx/internal/realtime"
+	"noaddx/internal/utils"
 )
 
 var logoutLogger = utils.NewLogger("LOGOUT")

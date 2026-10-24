@@ -1,5 +1,5 @@
 # ==============================================================================
-# noaddress. Makefile
+# noaddx. Makefile
 # ==============================================================================
 
 SHELL := /bin/bash
@@ -20,7 +20,7 @@ ENV_EXAMPLE := .env.example
 ## -----------------------------------------------------------------------------
 
 help:
-	@echo "noaddress. build system"
+	@echo "noaddx. build system"
 	@echo "======================"
 	@echo "Usage: make [target]"
 	@echo ""
@@ -142,7 +142,7 @@ clean:
 	@echo "[INFO] Cleaning containers, volumes and test artifacts..."
 	@$(DOCKER_COMPOSE) -f docker-compose.test.yaml down -v --rmi local 2>/dev/null || true
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml down -v --rmi local 2>/dev/null || true
-	@docker images --filter "reference=*noaddress*" -q | xargs docker rmi -f 2>/dev/null || true
+	@docker images --filter "reference=*noaddx*" -q | xargs docker rmi -f 2>/dev/null || true
 	@docker builder prune -f 2>/dev/null || true
 	@rm -rf test-results
 	@echo "[OK] Clean complete"
@@ -179,7 +179,7 @@ test-all: test-crypto test-unit
 
 test-db:
 	@echo "[INFO] Running database migration tests (requires local PostgreSQL)..."
-	@cd backend && DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noaddress_test go test ./tests/database -v
+	@cd backend && DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noaddx_test go test ./tests/database -v
 
 ## -----------------------------------------------------------------------------
 ## Debug & Utilities
@@ -189,4 +189,4 @@ shell-backend:
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml exec backend /bin/sh
 
 shell-db:
-	@$(DOCKER_COMPOSE) -f docker-compose.yaml exec postgres psql -U postgres -d noaddress
+	@$(DOCKER_COMPOSE) -f docker-compose.yaml exec postgres psql -U postgres -d noaddx

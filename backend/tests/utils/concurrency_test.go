@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"noaddress/internal/utils"
+	"noaddx/internal/utils"
 )
 
 func TestSafeMutex_TimesOutWithoutLeakingTheLock(t *testing.T) {

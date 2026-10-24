@@ -13,7 +13,7 @@ backend/tests/
 |-- database/                  # Migration tests (7 test)
 |-- encryption/                # Encryption tests (9 test)
 |-- identity/                  # HKDF / X25519 RFC vectors + derivations + tag separation (5 test)
-|-- integration/               # noaddress end-to-end flows, real E2E ciphertext (15 test)
+|-- integration/               # noaddx end-to-end flows, real E2E ciphertext (15 test)
 |-- middleware/                # Middleware tests (16 test)
 |-- testutil/                  # Test utilities
 |   |-- db.go                  # Database setup helpers
@@ -85,7 +85,7 @@ go test -tags=test ./tests/utils -v
 | Encryption | 9 | Gecti |
 | Middleware | 16 | Gecti |
 | Identity | 5 | Gecti |
-| Integration (noaddress flows) | 15 | Gecti |
+| Integration (noaddx flows) | 15 | Gecti |
 | Utils | 20 | Gecti |
 | **TOPLAM (tests/)** | **87** | Gecti |
 

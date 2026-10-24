@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"noaddress/internal/config"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/utils"
 )
 
 var rateLimitLogger = utils.NewLogger("RATE_LIMIT")

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"noaddress/internal/auth"
-	"noaddress/tests/testutil"
+	"noaddx/internal/auth"
+	"noaddx/tests/testutil"
 )
 
 func setupAuthTestEnv(t *testing.T) {

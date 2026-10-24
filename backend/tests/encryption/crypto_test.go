@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"noaddress/internal/encryption"
-	"noaddress/tests/testutil"
+	"noaddx/internal/encryption"
+	"noaddx/tests/testutil"
 )
 
 func TestEncryptWithAAD_Basic(t *testing.T) {
@@ -24,7 +24,7 @@ func TestEncryptWithAAD_Basic(t *testing.T) {
 	}
 
 	// Test data
-	plaintext := "Y7KAl2oV4VL5Ox6nNgvQIcD4jXZK4scXV2k7WwsA2ms"
+	plaintext := "5RnU1Lh-_CuOr8VzbLd0OGx4uFmd9YeLM2YysXB2Bx4"
 	userUUID := testutil.NewInternalID(t)
 	recordID := testutil.NewRecordID(t)
 	field := encryption.FieldPeerPublicKey

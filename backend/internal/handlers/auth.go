@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"strings"
 
-	"noaddress/internal/auth"
-	"noaddress/internal/encryption"
-	"noaddress/internal/identity"
-	"noaddress/internal/middleware"
-	"noaddress/internal/models"
-	"noaddress/internal/pow"
-	"noaddress/internal/store"
-	"noaddress/internal/utils"
+	"noaddx/internal/auth"
+	"noaddx/internal/encryption"
+	"noaddx/internal/identity"
+	"noaddx/internal/middleware"
+	"noaddx/internal/models"
+	"noaddx/internal/pow"
+	"noaddx/internal/store"
+	"noaddx/internal/utils"
 )
 
 var (
@@ -354,7 +354,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// SECURITY: Validate auth key format (exactly 32 bytes, base64url) before any database operations
-	// The client sends HKDF(AccountNumber, "noaddress/auth"); the AccountNumber itself never leaves the browser
+	// The client sends HKDF(AccountNumber, "noaddx/auth"); the AccountNumber itself never leaves the browser
 	if !identity.ValidateEncodedKey(req.AuthKey) {
 		authLogger.Warn("Invalid auth key format in login request")
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)

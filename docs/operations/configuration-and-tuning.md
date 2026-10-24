@@ -14,8 +14,8 @@ All settings can be configured via `.env` or injected directly as environment va
 |---|---|---|---|
 | `JWT_SECRET` | string | *Generated* | HMAC-SHA256 signing secret for session tokens (must be >= `JWT_SECRET_MIN_LEN`). |
 | `JWT_SECRET_MIN_LEN` | int | `32` | Minimum enforced character length for `JWT_SECRET`. |
-| `JWT_ISSUER` | string | `noaddress-backend` | `iss` claim checked on every JWT validation. |
-| `JWT_AUDIENCE` | string | `noaddress-web` | `aud` claim checked on every JWT validation. |
+| `JWT_ISSUER` | string | `noaddx-backend` | `iss` claim checked on every JWT validation. |
+| `JWT_AUDIENCE` | string | `noaddx-web` | `aud` claim checked on every JWT validation. |
 | `JWT_EXPIRATION_MINUTES` | int | `15` | Session lifespan. Active sessions sliding-refresh past half-life. |
 | `MASTER_KEY_ACTIVE` | hex | *Generated* | Active 256-bit encryption key (32 bytes hex) used for encrypting new server records. |
 | `MASTER_KEY_ACTIVE_ID` | string | *Generated* | Key identifier tag saved in DB alongside records (e.g., `key-2026-01`). |
@@ -33,7 +33,7 @@ All settings can be configured via `.env` or injected directly as environment va
 | `DB_PORT` | int | `5432` | PostgreSQL listening port. |
 | `DB_USER` | string | `postgres` | Database user. |
 | `DB_PASSWORD` | string | `postgres` | Database password. |
-| `DB_NAME` | string | `noaddress` | Database name. |
+| `DB_NAME` | string | `noaddx` | Database name. |
 | `DB_SSL_MODE` | string | `disable` | SSL mode (`disable`, `require`, `verify-full`). In production, use `verify-full`. |
 
 ---
@@ -114,7 +114,7 @@ The reverse proxy (`nginx.conf`) enforces strict browser isolation policies:
 
 ```nginx
 # Content Security Policy (CSP)
-add_header Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; require-trusted-types-for 'script'; trusted-types noaddress-worker;" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; require-trusted-types-for 'script'; trusted-types noaddx-worker;" always;
 
 # Cross-Origin Isolation
 add_header Cross-Origin-Opener-Policy "same-origin" always;
@@ -123,9 +123,9 @@ add_header Cross-Origin-Resource-Policy "same-origin" always;
 ```
 
 ### Trusted Types Policy
-The application registers a single Trusted Types policy in JavaScript (`noaddress-worker`):
+The application registers a single Trusted Types policy in JavaScript (`noaddx-worker`):
 ```javascript
-window.trustedTypes.createPolicy('noaddress-worker', {
+window.trustedTypes.createPolicy('noaddx-worker', {
     createScriptURL: string => string
 });
 ```

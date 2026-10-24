@@ -11,7 +11,7 @@
 const Keystore = (() => {
     'use strict';
 
-    const DB_NAME = 'noaddress';
+    const DB_NAME = 'noaddx';
     const DB_VERSION = 2;
     const STORE = 'keys';
     const VERIFIED_STORE = 'verified';

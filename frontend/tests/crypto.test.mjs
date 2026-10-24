@@ -7,19 +7,19 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../js/crypto.js', import.meta.url), 'utf8');
 const context = vm.createContext({ crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa });
-const C = vm.runInContext(source + '\n;NoaddressCrypto', context);
+const C = vm.runInContext(source + '\n;NoaddxCrypto', context);
 
 // Same vector as backend/tests/identity/identity_test.go
 const ACCOUNT = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
-const GO_AUTH_KEY = 'qvqPgCb252PauFLpbejEzf8oEzhHi7tfYLM9Vcu0TTA';
-const GO_PUBLIC_KEY = 'Y7KAl2oV4VL5Ox6nNgvQIcD4jXZK4scXV2k7WwsA2ms';
+const GO_AUTH_KEY = 'Thcc1tNIpP2ejPv8dErwLdXtO1dA_hkaGGbEO4LJanA';
+const GO_PUBLIC_KEY = '5RnU1Lh-_CuOr8VzbLd0OGx4uFmd9YeLM2YysXB2Bx4';
 const CONV = '3b241101-e2bb-4255-8caf-4136c566a962';
 const B_ACCOUNT = 'HxwdHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA';
 // Produced by backend/internal/e2e (Go, A → B); the browser implementation must open it.
 const GO_VECTOR = {
     message: 'a3f1c2d4-5b6e-4f70-8a91-b2c3d4e5f607',
-    ciphertext: 'sTEmxZZ-1ilWXZ7YeJDJZbubUknabL-WBAoiVoadVtM9qJXWIMACPrr6CxEHNW47CFTzO-97T0DWqk9arqDQriyHb-N9LDUhI7uisLeVm3mH5VEcRnNvRMSaPKRe2F_KdTzqoLt8UQf7Ab-CRXEGLgEEu6Jt9S48wGebDwLtdyNczsJG-8eQV6Kbuvu1tChTg9CeDN_InLP9IGUu02tIOWQA757wEMDM7vPe45qynO_iZEUAMk70njN2hzgAv9pLYDZn0ForliH8tcI5TdQT_YqQEJ8QZ--NNsf333YlCPvNtd76AN-4m1Y2-FiEDBWr3_0txNsPCRzjQHQYM9DhshxbeUJRvjA7mjG_qNflQRKN4pZjhDjkzvvWP6g',
-    text: 'noaddress. interop ✓ <b>&',
+    ciphertext: 'RJahYupu3_vKSK6E3fDpsrnGDz-sqWvkBTSYcK7E5FYLBs6iNTerLyd9PxE60FSvW0_X9RCp0venX-t-g5Y8chK6NEYezAMXiF0WErcqVab5fYcuARkWgA9Uz348nEp7f-JmBpaPKQI_9GXk_hZaflCiXOOt5FjU6HYIDvBJKglf336vjcZ4KumSuc62G4v46Dxvq29HXaooXNtanRi5w_eTJRZK-5uZZPbkAQ1OlNgmgh4RAUK8DeAyhApLcu5_eNZrrep1kvjtmh2-g_dvU-vDcZ6Uqr0UfjE5UgLpvMLe4Y-Bho13lN_qzDonJ__cqKdVZUSjVkvaw4M3O8tKkjmHdbZ8kthEh0sitEly7kHUchrWUcO1TnjVniY',
+    text: 'noaddx. interop ✓ <b>&',
     sentAt: 1729700000000,
     counter: 3
 };
@@ -82,7 +82,7 @@ test('invite code carries a fingerprint the redeemer can verify', async () => {
     const { a, b } = await peers();
     const token = 'AAAAAAAAAAAAAAAAAAAAAA';
     const code = await C.buildInviteCode(token, a.publicKey);
-    assert.ok(code.startsWith('noaddress:'));
+    assert.ok(code.startsWith('noaddx:'));
     const parsed = C.parseInviteCode(code);
     assert.equal(parsed.token, token);
     assert.equal(await C.fingerprintMatches(parsed, a.publicKey), true);

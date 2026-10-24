@@ -1,9 +1,9 @@
-// Package e2e is the Go implementation of the noaddress. client message protocol, the
+// Package e2e is the Go implementation of the noaddx. client message protocol, the
 // twin of frontend/js/crypto.js. The server never imports it (it only relays ciphertext);
 // it exists so Go code can speak the real protocol — integration tests exchange genuine
 // ciphertext through the real server, and interop vectors pin both implementations together.
 //
-//	conversation key = HKDF-SHA256(X25519(priv, peerPub), salt = conversation id, info "noaddress/conv/v1")
+//	conversation key = HKDF-SHA256(X25519(priv, peerPub), salt = conversation id, info "noaddx/conv/v1")
 //	plaintext        = len(2) || {"t":text,"ts":sentAt,"n":counter} || zero padding to a multiple of 256
 //	AAD              = "NADM" || 0x01 || conversation id(16) || message id(16) || SHA-256(sender public key)(32)
 //	wire             = base64url(nonce(12) || AES-256-GCM ciphertext || tag(16))
@@ -16,7 +16,7 @@ import (
 	"errors"
 	"fmt"
 
-	"noaddress/internal/cryptoengine"
+	"noaddx/internal/cryptoengine"
 
 	"github.com/google/uuid"
 )
@@ -25,7 +25,7 @@ const (
 	keySize          = 32
 	padBlock         = 256
 	maxPayloadBytes  = 6000
-	infoConversation = "noaddress/conv/v1"
+	infoConversation = "noaddx/conv/v1"
 	aadVersion       = 0x01
 )
 

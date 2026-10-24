@@ -6,7 +6,7 @@ This guide provides deep, situation-aware setup instructions across **macOS (App
 
 ## Hardware & Architecture Overview
 
-`noaddress.` is engineered to be portable and lightweight:
+`noaddx.` is engineered to be portable and lightweight:
 - **Backend:** Pure Go 1.21+ built with `CGO_ENABLED=0` (no CGO, no OpenSSL link-time dependency in the Go binary).
 - **Frontend:** Vanilla modern JavaScript using the native W3C WebCrypto API (no webpack, no npm bundle dependencies for runtime).
 - **Docker Images:** `golang:1.21-bookworm`, `postgres:15-alpine`, and `nginx:alpine` have official multi-architecture support for both `linux/amd64` and `linux/arm64`.
@@ -62,7 +62,7 @@ Furthermore, Homebrew installs `openssl@3` as **"keg-only"**, meaning Homebrew i
 
 ### Docker Desktop on macOS
 - Ensure Docker Desktop is running.
-- **Apple Silicon Tip:** In Docker Desktop Settings -> *General*, ensure **"Use Rosetta for x86/amd64 emulation on Apple Silicon"** is enabled if cross-compiling, but for `noaddress.`, let Docker build natively for `linux/arm64` (fastest compilation and execution).
+- **Apple Silicon Tip:** In Docker Desktop Settings -> *General*, ensure **"Use Rosetta for x86/amd64 emulation on Apple Silicon"** is enabled if cross-compiling, but for `noaddx.`, let Docker build natively for `linux/arm64` (fastest compilation and execution).
 
 ---
 
@@ -120,7 +120,7 @@ docker ps
 
 ## Windows 10 / 11 Installation (via WSL2)
 
-`noaddress.` relies on a standard Makefile, Linux-targeted Docker images, and Unix socket conventions. **Running directly on native Windows PowerShell/CMD is not supported; you MUST use WSL2.**
+`noaddx.` relies on a standard Makefile, Linux-targeted Docker images, and Unix socket conventions. **Running directly on native Windows PowerShell/CMD is not supported; you MUST use WSL2.**
 
 ### The CRLF vs. LF Line-Ending Trap
 
@@ -167,7 +167,7 @@ bash: \r: invalid command
 
 ## Memory Sizing & VPS Optimization (Argon2id)
 
-`noaddress.` uses memory-hard Argon2id key derivation on the server to protect derived auth keys:
+`noaddx.` uses memory-hard Argon2id key derivation on the server to protect derived auth keys:
 - **Default configuration:** `ARGON2_MEMORY_KIB=65536` (64 MiB per hash), `ARGON2_PARALLELISM=2` (or `4`).
 - **RAM Impact:** Each concurrent registration or login attempt allocates approximately **64-128 MiB of RAM** during the ~200ms calculation.
 

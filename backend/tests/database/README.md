@@ -21,7 +21,7 @@ export DB_HOST=localhost
 export DB_PORT=5432
 export DB_USER=postgres
 export DB_PASSWORD=postgres
-export DB_NAME=noaddress_test
+export DB_NAME=noaddx_test
 export DB_SSL_MODE=disable
 ```
 
@@ -73,7 +73,7 @@ go run ./cmd/server
 
 ## Onemli Notlar
 
-1. **Test Database**: Testler `noaddress_test` database'ini kullanir (production database'i degil)
+1. **Test Database**: Testler `noaddx_test` database'ini kullanir (production database'i degil)
 2. **Migration**: `database.Init()` cagrildiginda migration'lar otomatik calisir
 3. **Clean State**: Her test oncesi database temizlenmez (manuel cleanup gerekebilir)
 4. **Production**: Production'da bu testler calistirilmamali

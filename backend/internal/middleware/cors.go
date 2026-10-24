@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"noaddress/internal/config"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/utils"
 )
 
 var (

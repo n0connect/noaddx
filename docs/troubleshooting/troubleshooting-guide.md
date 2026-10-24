@@ -91,7 +91,7 @@ git config --global core.autocrlf input
 ### Symptom
 Running `make up` fails during Docker startup:
 ```text
-Error response from daemon: driver failed programming external connectivity on endpoint noaddress-frontend:
+Error response from daemon: driver failed programming external connectivity on endpoint noaddx-frontend:
 Bind for 0.0.0.0:80 failed: port is already allocated
 ```
 
@@ -125,9 +125,9 @@ Another web server (Nginx, Apache, IIS) or database server (local PostgreSQL) is
 ## 5. Docker Backend Database Connection Failure
 
 ### Symptom
-The `noaddress-backend` container restarts repeatedly. Logs show:
+The `noaddx-backend` container restarts repeatedly. Logs show:
 ```text
-failed to connect to `host=localhost user=postgres database=noaddress`: dial tcp 127.0.0.1:5432: connect: connection refused
+failed to connect to `host=localhost user=postgres database=noaddx`: dial tcp 127.0.0.1:5432: connect: connection refused
 ```
 
 ### Cause

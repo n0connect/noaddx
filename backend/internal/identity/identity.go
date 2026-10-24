@@ -1,4 +1,4 @@
-// Package identity derives every account-scoped value noaddress needs from a single
+// Package identity derives every account-scoped value noaddx needs from a single
 // AccountNumber, with strict domain separation. The browser runs the same
 // derivations (frontend/js/crypto.js); both sides MUST stay byte-for-byte equal.
 package identity
@@ -8,9 +8,9 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"noaddress/internal/config"
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/utils"
 
 	"github.com/google/uuid"
 )
@@ -21,13 +21,13 @@ const (
 	// EncodedKeyLength is the base64url (no padding) length of a 32-byte value.
 	EncodedKeyLength = 43
 
-	derivationSalt      = "noaddress.v1"
-	infoAuthKey         = "noaddress/auth"
-	infoIdentityKey     = "noaddress/identity/x25519"
-	infoStreamTag       = "noaddress/stream-tag"
-	infoConversationTag = "noaddress/conversation-tag"
-	infoInviteCreator   = "noaddress/invite-creator"
-	infoInviteLookup    = "noaddress/invite-lookup"
+	derivationSalt      = "noaddx.v1"
+	infoAuthKey         = "noaddx/auth"
+	infoIdentityKey     = "noaddx/identity/x25519"
+	infoStreamTag       = "noaddx/stream-tag"
+	infoConversationTag = "noaddx/conversation-tag"
+	infoInviteCreator   = "noaddx/invite-creator"
+	infoInviteLookup    = "noaddx/invite-lookup"
 )
 
 var (

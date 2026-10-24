@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"noaddress/internal/config"
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/utils"
 )
 
 var accountLogger = utils.NewLogger("ACCOUNT")

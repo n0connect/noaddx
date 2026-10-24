@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"noaddress/internal/config"
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/models"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/models"
+	"noaddx/internal/utils"
 )
 
 type ChallengeEntry struct {

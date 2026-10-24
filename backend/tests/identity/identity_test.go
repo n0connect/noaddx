@@ -4,9 +4,9 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/identity"
-	"noaddress/tests/testutil"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/identity"
+	"noaddx/tests/testutil"
 
 	"github.com/google/uuid"
 )

@@ -2,14 +2,14 @@ package database
 
 import (
 	"encoding/hex"
-	"noaddress/internal/auth"
-	"noaddress/internal/identity"
+	"noaddx/internal/auth"
+	"noaddx/internal/identity"
 	"testing"
 
-	"noaddress/internal/database"
-	"noaddress/internal/encryption"
-	"noaddress/internal/models"
-	"noaddress/tests/testutil"
+	"noaddx/internal/database"
+	"noaddx/internal/encryption"
+	"noaddx/internal/models"
+	"noaddx/tests/testutil"
 )
 
 // TestDatabaseMigration tests that database migrations run successfully

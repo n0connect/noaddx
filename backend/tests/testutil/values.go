@@ -6,9 +6,9 @@ package testutil
 import (
 	"testing"
 
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/identity"
-	"noaddress/internal/utils"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/identity"
+	"noaddx/internal/utils"
 
 	"github.com/google/uuid"
 )

@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"noaddress/internal/config"
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/utils"
 )
 
 var (

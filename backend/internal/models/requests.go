@@ -5,7 +5,7 @@
 package models
 
 type LoginRequest struct {
-	AuthKey string `json:"auth_key"` // HKDF(AccountNumber, "noaddress/auth") — never the AccountNumber itself
+	AuthKey string `json:"auth_key"` // HKDF(AccountNumber, "noaddx/auth") — never the AccountNumber itself
 }
 
 type RegisterRequest struct {

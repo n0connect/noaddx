@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"noaddress/internal/identity"
+	"noaddx/internal/identity"
 
 	"github.com/google/uuid"
 )
@@ -13,11 +13,11 @@ import (
 const (
 	accountA      = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
 	accountB      = "HxwdHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA"
-	vectorText    = "noaddress. interop ✓ <b>&"
+	vectorText    = "noaddx. interop ✓ <b>&"
 	vectorSentAt  = int64(1729700000000)
 	vectorCounter = int64(3)
 	// Produced by frontend/js/crypto.js (A → B); Go must open it.
-	browserCiphertext = "oDe0hRwv7omC0NGcElC2Au-P9JgTHEDlJhCrxoGLHq18r8LU_yCVGKr9nZ6c3Eh26pxCxZJBS9zj7rw2GBmmEbu8jAUSAtAdILi0nu6KFLaNEVYKFiPQe9URxzYMayyU4UW4dtnkhKR3BKpl8y1QrZgvSYq4dqzlXpvO4AUKP1wLWF_lVMnPHislA-76NmDwl3bX66eDU40Euy-UkZdWMjy1ReFm1qUwoIUGdbCoBYSabJdvMt7ebXxgXALYzmS3TT3sagPloLQ5wxJFQNnsvH_RpnUt8t586eMFQDUyv24TqO6x2EXCRsTwD-NVFS74tho3gGUMpQi9AXCJcY064kGhxGfRA2NRjPSFO9HCsfFzEwiuENCks83C9aU"
+	browserCiphertext = "Fz7HARBe7PC_zNbd8K7FNWBckeuw0twbXi-lqQ9lUo0AvZW8tvWkJ7SMb5DnEUg5j_RD1BEcxRrkhPYOJbTK4W6cFHHb39CzI8aBMPd1vVwDzH_qpVIDC24Fq3_QLN23-miHnf9sS9GGKalP6ZCYrXIq6pNe_MheEsIAuHYfC5tZ9MW6r7-lrYJ-txuhgp2mFpwZ3BnPUysgMB96U2cnMFt7dgR_wKT-wUGEhept8tLZK9nkfOJCvnBqnp0rdU_GFtoqoL24iutPmRpuzo7mOrMI0fspRGhG2DaET59MM0XS-3W1hjf6XmFMgFUuwxHQNnJpv5vKTm2xxMaeKC9KkKjuV1K_MgxhsjgCyl9iZh_iKUXqLk5L-j3XsA8"
 )
 
 var (

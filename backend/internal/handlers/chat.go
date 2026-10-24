@@ -8,14 +8,14 @@ import (
 
 	"github.com/google/uuid"
 
-	"noaddress/internal/auth"
-	"noaddress/internal/chat"
-	"noaddress/internal/config"
-	"noaddress/internal/middleware"
-	"noaddress/internal/models"
-	"noaddress/internal/realtime"
-	"noaddress/internal/store"
-	"noaddress/internal/utils"
+	"noaddx/internal/auth"
+	"noaddx/internal/chat"
+	"noaddx/internal/config"
+	"noaddx/internal/middleware"
+	"noaddx/internal/models"
+	"noaddx/internal/realtime"
+	"noaddx/internal/store"
+	"noaddx/internal/utils"
 )
 
 const (

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="noaddress." width="330">
+  <img src="assets/banner.svg" alt="noaddx." width="330">
 </p>
 
 > Anonymous, zero-metadata, end-to-end encrypted messaging relay.  
@@ -16,7 +16,7 @@
 
 ## Executive Summary
 
-**noaddress.** is a secure, browser-based messaging relay designed with absolute metadata minimization and zero persistent identity:
+**noaddx.** is a secure, browser-based messaging relay designed with absolute metadata minimization and zero persistent identity:
 
 - **Zero-Knowledge Identity:** A user identity is a single 256-bit CSPRNG `AccountNumber`. The server generates it once during registration, then never sees or stores it again.
 - **Client-Side E2E Encryption:** All messages are encrypted directly in the browser via native WebCrypto (X25519 + HKDF-SHA256 + AES-256-GCM). The server relays and stores only opaque ciphertext.
@@ -79,9 +79,9 @@ Open your browser and navigate to:
 ```text
 AccountNumber (256-bit CSPRNG, base64url, 43 chars) - generated at signup, shown ONCE
    |
-   +-- HKDF-SHA256(salt: "noaddress.v1", info: "noaddress/auth") -----------> auth key (sent at login)
+   +-- HKDF-SHA256(salt: "noaddx.v1", info: "noaddx/auth") -----------> auth key (sent at login)
    |                                                                          server keeps HMAC + Argon2id only
-   `-- HKDF-SHA256(salt: "noaddress.v1", info: "noaddress/identity/x25519") -> X25519 identity (stays in browser)
+   `-- HKDF-SHA256(salt: "noaddx.v1", info: "noaddx/identity/x25519") -> X25519 identity (stays in browser)
                                                                              server keeps the public key only
 ```
 
@@ -96,7 +96,7 @@ Alice (Creator)                         Server                                  
   | POST /api/v2/invites --------------> | stores HMAC(token) +                   |
   |                                      | AES-GCM(creator_uuid, master_key)      |
   |<---------------------------- token   |                                        |
-  | code = "noaddress:" + b64url(token || SHA-256("noaddress/invite-fp" || token || alicePub)[0:16])
+  | code = "noaddx:" + b64url(token || SHA-256("noaddx/invite-fp" || token || alicePub)[0:16])
   | ---------------- out of band (Signal, paper, in person) --------------------->|
   |                                      | <----------------- POST /api/v2/invites/redeem {token}
   |                                      | atomically deletes invite, creates conversation
@@ -110,7 +110,7 @@ The fingerprint never touches the server. Because it binds to the single-use tok
 ### 3. Message Framing & AAD Binding
 
 ```text
-conversation key = HKDF-SHA256(X25519(myPriv, peerPub), salt: conversation_id, info: "noaddress/conv/v1")
+conversation key = HKDF-SHA256(X25519(myPriv, peerPub), salt: conversation_id, info: "noaddx/conv/v1")
 plaintext        = len(2) || {"t": text, "ts": sentAt} || zero padding to a multiple of 256 bytes
 AAD              = "NADM" || 0x01 || conversation_id(16) || message_id(16) || SHA-256(sender_pub)(32)
 wire             = base64url(nonce(12) || AES-256-GCM(plaintext, AAD) || tag(16))

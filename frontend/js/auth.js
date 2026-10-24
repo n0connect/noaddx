@@ -5,7 +5,7 @@
 // Trusted Types: the CSP allows exactly one policy, and it whitelists exactly one URL
 const POW_WORKER_PATH = 'js/pow-worker.js';
 const powWorkerPolicy = window.trustedTypes
-    ? window.trustedTypes.createPolicy('noaddress-worker', {
+    ? window.trustedTypes.createPolicy('noaddx-worker', {
         createScriptURL: (url) => {
             if (url !== POW_WORKER_PATH) {
                 throw new TypeError('script URL not whitelisted');
@@ -148,7 +148,7 @@ async function login() {
         .normalize('NFKC')   // Unicode look-alike cleanup
         .trim();             // Remove leading/trailing hidden whitespace
 
-    if (normalizedAccountNumber.startsWith(NoaddressCrypto.INVITE_PREFIX)) {
+    if (normalizedAccountNumber.startsWith(NoaddxCrypto.INVITE_PREFIX)) {
         errorElement.textContent = 'that is an invite — log in first, then use join';
         return;
     }
@@ -163,8 +163,8 @@ async function login() {
 
     loginBtn.disabled = true;
     try {
-        // ZERO-KNOWLEDGE: only HKDF(AccountNumber, "noaddress/auth") goes over the wire
-        const authKey = await NoaddressCrypto.deriveAuthKey(normalizedAccountNumber);
+        // ZERO-KNOWLEDGE: only HKDF(AccountNumber, "noaddx/auth") goes over the wire
+        const authKey = await NoaddxCrypto.deriveAuthKey(normalizedAccountNumber);
         const response = await fetchWithErrorHandling(`${API_BASE_URL}/login`, {
             method: 'POST',
             headers: {
@@ -187,7 +187,7 @@ async function login() {
 
         if (data.success) {
             successElement.textContent = 'deriving your keys…';
-            const identity = await NoaddressCrypto.deriveIdentity(normalizedAccountNumber);
+            const identity = await NoaddxCrypto.deriveIdentity(normalizedAccountNumber);
             accountNumberInputElement.value = '';
             errorElement.textContent = '';
             successElement.textContent = '';
@@ -550,7 +550,7 @@ async function continueWithAccountNumber() {
 
         // Account created: derive the E2E identity locally from the account number we hold
         successElement.textContent = 'deriving your keys…';
-        const identity = await NoaddressCrypto.deriveIdentity(pendingRegistrationAccountNumber);
+        const identity = await NoaddxCrypto.deriveIdentity(pendingRegistrationAccountNumber);
 
         // The account number was copied for the user to save; do not leave it in the clipboard
         // (clipboard histories and cross-device sync would keep it). Best effort only.
@@ -565,7 +565,7 @@ async function continueWithAccountNumber() {
         document.getElementById('generatedAccountNumber').textContent = '';
 
         if (await enterApp(identity, true)) {
-            showSuccess('welcome to noaddress.');
+            showSuccess('welcome to noaddx.');
         }
 
     } catch (error) {

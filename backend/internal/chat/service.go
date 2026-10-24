@@ -14,13 +14,13 @@ import (
 	"strings"
 	"time"
 
-	"noaddress/internal/config"
-	"noaddress/internal/cryptoengine"
-	"noaddress/internal/encryption"
-	"noaddress/internal/identity"
-	"noaddress/internal/models"
-	"noaddress/internal/store"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/encryption"
+	"noaddx/internal/identity"
+	"noaddx/internal/models"
+	"noaddx/internal/store"
+	"noaddx/internal/utils"
 
 	"github.com/google/uuid"
 )

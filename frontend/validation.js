@@ -34,7 +34,7 @@ function validateMessageText(input) {
         return { valid: false, sanitized: '', error: 'message contains control characters' };
     }
 
-    if (!NoaddressCrypto.payloadFits(normalized)) {
+    if (!NoaddxCrypto.payloadFits(normalized)) {
         return { valid: false, sanitized: '', error: 'message too long' };
     }
 
@@ -52,7 +52,7 @@ function looksLikeAccountNumber(input) {
 }
 
 /**
- * Validates an invite code (noaddress:<43 base64url chars>)
+ * Validates an invite code (noaddx:<43 base64url chars>)
  * @param {string} input
  * @returns {object} - {valid: boolean, sanitized: object|null, error: string}
  */
@@ -68,7 +68,7 @@ function validateInviteCode(input) {
     }
 
     try {
-        return { valid: true, sanitized: NoaddressCrypto.parseInviteCode(value), error: '' };
+        return { valid: true, sanitized: NoaddxCrypto.parseInviteCode(value), error: '' };
     } catch (e) {
         return { valid: false, sanitized: null, error: 'invalid invite' };
     }
@@ -80,5 +80,5 @@ function validateInviteCode(input) {
  * @returns {boolean}
  */
 function validateConversationId(id) {
-    return NoaddressCrypto.isUuidV4(id);
+    return NoaddxCrypto.isUuidV4(id);
 }

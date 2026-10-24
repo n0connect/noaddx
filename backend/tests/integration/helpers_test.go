@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"noaddress/internal/auth"
-	"noaddress/internal/e2e"
-	"noaddress/internal/identity"
-	"noaddress/internal/models"
-	"noaddress/internal/server"
-	"noaddress/tests/testutil"
+	"noaddx/internal/auth"
+	"noaddx/internal/e2e"
+	"noaddx/internal/identity"
+	"noaddx/internal/models"
+	"noaddx/internal/server"
+	"noaddx/tests/testutil"
 
 	"github.com/google/uuid"
 )

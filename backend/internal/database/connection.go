@@ -5,10 +5,10 @@ import (
 	"log"
 	"strings"
 
-	"noaddress/internal/config"
-	"noaddress/internal/encryption"
-	"noaddress/internal/models"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/encryption"
+	"noaddx/internal/models"
+	"noaddx/internal/utils"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"

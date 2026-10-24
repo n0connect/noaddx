@@ -11,14 +11,14 @@ import (
 	"syscall"
 	"time"
 
-	"noaddress/internal/auth"
-	"noaddress/internal/chat"
-	"noaddress/internal/config"
-	"noaddress/internal/database"
-	"noaddress/internal/encryption"
-	"noaddress/internal/pow"
-	"noaddress/internal/server"
-	"noaddress/internal/utils"
+	"noaddx/internal/auth"
+	"noaddx/internal/chat"
+	"noaddx/internal/config"
+	"noaddx/internal/database"
+	"noaddx/internal/encryption"
+	"noaddx/internal/pow"
+	"noaddx/internal/server"
+	"noaddx/internal/utils"
 )
 
 // shutdownGrace bounds how long in-flight requests may finish after SIGINT/SIGTERM
@@ -28,9 +28,9 @@ var mainLogger = utils.NewLogger("MAIN")
 
 func main() {
 	if config.IsProductionMode() {
-		mainLogger.Info("Starting noaddress. backend (production)")
+		mainLogger.Info("Starting noaddx. backend (production)")
 	} else {
-		mainLogger.Info("Starting noaddress. backend (development)")
+		mainLogger.Info("Starting noaddx. backend (development)")
 	}
 
 	if err := database.ValidateStartupConfig(); err != nil {

@@ -6,8 +6,8 @@ package testutil
 import (
 	"testing"
 
-	"noaddress/internal/database"
-	"noaddress/internal/models"
+	"noaddx/internal/database"
+	"noaddx/internal/models"
 
 	"gorm.io/gorm"
 )

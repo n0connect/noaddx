@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"noaddress/internal/chat"
-	"noaddress/internal/database"
-	"noaddress/internal/identity"
-	"noaddress/internal/models"
+	"noaddx/internal/chat"
+	"noaddx/internal/database"
+	"noaddx/internal/identity"
+	"noaddx/internal/models"
 )
 
 func TestRegisterAndLogin_UsesDerivedAuthKeyOnly(t *testing.T) {

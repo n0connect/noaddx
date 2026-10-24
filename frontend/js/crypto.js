@@ -1,28 +1,28 @@
 // ========================================
-// NOADDRESS CRYPTO (WebCrypto only — no third-party code)
+// NOADDX CRYPTO (WebCrypto only — no third-party code)
 // ========================================
 // Mirrors backend/internal/identity byte-for-byte. Algorithms are restricted to
 // RULES.md §1.4: X25519, HKDF-SHA-256, AES-256-GCM, SHA-256.
 //
-// AccountNumber ──HKDF "noaddress/auth"──────────────▶ auth key (sent at login)
-//               └─HKDF "noaddress/identity/x25519"──▶ X25519 identity (never leaves the browser)
+// AccountNumber ──HKDF "noaddx/auth"──────────────▶ auth key (sent at login)
+//               └─HKDF "noaddx/identity/x25519"──▶ X25519 identity (never leaves the browser)
 // identity × peer ──X25519──HKDF(conv id)────────▶ per-conversation AES-256-GCM key
 
-const NoaddressCrypto = (() => {
+const NoaddxCrypto = (() => {
     'use strict';
 
-    const SALT = 'noaddress.v1';
-    const INFO_AUTH = 'noaddress/auth';
-    const INFO_IDENTITY = 'noaddress/identity/x25519';
-    const INFO_CONVERSATION = 'noaddress/conv/v1';
-    const INFO_AURA = 'noaddress/aura';
-    const INFO_INVITE_FP = 'noaddress/invite-fp';
+    const SALT = 'noaddx.v1';
+    const INFO_AUTH = 'noaddx/auth';
+    const INFO_IDENTITY = 'noaddx/identity/x25519';
+    const INFO_CONVERSATION = 'noaddx/conv/v1';
+    const INFO_AURA = 'noaddx/aura';
+    const INFO_INVITE_FP = 'noaddx/invite-fp';
     const KEY_BYTES = 32;
     const NONCE_BYTES = 12;
     const TAG_BYTES = 16;
     const INVITE_TOKEN_BYTES = 16;
     const INVITE_FP_BYTES = 16;
-    const INVITE_PREFIX = 'noaddress:';
+    const INVITE_PREFIX = 'noaddx:';
     // Plaintext is framed as len(2) || json || zero padding to a multiple of PAD_BLOCK,
     // so ciphertext length only reveals a coarse size bucket.
     // json = {"t": text, "ts": sender clock (ms), "n": sender's per-conversation counter};
@@ -267,7 +267,7 @@ const NoaddressCrypto = (() => {
         return digest.subarray(0, INVITE_FP_BYTES);
     }
 
-    // Invite code = "noaddress:" + base64url(token(16) || SHA-256("noaddress/invite-fp" || token || creator key)[0:16]).
+    // Invite code = "noaddx:" + base64url(token(16) || SHA-256("noaddx/invite-fp" || token || creator key)[0:16]).
     // The fingerprint never goes to the server; it lets the redeemer detect key substitution.
     async function buildInviteCode(token, creatorPublicKey) {
         const fp = await inviteFingerprint(token, creatorPublicKey);

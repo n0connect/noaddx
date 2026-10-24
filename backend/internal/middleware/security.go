@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"noaddress/internal/config"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/utils"
 )
 
 var securityLogger = utils.NewLogger("SECURITY_MIDDLEWARE")

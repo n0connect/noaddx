@@ -1,16 +1,16 @@
 # docker-compose.test.yaml - Test environment
 # Usage: make test
 
-name: noaddress-test
+name: noaddx-test
 
 services:
   postgres-test:
     image: postgres:15-alpine
-    container_name: noaddress-postgres-test
+    container_name: noaddx-postgres-test
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: noaddress_test
+      POSTGRES_DB: noaddx_test
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: test.Dockerfile
-    container_name: noaddress-test-runner
+    container_name: noaddx-test-runner
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -36,12 +36,12 @@ services:
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: noaddress_test
+      DB_NAME: noaddx_test
       DB_SSL_MODE: disable
       JWT_SECRET_MIN_LEN: "32"
       JWT_EXPIRATION_MINUTES: "15"
-      JWT_ISSUER: "noaddress-backend"
-      JWT_AUDIENCE: "noaddress-web"
+      JWT_ISSUER: "noaddx-backend"
+      JWT_AUDIENCE: "noaddx-web"
       MASTER_KEY_ACTIVE_ID: "test-key-1"
       MAX_REQUEST_BODY_BYTES: "1048576"
       MAX_JSON_DEPTH: "2"

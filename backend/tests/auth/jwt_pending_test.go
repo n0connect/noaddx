@@ -3,8 +3,8 @@ package auth
 import (
 	"testing"
 
-	"noaddress/internal/auth"
-	"noaddress/tests/testutil"
+	"noaddx/internal/auth"
+	"noaddx/tests/testutil"
 )
 
 func setupPendingJWTEnv(t *testing.T) {

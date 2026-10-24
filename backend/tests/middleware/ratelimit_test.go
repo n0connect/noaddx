@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"noaddress/internal/middleware"
-	"noaddress/tests/testutil"
+	"noaddx/internal/middleware"
+	"noaddx/tests/testutil"
 )
 
 func TestRateLimitMiddleware_WithinLimit(t *testing.T) {

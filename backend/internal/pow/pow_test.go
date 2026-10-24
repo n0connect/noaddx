@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"noaddress/internal/config"
-	"noaddress/internal/models"
+	"noaddx/internal/config"
+	"noaddx/internal/models"
 )
 
 // Every test drives the real issuer and validator: challenges come from GenerateChallenge,

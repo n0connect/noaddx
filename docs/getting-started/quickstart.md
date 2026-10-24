@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get **noaddress.** up and running on your local machine in under 3 minutes.
+Get **noaddx.** up and running on your local machine in under 3 minutes.
 
 ---
 
@@ -63,9 +63,9 @@ make test-run
 [INFO] Starting services...
 [OK] Services running
 NAME                 IMAGE                     STATUS
-noaddress-backend    noaddress-backend         Up (healthy)
-noaddress-frontend   noaddress-frontend        Up
-noaddress-postgres   postgres:15-alpine        Up (healthy)
+noaddx-backend    noaddx-backend         Up (healthy)
+noaddx-frontend   noaddx-frontend        Up
+noaddx-postgres   postgres:15-alpine        Up (healthy)
 ```
 
 ---
@@ -93,7 +93,7 @@ To test end-to-end encryption locally between two parties:
    - You are shown your **AccountNumber** (e.g., `k8x9F...43-chars`). **Copy and save it!**
    - Click **"Continue"** to complete registration.
    - Click **"+ Invite"** at the top left.
-   - Copy the generated invite code (format: `noaddress:TOKEN_BASE64URL_WITH_FINGERPRINT`).
+   - Copy the generated invite code (format: `noaddx:TOKEN_BASE64URL_WITH_FINGERPRINT`).
 
 2. **Party B (Incognito / Second Browser Window):**
    - Open a private/incognito window to `http://localhost`.

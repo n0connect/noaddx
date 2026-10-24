@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"noaddress/internal/encryption"
-	"noaddress/tests/testutil"
+	"noaddx/internal/encryption"
+	"noaddx/tests/testutil"
 )
 
 func TestMasterKeyRotation_DecryptFallback(t *testing.T) {

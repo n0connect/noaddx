@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"noaddress/internal/config"
-	"noaddress/internal/utils"
+	"noaddx/internal/config"
+	"noaddx/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 )

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"noaddress/internal/auth"
-	"noaddress/internal/config"
-	"noaddress/internal/store"
-	"noaddress/internal/utils"
+	"noaddx/internal/auth"
+	"noaddx/internal/config"
+	"noaddx/internal/store"
+	"noaddx/internal/utils"
 )
 
 var (

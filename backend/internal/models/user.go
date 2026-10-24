@@ -1,7 +1,7 @@
 package models
 
 // User carries no timestamps: when an identity was created or touched is metadata
-// noaddress. refuses to keep.
+// noaddx. refuses to keep.
 type User struct {
 	ID            uint   `gorm:"primaryKey" json:"id"`
 	UUID          string `gorm:"uniqueIndex;size:24;not null" json:"uuid"` // Internal user ID (never exposed to peers)

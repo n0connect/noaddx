@@ -5,9 +5,9 @@ package server
 import (
 	"net/http"
 
-	"noaddress/internal/handlers"
-	"noaddress/internal/middleware"
-	"noaddress/internal/utils"
+	"noaddx/internal/handlers"
+	"noaddx/internal/middleware"
+	"noaddx/internal/utils"
 )
 
 var serverLogger = utils.NewLogger("SERVER")
