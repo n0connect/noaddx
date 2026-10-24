@@ -110,7 +110,7 @@ bash: \r: invalid command
    Fix line endings with one command inside WSL:
    ```bash
    sudo apt-get install -y dos2unix
-   dos2unix Makefile setup.sh run.sh
+   dos2unix Makefile
    ```
 
 4. **Install Docker Desktop for Windows:**

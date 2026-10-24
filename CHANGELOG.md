@@ -61,3 +61,4 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
 - `make setup` generates the database password and works with any `openssl`; `make test` runs the
   complete suite, database and integration tests included.
 - Go 1.26 or newer is required to build.
+- `setup.sh` and `run.sh` are gone; they only forwarded to `make setup` / `make up` / `make test`.

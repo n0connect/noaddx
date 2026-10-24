@@ -11,7 +11,7 @@ This guide details real-world pitfalls, diagnostic commands, and immediate copy-
 | `Pool overlaps with other one on this address space` | Another Docker network already uses `172.29.73.0/24`. | Pick a free range: set `COMPOSE_SUBNET` and `PROXY_IP` in `.env`. |
 | Everyone gets `429` on login or registration | The backend does not trust the proxy in front of it, so all users share its address. | Set `TRUSTED_PROXIES` to that proxy's address (see section 1). |
 | `TypeError: Cannot read properties of undefined (reading 'subtle')` | Accessing via non-secure HTTP on IP address (e.g. `192.168.x.x`). | Use `http://localhost` or configure HTTPS/TLS. |
-| `bash: \r: invalid command` | Git on Windows converted script line endings to CRLF. | `dos2unix Makefile setup.sh run.sh` |
+| `bash: \r: invalid command` | Git on Windows converted script line endings to CRLF. | `dos2unix Makefile` |
 | `bind: address already in use (port 80 or 5432)` | Port occupied by another local service (Apache, local Postgres). | `sudo lsof -i :80` or remap ports in `docker-compose.yaml`. |
 | `failed to connect to host=localhost:5432` inside container | Container tries connecting to itself instead of Postgres service. | Set `DOCKER_DB_HOST=postgres` in `.env`. |
 | Backend container exits with code `137` | Linux Out-Of-Memory (OOM) Killer killed backend during Argon2id. | Reduce `ARGON2_MEMORY_KIB=32768` and enable host swap. |
@@ -57,7 +57,7 @@ W3C WebCrypto API specification requires a **Secure Context**. Modern browsers a
 ## 3. Windows / WSL2: CRLF Line-Ending Failure
 
 ### Symptom
-Inside WSL2, executing `make` or shell scripts fails with:
+Inside WSL2, executing `make` fails with:
 ```text
 bash: \r: invalid command
 ```
@@ -68,10 +68,10 @@ When cloned using Git for Windows, text files have Unix `LF` line-endings replac
 ### Immediate Fix
 Inside your WSL terminal, run:
 ```bash
-sed -i 's/\r$//' Makefile setup.sh run.sh
+sed -i 's/\r$//' Makefile
 # Or using dos2unix:
 sudo apt-get install -y dos2unix
-dos2unix Makefile setup.sh run.sh
+dos2unix Makefile
 ```
 To prevent Git from doing this in future checkouts:
 ```bash

@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// Secrets are drawn from the CSPRNG once per test binary, exactly as setup.sh does for a
+// Secrets are drawn from the CSPRNG once per test binary, exactly as `make setup` does for a
 // deployment; no key, secret or pepper is ever written into the repository.
 var (
 	secretsOnce sync.Once
