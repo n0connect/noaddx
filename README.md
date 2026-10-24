@@ -16,6 +16,11 @@
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-30363d?style=flat-square&logo=gnu&logoColor=white&labelColor=0d1117"></a>
 </p>
 
+<p align="center">
+  <img src="assets/welcome.png" alt="Welcome" width="48%" />
+  <img src="assets/signup.png" alt="Sign Up" width="48%" />
+</p>
+
 ---
 
 ## Executive Summary
