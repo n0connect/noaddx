@@ -12,7 +12,7 @@ DOCKER_COMPOSE ?= $(shell if command -v docker >/dev/null 2>&1 && docker compose
 ENV_FILE := .env
 ENV_EXAMPLE := .env.example
 
-.PHONY: all help setup check-deps build up down restart logs ps clean \
+.PHONY: all help setup check-deps check-docker build up start run down stop restart logs ps clean \
         test test-run test-unit test-crypto test-all test-db shell-backend shell-db
 
 ## -----------------------------------------------------------------------------
@@ -101,19 +101,32 @@ $(ENV_FILE):
 ## Container Management
 ## -----------------------------------------------------------------------------
 
-build: $(ENV_FILE)
+check-docker:
+	@if ! command -v docker >/dev/null 2>&1; then \
+		echo "[ERROR] Docker is not installed or not in PATH."; exit 1; \
+	fi; \
+	if ! docker info >/dev/null 2>&1; then \
+		echo "[ERROR] Docker daemon is not running. Please start Docker Desktop (or OrbStack/Colima) and try again."; exit 1; \
+	fi
+
+build: check-docker $(ENV_FILE)
 	@echo "[INFO] Building Docker images..."
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml build
 
-up: $(ENV_FILE)
+up: check-docker $(ENV_FILE)
 	@echo "[INFO] Starting services..."
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml up -d
 	@echo "[OK] Services running"
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml ps
 
+start: up
+run: up
+
 down:
 	@echo "[INFO] Stopping services..."
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml down
+
+stop: down
 
 restart:
 	@echo "[INFO] Restarting services..."
