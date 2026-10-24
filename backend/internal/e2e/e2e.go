@@ -17,6 +17,7 @@ import (
 	"fmt"
 
 	"noaddx/internal/cryptoengine"
+	"noaddx/internal/utils"
 
 	"github.com/google/uuid"
 )
@@ -48,7 +49,12 @@ type payload struct {
 	N  int64  `json:"n"`
 }
 
+// decodeKey mirrors crypto.js b64urlDecode: alphabet whitelist, exact length, canonical bits.
+// (Go's decoder would otherwise skip CR/LF, accepting a key the browser rejects.)
 func decodeKey(encoded string) ([]byte, error) {
+	if len(encoded) != base64.RawURLEncoding.EncodedLen(keySize) || !utils.IsBase64URL(encoded) {
+		return nil, ErrInvalidInput
+	}
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
 	if err != nil || len(raw) != keySize {
 		return nil, ErrInvalidInput
@@ -148,6 +154,9 @@ func Encrypt(key []byte, conversationID, messageID uuid.UUID, senderPublicKey, t
 // Decrypt opens one message; any tampering with the bytes, the conversation, the message
 // id or the claimed sender fails authentication.
 func Decrypt(key []byte, conversationID, messageID uuid.UUID, senderPublicKey, ciphertext string) (*Message, error) {
+	if !utils.IsBase64URL(ciphertext) {
+		return nil, ErrBadMessage
+	}
 	sealed, err := base64.RawURLEncoding.Strict().DecodeString(ciphertext)
 	if err != nil || len(sealed) < cryptoengine.GCMNonceSize+padBlock+cryptoengine.GCMTagSize {
 		return nil, ErrBadMessage

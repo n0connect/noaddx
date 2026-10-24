@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"noaddx/internal/auth"
 	"noaddx/tests/testutil"
@@ -177,5 +179,33 @@ func TestVerifyAccountNumberHash_RejectsOutOfRangeParameters(t *testing.T) {
 	}
 	if err := auth.VerifyAccountNumberHash(real, authKey); err != nil {
 		t.Fatalf("the genuine hash no longer verifies: %v", err)
+	}
+}
+
+// Argon2id work is bounded: with every slot taken, hashing and verification refuse quickly
+// (ErrBusy) instead of allocating more memory, and resume once a slot frees up.
+func TestArgon2_ConcurrencyIsBounded(t *testing.T) {
+	setupAuthTestEnv(t)
+	authKey := testutil.NewAuthKey(t)
+	hash, err := auth.HashAccountNumber(authKey)
+	if err != nil {
+		t.Fatalf("HashAccountNumber() failed: %v", err)
+	}
+
+	release := auth.HoldArgon2SlotsForTesting()
+	started := time.Now()
+	if _, err := auth.HashAccountNumber(authKey); !errors.Is(err, auth.ErrBusy) {
+		t.Fatalf("HashAccountNumber() with every slot busy = %v, want ErrBusy", err)
+	}
+	if err := auth.VerifyAccountNumberHash(hash, authKey); !errors.Is(err, auth.ErrBusy) {
+		t.Fatalf("VerifyAccountNumberHash() with every slot busy = %v, want ErrBusy", err)
+	}
+	if waited := time.Since(started); waited > 2*auth.Argon2WaitTimeout+time.Second {
+		t.Fatalf("busy calls waited %v, want about %v each", waited, auth.Argon2WaitTimeout)
+	}
+	release()
+
+	if err := auth.VerifyAccountNumberHash(hash, authKey); err != nil {
+		t.Fatalf("VerifyAccountNumberHash() after release failed: %v", err)
 	}
 }

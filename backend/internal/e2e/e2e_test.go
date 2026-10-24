@@ -30,7 +30,7 @@ type party struct {
 	public  string
 }
 
-func load(t *testing.T, account string) party {
+func load(t testing.TB, account string) party {
 	t.Helper()
 	priv, err := identity.DeriveIdentityPrivateKey(account)
 	if err != nil {

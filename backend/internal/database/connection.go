@@ -158,6 +158,7 @@ func ValidateStartupConfig() error {
 		{"ARGON2_PARALLELISM", config.GetArgon2Parallelism(), config.MinArgon2Parallelism, config.MaxArgon2Parallelism},
 		{"ARGON2_SALT_LENGTH", config.GetArgon2SaltLength(), config.MinArgon2SaltBytes, config.MaxArgon2SaltBytes},
 		{"ARGON2_HASH_LENGTH", config.GetArgon2HashLength(), config.MinArgon2HashBytes, config.MaxArgon2HashBytes},
+		{"ARGON2_MAX_CONCURRENT", config.GetArgon2MaxConcurrent(), 1, 64},
 		{"PENDING_TOKEN_TTL_SEC", seconds(config.GetPendingTokenTTL()), 30, 3600},
 		{"PENDING_CLEANUP_INTERVAL_SEC", seconds(config.GetPendingCleanupInterval()), 1, 3600},
 		{"PENDING_ID_BYTES", config.GetPendingIDBytes(), 16, 64},

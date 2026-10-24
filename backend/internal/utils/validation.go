@@ -118,6 +118,13 @@ func ValidateAccountNumber(accountNumber string) bool {
 	return accountNumberPattern.MatchString(accountNumber)
 }
 
+// IsBase64URL reports whether s consists only of the base64url alphabet (RFC 4648 §5, no
+// padding). Go's decoders skip CR and LF even in Strict mode, so every base64url input is
+// whitelisted by alphabet before it is decoded.
+func IsBase64URL(s string) bool {
+	return s != "" && accountNumberPattern.MatchString(s)
+}
+
 // ParseCanonicalUUIDv4 accepts only lowercase, hyphenated, version-4 UUIDs.
 // Rejecting alternate spellings keeps AAD binding and DB keys unambiguous.
 func ParseCanonicalUUIDv4(raw string) (uuid.UUID, bool) {

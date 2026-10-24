@@ -87,7 +87,7 @@ func TestTokens_PendingAndSessionAreNotInterchangeable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GeneratePendingID: %v", err)
 	}
-	if err := auth.StorePendingRegistration(pendingID, testutil.NewAccountNumber(t)); err != nil {
+	if err := auth.StorePendingRegistration(pendingID, testutil.NewPendingIdentity(t)); err != nil {
 		t.Fatalf("StorePendingRegistration: %v", err)
 	}
 	pending, err := auth.SignPendingRegistrationToken(pendingID)

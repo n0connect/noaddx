@@ -19,7 +19,7 @@ import (
 // solutions are brute-forced with SHA-256 exactly like the browser worker does.
 
 // newClientKey returns a fresh CSPRNG client key so per-client rate limits never collide.
-func newClientKey(t *testing.T) string {
+func newClientKey(t testing.TB) string {
 	t.Helper()
 	raw := make([]byte, 16)
 	if _, err := rand.Read(raw); err != nil {
@@ -28,7 +28,7 @@ func newClientKey(t *testing.T) string {
 	return hex.EncodeToString(raw)
 }
 
-func issue(t *testing.T) *models.PoWChallenge {
+func issue(t testing.TB) *models.PoWChallenge {
 	t.Helper()
 	t.Setenv("POW_DIFFICULTY", "18")
 	ch, err := GenerateChallenge(newClientKey(t))
@@ -40,7 +40,7 @@ func issue(t *testing.T) *models.PoWChallenge {
 
 // search returns the first nonce whose hash does (want=true) or does not (want=false)
 // meet the challenge's difficulty.
-func search(t *testing.T, ch *models.PoWChallenge, want bool) string {
+func search(t testing.TB, ch *models.PoWChallenge, want bool) string {
 	t.Helper()
 	for nonce := 0; nonce < 1<<26; nonce++ {
 		n := strconv.Itoa(nonce)

@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"encoding/base64"
+	"strings"
 	"testing"
 
 	"noaddx/internal/auth"
@@ -24,9 +26,9 @@ func TestSignPendingRegistrationToken_ContainsPendingID(t *testing.T) {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
 
-	// Store AccountNumber server-side
-	accountNumber := testutil.NewAccountNumber(t)
-	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+	// Store the derived identity server-side (never the AccountNumber itself)
+	pending := testutil.NewPendingIdentity(t)
+	if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
@@ -40,14 +42,14 @@ func TestSignPendingRegistrationToken_ContainsPendingID(t *testing.T) {
 		t.Error("SignPendingRegistrationToken() returned empty token")
 	}
 
-	// Verify token and retrieve AccountNumber
-	retrievedAccountNumber, err := auth.VerifyPendingRegistrationToken(token)
+	// Verify token and retrieve the pending identity
+	retrieved, err := auth.VerifyPendingRegistrationToken(token)
 	if err != nil {
 		t.Fatalf("VerifyPendingRegistrationToken() failed: %v", err)
 	}
 
-	if retrievedAccountNumber != accountNumber {
-		t.Errorf("VerifyPendingRegistrationToken() = %q, want %q", retrievedAccountNumber, accountNumber)
+	if retrieved != pending {
+		t.Errorf("VerifyPendingRegistrationToken() = %+v, want %+v", retrieved, pending)
 	}
 
 	// Verify token was deleted (one-time use)
@@ -65,8 +67,8 @@ func TestSignPendingRegistrationToken_NoAccountNumberInToken(t *testing.T) {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
 
-	accountNumber := testutil.NewAccountNumber(t)
-	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+	pending := testutil.NewPendingIdentity(t)
+	if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
@@ -75,19 +77,19 @@ func TestSignPendingRegistrationToken_NoAccountNumberInToken(t *testing.T) {
 		t.Fatalf("SignPendingRegistrationToken() failed: %v", err)
 	}
 
-	// Decode token and verify it does NOT contain AccountNumber
-	// Token format: header.payload.signature
-	// We can't easily decode without the secret, but we can verify the flow
-	// The important thing is that VerifyPendingRegistrationToken retrieves from store
+	// The token is public to the client: it must carry neither the auth key nor the public key
+	for name, secret := range map[string]string{"auth key": pending.AuthKey, "public key": pending.PublicKey} {
+		if strings.Contains(token, secret) || strings.Contains(token, base64.RawURLEncoding.EncodeToString([]byte(secret))) {
+			t.Errorf("pending token contains the %s", name)
+		}
+	}
 
-	// Verify that token works (proving it contains pending_id, not account_number)
 	retrieved, err := auth.VerifyPendingRegistrationToken(token)
 	if err != nil {
 		t.Fatalf("VerifyPendingRegistrationToken() failed: %v", err)
 	}
-
-	if retrieved != accountNumber {
-		t.Errorf("VerifyPendingRegistrationToken() = %q, want %q", retrieved, accountNumber)
+	if retrieved != pending {
+		t.Errorf("VerifyPendingRegistrationToken() = %+v, want %+v", retrieved, pending)
 	}
 }
 

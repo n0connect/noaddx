@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"noaddx/internal/config"
 	"noaddx/internal/cryptoengine"
@@ -14,6 +15,33 @@ import (
 )
 
 var accountLogger = utils.NewLogger("ACCOUNT")
+
+// Argon2id allocates ARGON2_MEMORY_KIB per call (64 MiB by default), so unbounded
+// concurrency is a memory-exhaustion attack. At most ARGON2_MAX_CONCURRENT calls run at
+// once; a caller waits up to Argon2WaitTimeout for a slot and otherwise gets ErrBusy.
+const Argon2WaitTimeout = 3 * time.Second
+
+// ErrBusy: every Argon2id slot was taken for the whole wait; the client retries later.
+var ErrBusy = errors.New("argon2: server busy")
+
+var (
+	slotsOnce sync.Once
+	slots     *utils.Slots
+)
+
+func argon2Slots() *utils.Slots {
+	slotsOnce.Do(func() { slots = utils.NewSlots(config.GetArgon2MaxConcurrent()) })
+	return slots
+}
+
+// withArgon2Slot runs fn inside one of the bounded Argon2id slots.
+func withArgon2Slot(fn func() ([]byte, error)) ([]byte, error) {
+	if err := argon2Slots().Acquire(Argon2WaitTimeout); err != nil {
+		return nil, ErrBusy
+	}
+	defer argon2Slots().Release()
+	return fn()
+}
 
 type argon2Params struct {
 	memoryKiB  uint32
@@ -86,7 +114,12 @@ func HashAccountNumber(accountNumber string) (string, error) {
 	}
 
 	// Hash with Argon2id
-	hash, err := cryptoengine.Argon2idKey([]byte(accountNumber), salt, params.time, params.memoryKiB, params.parallel, params.hashLength)
+	hash, err := withArgon2Slot(func() ([]byte, error) {
+		return cryptoengine.Argon2idKey([]byte(accountNumber), salt, params.time, params.memoryKiB, params.parallel, params.hashLength)
+	})
+	if errors.Is(err, ErrBusy) {
+		return "", err
+	}
 	if err != nil {
 		return "", fmt.Errorf("argon2id failed: %w", err)
 	}
@@ -147,7 +180,12 @@ func VerifyAccountNumberHash(encodedHash, accountNumber string) error {
 		return fmt.Errorf("invalid hash")
 	}
 
-	computedHash, err := cryptoengine.Argon2idKey([]byte(accountNumber), salt, timeCost, memory, parallelism, uint32(len(expectedHash)))
+	computedHash, err := withArgon2Slot(func() ([]byte, error) {
+		return cryptoengine.Argon2idKey([]byte(accountNumber), salt, timeCost, memory, parallelism, uint32(len(expectedHash)))
+	})
+	if errors.Is(err, ErrBusy) {
+		return err
+	}
 	if err != nil {
 		return fmt.Errorf("argon2id failed: %w", err)
 	}
@@ -173,12 +211,17 @@ func getDecoyHash() (string, error) {
 
 // EqualizeVerificationTiming runs a full Argon2id verification against the decoy hash,
 // so a login for a non-existent account takes as long as one for a real account
-// (no user-enumeration timing side channel). The result is meaningless by design.
-func EqualizeVerificationTiming(authKey string) {
+// (no user-enumeration timing side channel). The verification result is meaningless by
+// design; only ErrBusy is reported, so a saturated server answers unknown and known
+// accounts the same way.
+func EqualizeVerificationTiming(authKey string) error {
 	hash, err := getDecoyHash()
 	if err != nil {
 		accountLogger.LogError("EqualizeVerificationTiming", err)
-		return
+		return nil
 	}
-	_ = VerifyAccountNumberHash(hash, authKey)
+	if err := VerifyAccountNumberHash(hash, authKey); errors.Is(err, ErrBusy) {
+		return ErrBusy
+	}
+	return nil
 }

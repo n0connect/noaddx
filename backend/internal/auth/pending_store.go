@@ -28,9 +28,18 @@ const MaxPendingRegistrations = 50000
 // ErrPendingStoreFull: the store is at its bound; the client retries later
 var ErrPendingStoreFull = errors.New("pending registration store full")
 
+// PendingIdentity is what phase 1 of registration keeps for phase 2: the values derived
+// from the AccountNumber, never the AccountNumber itself. The AccountNumber also seeds the
+// user's E2E identity, so it exists in server memory only for the duration of the phase-1
+// request; what waits here cannot be turned back into it.
+type PendingIdentity struct {
+	AuthKey   string // HKDF(AccountNumber, "noaddx/auth"): the login secret (stored hashed at phase 2)
+	PublicKey string // X25519 identity public key (base64url)
+}
+
 type pendingRegistration struct {
-	AccountNumber string
-	ExpiresAt     time.Time
+	identity  PendingIdentity
+	ExpiresAt time.Time
 }
 
 type pendingRegistrationStore struct {
@@ -81,8 +90,8 @@ func initCleanup() error {
 	return nil
 }
 
-// StorePendingRegistration stores AccountNumber with pending ID (config-driven TTL)
-func StorePendingRegistration(pendingID, accountNumber string) error {
+// StorePendingRegistration keeps a derived identity under a pending ID (config-driven TTL)
+func StorePendingRegistration(pendingID string, pending PendingIdentity) error {
 	ttl, _, _, err := pendingConfig()
 	if err != nil {
 		return err
@@ -105,35 +114,35 @@ func StorePendingRegistration(pendingID, accountNumber string) error {
 		return ErrPendingStoreFull
 	}
 	pendingStore.store[pendingID] = &pendingRegistration{
-		AccountNumber: accountNumber,
-		ExpiresAt:     now.Add(ttl),
+		identity:  pending,
+		ExpiresAt: now.Add(ttl),
 	}
 
 	return nil
 }
 
-// GetPendingRegistration retrieves AccountNumber by pending ID
+// GetPendingRegistration retrieves the pending identity by pending ID
 // SECURITY: Uses write lock from start to prevent race conditions
 // One-time use: deletes entry after retrieval
-func GetPendingRegistration(pendingID string) (string, error) {
+func GetPendingRegistration(pendingID string) (PendingIdentity, error) {
 	pendingStore.mu.Lock() // Write lock (we will delete)
 	defer pendingStore.mu.Unlock()
 
 	pending, exists := pendingStore.store[pendingID]
 	if !exists {
-		return "", ErrInvalidToken
+		return PendingIdentity{}, ErrInvalidToken
 	}
 
 	if time.Now().After(pending.ExpiresAt) {
 		// Expired - remove it
 		delete(pendingStore.store, pendingID)
-		return "", ErrExpiredToken
+		return PendingIdentity{}, ErrExpiredToken
 	}
 
 	// One-time use: delete immediately after retrieval
-	accountNumber := pending.AccountNumber
+	identity := pending.identity
 	delete(pendingStore.store, pendingID)
-	return accountNumber, nil
+	return identity, nil
 }
 
 // cleanupExpiredPending removes expired entries (runs in background)

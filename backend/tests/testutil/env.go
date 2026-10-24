@@ -29,7 +29,7 @@ func randomHex(n int) string {
 }
 
 // SetupTestEnv sets up test environment variables
-func SetupTestEnv(t *testing.T) {
+func SetupTestEnv(t testing.TB) {
 	t.Helper()
 
 	secretsOnce.Do(func() {
@@ -60,6 +60,7 @@ func SetupTestEnv(t *testing.T) {
 	os.Setenv("ARGON2_PARALLELISM", "2")
 	os.Setenv("ARGON2_SALT_LENGTH", "16")
 	os.Setenv("ARGON2_HASH_LENGTH", "32")
+	os.Setenv("ARGON2_MAX_CONCURRENT", "2")
 	os.Setenv("PENDING_TOKEN_TTL_SEC", "300")
 	os.Setenv("PENDING_CLEANUP_INTERVAL_SEC", "60")
 	os.Setenv("PENDING_ID_BYTES", "16")
@@ -98,7 +99,7 @@ func SetupTestEnv(t *testing.T) {
 }
 
 // TeardownTestEnv cleans up test environment variables
-func TeardownTestEnv(t *testing.T) {
+func TeardownTestEnv(t testing.TB) {
 	t.Helper()
 
 	os.Unsetenv("JWT_SECRET")
@@ -124,6 +125,7 @@ func TeardownTestEnv(t *testing.T) {
 	os.Unsetenv("ARGON2_PARALLELISM")
 	os.Unsetenv("ARGON2_SALT_LENGTH")
 	os.Unsetenv("ARGON2_HASH_LENGTH")
+	os.Unsetenv("ARGON2_MAX_CONCURRENT")
 	os.Unsetenv("PENDING_TOKEN_TTL_SEC")
 	os.Unsetenv("PENDING_CLEANUP_INTERVAL_SEC")
 	os.Unsetenv("PENDING_ID_BYTES")

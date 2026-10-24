@@ -43,6 +43,14 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   and control characters neutralized before display.
 - **Containers.** Every published port binds to loopback; the backend runs as an unprivileged
   user on a read-only filesystem without capabilities.
+- **AccountNumber exposure window.** Phase 1 of registration kept the AccountNumber (which also
+  seeds the user's E2E identity) in server memory for up to five minutes; it now keeps only the
+  derived auth key and public key, and the AccountNumber leaves memory with the phase-1 response.
+- **Argon2id memory bound.** Unlimited concurrent logins could allocate 64 MiB each until the
+  process died; at most `ARGON2_MAX_CONCURRENT` run at once and the rest get 503 after 3 s,
+  for known and unknown accounts alike.
+- **OpenSSL error queue** is cleared on the thread that filled it (cgo calls can change OS
+  threads), so no failure detail lingers between calls.
 
 ### Added
 
@@ -53,6 +61,11 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   (`make test-equivalence`), and the server runs a known-answer self-test before it starts.
 - Release tags per engine (`noaddx-openssl-vX.Y.Z`, `noaddx-native-vX.Y.Z`), moving dev tags
   (`noaddx-openssl-dev`, `noaddx-native-dev`) and `make build-ref REF=<tag>` to rebuild any of them.
+- Fuzz tests for every parser that faces the network (stored hash format, E2E ciphertext and its
+  AAD bindings, UUID/invite/ciphertext whitelists, PoW solutions, JSON bodies).
+- GitHub Actions: both engines with the race detector and fuzzers, the equivalence suite,
+  frontend interop tests, govulncheck, gitleaks over the full history, and both Docker images
+  booting as the unprivileged user with the self-test passing.
 
 ### Changed
 

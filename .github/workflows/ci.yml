@@ -1,0 +1,148 @@
+name: ci
+
+on:
+  push:
+    branches: [main, noaddx-dev]
+    tags: ["noaddx-*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27.3"
+
+jobs:
+  backend:
+    name: backend (${{ matrix.engine }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [openssl, native]
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: noaddx_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - name: OpenSSL headers
+        if: matrix.engine == 'openssl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libssl-dev pkg-config
+          pkg-config --modversion libcrypto
+      - name: Engine flags
+        run: |
+          if [ "${{ matrix.engine }}" = openssl ]; then
+            echo "CGO_ENABLED=1" >> "$GITHUB_ENV"; echo "GO_TAGS=test openssl" >> "$GITHUB_ENV"
+          else
+            echo "CGO_ENABLED=0" >> "$GITHUB_ENV"; echo "GO_TAGS=test" >> "$GITHUB_ENV"
+          fi
+      - run: go mod verify
+      - run: gofmt -l . && test -z "$(gofmt -l .)"
+      - run: go vet -tags "$GO_TAGS" ./...
+      - run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 -tags "$GO_TAGS" ./...
+      - name: Tests (complete suite, race detector)
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "5432"
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: noaddx_test
+        # -race needs cgo; the native engine's production build stays CGO_ENABLED=0 (checked below)
+        run: CGO_ENABLED=1 go test -p 1 -race -count=1 -tags "$GO_TAGS" ./...
+      - name: Fuzz targets (short run)
+        run: |
+          fuzz() { go test -tags "$GO_TAGS" -run '^$' -fuzz "^$2\$" -fuzztime 20s "$1"; }
+          fuzz ./internal/e2e FuzzDecrypt
+          fuzz ./internal/e2e FuzzDecryptBindings
+          fuzz ./internal/pow FuzzValidateSolution
+          fuzz ./tests/auth FuzzVerifyAccountNumberHash
+          fuzz ./tests/utils FuzzParseCanonicalUUIDv4
+          fuzz ./tests/utils FuzzValidateInviteToken
+          fuzz ./tests/utils FuzzValidateCiphertext
+          fuzz ./tests/utils FuzzDecodeJSONRequest
+      - name: Production build
+        run: |
+          if [ "${{ matrix.engine }}" = openssl ]; then
+            CGO_ENABLED=1 go build -tags openssl -trimpath -ldflags="-s -w" -o /tmp/noaddx ./cmd/server
+          else
+            CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/noaddx ./cmd/server
+          fi
+
+  equivalence:
+    name: crypto engines are byte-for-byte equivalent
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev pkg-config
+      - run: CGO_ENABLED=1 go test -count=1 -v -tags "test openssl" ./internal/cryptoengine/...
+
+  frontend:
+    name: frontend (WebCrypto interop)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test frontend/tests/
+
+  security:
+    name: vulnerabilities and secrets
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - name: govulncheck (reachable vulnerabilities only)
+        working-directory: backend
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: gitleaks (full history)
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          ./gitleaks git --no-banner --redact .
+
+  images:
+    name: docker images build (${{ matrix.engine }})
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        engine: [openssl, native]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --build-arg ENGINE=${{ matrix.engine }} -f dev.backend.Dockerfile -t noaddx-backend:${{ matrix.engine }} .
+      - run: docker build -f dev.frontend.Dockerfile -t noaddx-frontend .
+      - name: image runs as the unprivileged user and passes its self-test
+        run: |
+          docker run --rm --entrypoint id noaddx-backend:${{ matrix.engine }} | grep -q 'uid=10001'
+          docker run --rm -e JWT_SECRET="$(openssl rand -hex 32)" -e MASTER_KEY_ACTIVE="$(openssl rand -hex 32)" \
+            -e MASTER_KEY_ACTIVE_ID=ci -e ACCOUNT_LOOKUP_PEPPER="$(openssl rand -hex 32)" -e DB_PASSWORD="$(openssl rand -hex 16)" \
+            -e DB_HOST=127.0.0.1 noaddx-backend:${{ matrix.engine }} 2>&1 | grep -q 'self-test passed'

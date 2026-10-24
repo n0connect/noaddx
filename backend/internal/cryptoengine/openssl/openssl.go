@@ -18,32 +18,40 @@ package openssl
 #include <openssl/thread.h>
 #include <stdint.h>
 
+// Every helper ends with nx_done(): the thread-local error queue is emptied on the thread
+// that filled it, so no failure detail lingers into a later call (cgo calls may land on
+// different OS threads, which is why this cannot be done from Go).
+static int nx_done(int ok) {
+	ERR_clear_error();
+	return ok;
+}
+
 static int nx_random(unsigned char *out, int len) {
-	return RAND_bytes(out, len) == 1;
+	return nx_done(RAND_bytes(out, len) == 1);
 }
 
 static int nx_sha256(const unsigned char *in, size_t inlen, unsigned char *out) {
 	unsigned int outlen = 0;
-	return EVP_Digest(in, inlen, out, &outlen, EVP_sha256(), NULL) == 1 && outlen == 32;
+	return nx_done(EVP_Digest(in, inlen, out, &outlen, EVP_sha256(), NULL) == 1 && outlen == 32);
 }
 
 static int nx_hmac_sha256(const unsigned char *key, size_t keylen,
                           const unsigned char *in, size_t inlen, unsigned char *out) {
 	size_t outlen = 0;
-	return EVP_Q_mac(NULL, "HMAC", NULL, "SHA256", NULL, key, keylen, in, inlen, out, 32, &outlen) != NULL
-		&& outlen == 32;
+	return nx_done(EVP_Q_mac(NULL, "HMAC", NULL, "SHA256", NULL, key, keylen, in, inlen, out, 32, &outlen) != NULL
+		&& outlen == 32);
 }
 
 static int nx_hkdf_sha256(const unsigned char *ikm, size_t ikmlen, const unsigned char *salt, size_t saltlen,
                           const unsigned char *info, size_t infolen, unsigned char *out, size_t outlen) {
 	EVP_KDF *kdf = EVP_KDF_fetch(NULL, "HKDF", NULL);
 	if (kdf == NULL) {
-		return 0;
+		return nx_done(0);
 	}
 	EVP_KDF_CTX *ctx = EVP_KDF_CTX_new(kdf);
 	EVP_KDF_free(kdf);
 	if (ctx == NULL) {
-		return 0;
+		return nx_done(0);
 	}
 	OSSL_PARAM params[5], *p = params;
 	*p++ = OSSL_PARAM_construct_utf8_string(OSSL_KDF_PARAM_DIGEST, (char *)"SHA256", 0);
@@ -57,7 +65,7 @@ static int nx_hkdf_sha256(const unsigned char *ikm, size_t ikmlen, const unsigne
 	*p = OSSL_PARAM_construct_end();
 	int ok = EVP_KDF_derive(ctx, out, outlen, params) == 1;
 	EVP_KDF_CTX_free(ctx);
-	return ok;
+	return nx_done(ok);
 }
 
 static int nx_argon2id(const unsigned char *pwd, size_t pwdlen, const unsigned char *salt, size_t saltlen,
@@ -65,12 +73,12 @@ static int nx_argon2id(const unsigned char *pwd, size_t pwdlen, const unsigned c
                        unsigned char *out, uint32_t outlen) {
 	EVP_KDF *kdf = EVP_KDF_fetch(NULL, "ARGON2ID", NULL);
 	if (kdf == NULL) {
-		return 0;
+		return nx_done(0);
 	}
 	EVP_KDF_CTX *ctx = EVP_KDF_CTX_new(kdf);
 	EVP_KDF_free(kdf);
 	if (ctx == NULL) {
-		return 0;
+		return nx_done(0);
 	}
 	uint32_t version = 0x13;
 	OSSL_PARAM params[] = {
@@ -86,7 +94,7 @@ static int nx_argon2id(const unsigned char *pwd, size_t pwdlen, const unsigned c
 	};
 	int ok = EVP_KDF_derive(ctx, out, outlen, params) == 1;
 	EVP_KDF_CTX_free(ctx);
-	return ok;
+	return nx_done(ok);
 }
 
 // out receives ptlen bytes of ciphertext followed by the 16-byte tag
@@ -96,7 +104,7 @@ static int nx_gcm_seal(const unsigned char *key, const unsigned char *nonce,
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	int ok = 0, len = 0, total = 0;
 	if (ctx == NULL) {
-		return 0;
+		return nx_done(0);
 	}
 	if (EVP_EncryptInit_ex2(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1 ||
 	    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL) != 1 ||
@@ -122,7 +130,7 @@ static int nx_gcm_seal(const unsigned char *key, const unsigned char *nonce,
 	ok = 1;
 done:
 	EVP_CIPHER_CTX_free(ctx);
-	return ok;
+	return nx_done(ok);
 }
 
 // in is ctlen bytes of ciphertext followed by the 16-byte tag; out receives ctlen bytes
@@ -132,7 +140,7 @@ static int nx_gcm_open(const unsigned char *key, const unsigned char *nonce,
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	int ok = 0, len = 0, total = 0;
 	if (ctx == NULL) {
-		return 0;
+		return nx_done(0);
 	}
 	if (EVP_DecryptInit_ex2(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1 ||
 	    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL) != 1 ||
@@ -158,18 +166,18 @@ static int nx_gcm_open(const unsigned char *key, const unsigned char *nonce,
 	ok = total == ctlen;
 done:
 	EVP_CIPHER_CTX_free(ctx);
-	return ok;
+	return nx_done(ok);
 }
 
 static int nx_x25519_public(const unsigned char *priv, unsigned char *pub) {
 	EVP_PKEY *key = EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, NULL, priv, 32);
 	size_t len = 32;
 	if (key == NULL) {
-		return 0;
+		return nx_done(0);
 	}
 	int ok = EVP_PKEY_get_raw_public_key(key, pub, &len) == 1 && len == 32;
 	EVP_PKEY_free(key);
-	return ok;
+	return nx_done(ok);
 }
 
 // Fails for the all-zero result of a low-order peer point (RFC 7748 §6.1), as Go does
@@ -191,7 +199,7 @@ done:
 	EVP_PKEY_CTX_free(ctx);
 	EVP_PKEY_free(peerkey);
 	EVP_PKEY_free(key);
-	return ok;
+	return nx_done(ok);
 }
 
 static int nx_equal(const unsigned char *a, const unsigned char *b, size_t len) {
@@ -246,10 +254,8 @@ func ptr(b []byte) *C.uchar {
 	return (*C.uchar)(unsafe.Pointer(&b[0]))
 }
 
-// done turns an OpenSSL status into an error, emptying the thread's error queue either way
-// so no failure detail lingers into a later call.
+// done turns an OpenSSL status into an error (the C helpers already emptied the error queue)
 func done(ok C.int) error {
-	C.ERR_clear_error()
 	if ok != 1 {
 		return errFailed
 	}

@@ -104,3 +104,37 @@ func TestLogger_LevelFilterAndNewlineEscaping(t *testing.T) {
 		t.Fatalf("LOG_LEVEL=debug suppressed debug output: %q", out)
 	}
 }
+
+// Slots admits at most n holders; a caller beyond that waits only as long as it allows
+// and then gets ErrSlotsBusy; a release lets the next caller in.
+func TestSlots_BoundsConcurrentHolders(t *testing.T) {
+	slots := utils.NewSlots(2)
+	for i := 0; i < 2; i++ {
+		if err := slots.Acquire(0); err != nil {
+			t.Fatalf("acquire %d: %v", i+1, err)
+		}
+	}
+	started := time.Now()
+	if err := slots.Acquire(50 * time.Millisecond); !errors.Is(err, utils.ErrSlotsBusy) {
+		t.Fatalf("third acquire = %v, want ErrSlotsBusy", err)
+	}
+	if waited := time.Since(started); waited < 50*time.Millisecond || waited > time.Second {
+		t.Fatalf("waited %v, want about 50ms", waited)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- slots.Acquire(time.Second) }()
+	slots.Release()
+	if err := <-done; err != nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+
+	slots.Release()
+	slots.Release()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("releasing more than was acquired did not panic")
+		}
+	}()
+	slots.Release()
+}

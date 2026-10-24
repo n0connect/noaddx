@@ -38,11 +38,13 @@ const (
 	// Parallelism: 4 - utilize multi-core CPUs effectively
 	// Note: These defaults are tuned for production with 100-200 concurrent users
 	// High-traffic scenarios (1000+ concurrent) may need adjustment or queueing
-	defaultArgon2MemoryKiB         = 65536
-	defaultArgon2Time              = 3
-	defaultArgon2Parallelism       = 4 // Increased from 2 for better CPU utilization
-	defaultArgon2SaltLength        = 16
-	defaultArgon2HashLength        = 32
+	defaultArgon2MemoryKiB   = 65536
+	defaultArgon2Time        = 3
+	defaultArgon2Parallelism = 4 // Increased from 2 for better CPU utilization
+	defaultArgon2SaltLength  = 16
+	defaultArgon2HashLength  = 32
+	// At most this many Argon2id computations at once (each takes ARGON2_MEMORY_KIB)
+	defaultArgon2MaxConcurrent     = 4
 	defaultPendingTokenTTLSeconds  = 300
 	defaultPendingCleanupSeconds   = 60
 	defaultPendingIDBytes          = 16
@@ -358,6 +360,11 @@ func GetArgon2Time() int {
 // GetArgon2Parallelism returns Argon2 parallelism
 func GetArgon2Parallelism() int {
 	return getEnvIntDefault("ARGON2_PARALLELISM", defaultArgon2Parallelism)
+}
+
+// GetArgon2MaxConcurrent returns how many Argon2id computations may run at once
+func GetArgon2MaxConcurrent() int {
+	return getEnvIntDefault("ARGON2_MAX_CONCURRENT", defaultArgon2MaxConcurrent)
 }
 
 // GetArgon2SaltLength returns Argon2 salt length in bytes

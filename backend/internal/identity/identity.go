@@ -37,7 +37,7 @@ var (
 )
 
 func decodeKey(encoded string) ([]byte, error) {
-	if len(encoded) != EncodedKeyLength {
+	if len(encoded) != EncodedKeyLength || !utils.IsBase64URL(encoded) {
 		return nil, ErrInvalidKey
 	}
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(encoded)

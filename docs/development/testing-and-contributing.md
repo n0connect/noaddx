@@ -94,6 +94,25 @@ make test-all
 
 ---
 
+### Option D: Fuzzing the Parsers
+
+Every parser that faces the network has a fuzz target: the stored Argon2id hash format, E2E ciphertext and its AAD bindings, the UUID / invite-token / ciphertext whitelists, PoW solutions and JSON request bodies. A target asserts that nothing panics and that whatever is accepted is genuinely valid (canonical encoding, correct key, issued challenge).
+
+```bash
+cd backend
+go test -tags test -run '^$' -fuzz '^FuzzDecrypt$' -fuzztime 60s ./internal/e2e
+go test -tags test -run '^$' -fuzz '^FuzzVerifyAccountNumberHash$' -fuzztime 60s ./tests/auth
+go test -tags test -run '^$' -fuzz '^FuzzDecodeJSONRequest$' -fuzztime 60s ./tests/utils
+```
+
+Any input that fails is written to `testdata/fuzz/` next to the package and becomes a permanent regression test; commit it with the fix.
+
+### Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and `noaddx-dev`, on tags and on pull requests: the complete suite with the race detector for **both crypto engines**, the engine **equivalence** suite, short fuzz runs, the frontend interop tests, `govulncheck`, `gitleaks` over the full history, and both Docker images (which must boot as the unprivileged user and pass the startup self-test).
+
+---
+
 ## Code Rules & Concurrency Compliance
 
 All code modifications must strictly comply with project policies:

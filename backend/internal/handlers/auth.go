@@ -74,14 +74,22 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Compute lookup for collision check (almost impossible)
-		previewAuthKey, err := identity.DeriveAuthKey(accountNumber)
-		if err != nil {
+		// Everything phase 2 needs is derived now, so the AccountNumber itself (which also
+		// seeds the user's E2E identity) leaves server memory with this response
+		pending := auth.PendingIdentity{}
+		if pending.AuthKey, err = identity.DeriveAuthKey(accountNumber); err != nil {
 			authLogger.LogError("DeriveAuthKey", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
-		lookup, err := auth.ComputeAccountLookup(previewAuthKey)
+		if pending.PublicKey, err = identity.DerivePublicKey(accountNumber); err != nil {
+			authLogger.LogError("DerivePublicKey", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		// Compute lookup for collision check (almost impossible)
+		lookup, err := auth.ComputeAccountLookup(pending.AuthKey)
 		if err != nil {
 			authLogger.LogError("ComputeAccountLookup", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -109,8 +117,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Store AccountNumber server-side with pending ID
-		if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+		// Keep the derived identity (not the AccountNumber) until the user confirms
+		if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
 			if errors.Is(err, auth.ErrPendingStoreFull) {
 				http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 				return
@@ -141,7 +149,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// PHASE 2: Create account (confirm=true)
-	// ZERO-TRUST: Verify pending token and extract AccountNumber from it
+	// ZERO-TRUST: the pending token names the identity derived in phase 1; nothing about the
+	// account comes from the request body
 	authLogger.Debug("Phase 2: Confirming account creation")
 
 	// SECURITY: Phase 2 PoW was validated above with a fresh, single-use challenge
@@ -153,9 +162,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify pending token and extract the AccountNumber from server-side store
-	// Note: VerifyPendingRegistrationToken automatically deletes the pending registration (one-time use)
-	pendingAccountNumber, err := auth.VerifyPendingRegistrationToken(req.PendingToken)
+	// Consumes the pending registration (one-time use)
+	pending, err := auth.VerifyPendingRegistrationToken(req.PendingToken)
 	if err != nil {
 		// SECURITY: Generic error message to prevent information leakage
 		// Don't distinguish between expired and invalid tokens
@@ -163,23 +171,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-
-	// ZERO-TRUST: AccountNumber comes from verified token, NOT from user input
-
-	// ZERO-KNOWLEDGE LOGIN: the server keys the account by a derived auth key, so after this
-	// request it never needs (or sees) the AccountNumber that also seeds the E2E identity
-	authKey, err := identity.DeriveAuthKey(pendingAccountNumber)
-	if err != nil {
-		authLogger.LogError("DeriveAuthKey", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	publicKey, err := identity.DerivePublicKey(pendingAccountNumber)
-	if err != nil {
-		authLogger.LogError("DerivePublicKey", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
+	authKey, publicKey := pending.AuthKey, pending.PublicKey
 
 	// Compute lookup and hash
 	lookup, err := auth.ComputeAccountLookup(authKey)
@@ -204,8 +196,12 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hash auth key with Argon2id
+	// Hash auth key with Argon2id (bounded concurrency: a saturated server says so)
 	accountHash, err := auth.HashAccountNumber(authKey)
+	if errors.Is(err, auth.ErrBusy) {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil {
 		authLogger.LogError("HashAccountNumber", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -381,14 +377,22 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		authLogger.Debug("Login failed: no account for this auth key")
 		// SECURITY: Spend a full Argon2id verification anyway so that response time does
-		// not reveal whether an account exists (no user-enumeration timing side channel)
-		auth.EqualizeVerificationTiming(req.AuthKey)
+		// not reveal whether an account exists (no user-enumeration timing side channel);
+		// a saturated server answers 503 for known and unknown accounts alike
+		if errors.Is(auth.EqualizeVerificationTiming(req.AuthKey), auth.ErrBusy) {
+			http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
 		return
 	}
 
 	// Verify auth key hash
 	if err := auth.VerifyAccountNumberHash(user.AccountHash, req.AuthKey); err != nil {
+		if errors.Is(err, auth.ErrBusy) {
+			http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		authLogger.Warn("Login failed: auth key hash verification failed")
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
 		return

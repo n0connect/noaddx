@@ -24,7 +24,9 @@ backend/tests/
 ```
 
 Paket ici testler: `internal/pow` (11, gercek cozum/gercek sure dolumu), `internal/realtime` (3, SSE hub), `internal/handlers` (2, rota/sorgu beyaz listesi), `internal/e2e` (4, Go istemci protokolu + tarayici ciphertext'i).
-Frontend kripto testleri: `frontend/tests/crypto.test.mjs` (9, Go turemesiyle bayt-bayt eslesme + Go ciphertext'ini acma) -> `node --test frontend/tests/`
+Frontend testleri: `frontend/tests/` (crypto.test.mjs 9, validation.test.mjs 2, pow-worker.test.mjs 3) -> `node --test frontend/tests/`
+Kripto motoru: `internal/cryptoengine` (bilinen-cevap vektorleri, secili motorda), `internal/cryptoengine/equivalence` (iki motoru ayni binary'de karsilastirir; `-tags openssl` ile).
+Fuzz hedefleri: `internal/e2e`, `internal/pow`, `tests/auth`, `tests/utils` (`go test -tags test -run '^$' -fuzz '^FuzzX$' -fuzztime 30s <paket>`).
 
 ## Test Calistirma Sirasi
 

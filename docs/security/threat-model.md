@@ -80,6 +80,15 @@ To protect against cold-boot attacks and post-termination RAM dumps:
 
 ---
 
+## What the Server Holds in Memory, and for How Long
+
+- **The AccountNumber:** only inside the phase-1 registration request. The response shows it to the user once; what waits for phase 2 (up to `PENDING_TOKEN_TTL_SEC`) is the derived auth key and X25519 public key, from which the AccountNumber cannot be recovered. Login sends the derived auth key, never the AccountNumber.
+- **Master keys:** for the process lifetime, zeroized on shutdown (above).
+- **Per-user server keys and conversation indexes:** only while a request that needs them runs.
+- **Stream tags and rate-limit keys:** HMACs under per-boot secrets, never persisted.
+
+---
+
 ## Known Limitations
 
 These are properties of the design, stated so nobody relies on a guarantee that is not there:

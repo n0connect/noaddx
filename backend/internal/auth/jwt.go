@@ -161,17 +161,18 @@ func SignPendingRegistrationToken(pendingID string) (string, error) {
 	return tokenString, nil
 }
 
-// VerifyPendingRegistrationToken verifies a pending registration token and returns the pending AccountNumber
-// Returns error if token is not a pending registration token or is invalid/expired
-func VerifyPendingRegistrationToken(tokenString string) (string, error) {
+// VerifyPendingRegistrationToken verifies a pending registration token and returns the
+// identity derived in phase 1. Returns an error if the token is not a pending registration
+// token or is invalid/expired.
+func VerifyPendingRegistrationToken(tokenString string) (PendingIdentity, error) {
 	if len(tokenString) == 0 || len(tokenString) > maxTokenBytes {
-		return "", ErrInvalidToken
+		return PendingIdentity{}, ErrInvalidToken
 	}
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
 		jwtLogger.Error("VerifyPendingRegistrationToken: %v", err)
-		return "", err
+		return PendingIdentity{}, err
 	}
 
 	token, err := jwt.ParseWithClaims(tokenString, &PendingRegistrationClaims{}, func(token *jwt.Token) (interface{}, error) {
@@ -189,39 +190,36 @@ func VerifyPendingRegistrationToken(tokenString string) (string, error) {
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			jwtLogger.Warn("VerifyPendingRegistrationToken: token expired")
-			return "", ErrExpiredToken
+			return PendingIdentity{}, ErrExpiredToken
 		}
-		jwtLogger.LogError("VerifyPendingRegistrationToken", err)
-		return "", ErrInvalidToken
+		jwtLogger.Warn("VerifyPendingRegistrationToken: invalid token")
+		return PendingIdentity{}, ErrInvalidToken
 	}
 
 	claims, ok := token.Claims.(*PendingRegistrationClaims)
 	if !ok || !token.Valid {
 		jwtLogger.Warn("VerifyPendingRegistrationToken: invalid claims")
-		return "", ErrInvalidToken
+		return PendingIdentity{}, ErrInvalidToken
 	}
 
 	// Verify this is a pending registration token
 	if !claims.IsPending || claims.Subject != pendingSubject {
 		jwtLogger.Warn("VerifyPendingRegistrationToken: not a pending registration token")
-		return "", ErrInvalidToken
+		return PendingIdentity{}, ErrInvalidToken
 	}
 
 	if claims.PendingID == "" {
 		jwtLogger.Warn("VerifyPendingRegistrationToken: pending ID is empty")
-		return "", ErrInvalidToken
+		return PendingIdentity{}, ErrInvalidToken
 	}
 
-	// Retrieve AccountNumber from server-side store
-	// Note: GetPendingRegistration already deletes the entry (one-time use)
-	accountNumber, err := GetPendingRegistration(claims.PendingID)
+	// The store entry is consumed here (one-time use)
+	pending, err := GetPendingRegistration(claims.PendingID)
 	if err != nil {
-		jwtLogger.Warn("VerifyPendingRegistrationToken: failed to retrieve AccountNumber for pendingID (masked)")
-		return "", err
+		jwtLogger.Warn("VerifyPendingRegistrationToken: no pending registration for this token")
+		return PendingIdentity{}, err
 	}
-
-	jwtLogger.Debug("VerifyPendingRegistrationToken: verified pendingID and retrieved AccountNumber (masked)")
-	return accountNumber, nil
+	return pending, nil
 }
 
 // VerifyToken verifies a JWT token and returns the session it carries

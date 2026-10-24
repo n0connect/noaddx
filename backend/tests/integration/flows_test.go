@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"noaddx/internal/auth"
 	"noaddx/internal/chat"
 	"noaddx/internal/database"
 	"noaddx/internal/identity"
 	"noaddx/internal/models"
+	"noaddx/tests/testutil"
 )
 
 func TestRegisterAndLogin_UsesDerivedAuthKeyOnly(t *testing.T) {
@@ -479,4 +481,18 @@ func waitFor(t *testing.T, lines <-chan string, want string) {
 
 func itoa(n int64) string {
 	return strconv.FormatInt(n, 10)
+}
+
+// Under a login flood the server queues Argon2id work and answers 503 when the queue is
+// full, rather than allocating memory without bound; a 503 never reveals account state.
+func TestLogin_ServiceUnavailableWhenArgon2IsSaturated(t *testing.T) {
+	mux := setup(t)
+	alice := register(t, mux)
+
+	release := auth.HoldArgon2SlotsForTesting()
+	defer release()
+	for name, key := range map[string]string{"real account": alice.authKey, "unknown account": testutil.NewAuthKey(t)} {
+		rr := newClient(t, mux).do("POST", "/api/v2/login", models.LoginRequest{AuthKey: key})
+		expectStatus(t, rr, http.StatusServiceUnavailable, "login while saturated: "+name)
+	}
 }

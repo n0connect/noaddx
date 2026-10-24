@@ -63,7 +63,7 @@ func TestGeneratePendingID(t *testing.T) {
 func TestStoreAndGetPendingRegistration(t *testing.T) {
 	setupPendingStoreEnv(t)
 
-	accountNumber := testutil.NewAccountNumber(t)
+	pending := testutil.NewPendingIdentity(t)
 
 	// Generate pending ID
 	pendingID, err := auth.GeneratePendingID()
@@ -72,7 +72,7 @@ func TestStoreAndGetPendingRegistration(t *testing.T) {
 	}
 
 	// Store pending registration
-	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+	if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
@@ -82,8 +82,8 @@ func TestStoreAndGetPendingRegistration(t *testing.T) {
 		t.Fatalf("GetPendingRegistration() failed: %v", err)
 	}
 
-	if retrieved != accountNumber {
-		t.Errorf("GetPendingRegistration() = %q, want %q", retrieved, accountNumber)
+	if retrieved != pending {
+		t.Errorf("GetPendingRegistration() = %+v, want %+v", retrieved, pending)
 	}
 }
 
@@ -108,7 +108,7 @@ func TestGetPendingRegistration_NotFound(t *testing.T) {
 func TestPendingRegistration_ConsumedOnRead(t *testing.T) {
 	setupPendingStoreEnv(t)
 
-	accountNumber := testutil.NewAccountNumber(t)
+	pending := testutil.NewPendingIdentity(t)
 
 	// Generate and store
 	pendingID, err := auth.GeneratePendingID()
@@ -116,7 +116,7 @@ func TestPendingRegistration_ConsumedOnRead(t *testing.T) {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
 
-	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+	if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
@@ -141,7 +141,7 @@ func TestPendingRegistration_Expiration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
-	if err := auth.StorePendingRegistration(pendingID, testutil.NewAccountNumber(t)); err != nil {
+	if err := auth.StorePendingRegistration(pendingID, testutil.NewPendingIdentity(t)); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
@@ -157,14 +157,14 @@ func TestPendingRegistration_Expiration(t *testing.T) {
 func TestPendingRegistration_OneTimeUse(t *testing.T) {
 	setupPendingStoreEnv(t)
 
-	accountNumber := testutil.NewAccountNumber(t)
+	pending := testutil.NewPendingIdentity(t)
 
 	pendingID, err := auth.GeneratePendingID()
 	if err != nil {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
 
-	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+	if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
@@ -173,8 +173,8 @@ func TestPendingRegistration_OneTimeUse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPendingRegistration() first call failed: %v", err)
 	}
-	if retrieved1 != accountNumber {
-		t.Errorf("GetPendingRegistration() = %q, want %q", retrieved1, accountNumber)
+	if retrieved1 != pending {
+		t.Errorf("GetPendingRegistration() = %+v, want %+v", retrieved1, pending)
 	}
 
 	// Second retrieval must fail (one-time use)
@@ -191,7 +191,7 @@ func TestStorePendingRegistration_IsBounded(t *testing.T) {
 	auth.ResetPendingStoreForTesting()
 	t.Cleanup(auth.ResetPendingStoreForTesting)
 
-	account := testutil.NewAccountNumber(t)
+	account := testutil.NewPendingIdentity(t)
 	var last string
 	for i := 0; i < auth.MaxPendingRegistrations; i++ {
 		id, err := auth.GeneratePendingID()
