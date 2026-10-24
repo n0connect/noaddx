@@ -2,15 +2,19 @@
   <img src="assets/banner.svg" alt="noaddx." width="330">
 </p>
 
-> Anonymous, zero-metadata, end-to-end encrypted messaging relay.  
-> No email. No phone number. No password. No usernames. One random 256-bit account number.
+<p align="center">
+  <strong>Anonymous, zero-metadata, end-to-end encrypted messaging.</strong><br>
+  No email · No phone number · No password · No username: one random 256-bit account number.
+</p>
 
-[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)](https://go.dev/)
-[![JavaScript](https://img.shields.io/badge/JavaScript-ES2020-F7DF1E?style=flat&logo=javascript)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=flat&logo=postgresql)](https://www.postgresql.org/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker)](https://docs.docker.com/compose/)
-[![Nginx](https://img.shields.io/badge/Nginx-Alpine-009639?style=flat&logo=nginx)](https://nginx.org/)
-[![License](https://img.shields.io/badge/License-AGPL%203.0-blue?style=flat)](LICENSE)
+<p align="center">
+  <a href="docs/security/cryptography.md"><img alt="E2EE X25519 · AES-256-GCM" src="https://img.shields.io/badge/E2EE-X25519%20%C2%B7%20AES--256--GCM-30363d?style=flat-square&logo=letsencrypt&logoColor=white&labelColor=0d1117"></a>
+  <a href="https://go.dev/"><img alt="Go 1.21" src="https://img.shields.io/badge/Go-1.21-30363d?style=flat-square&logo=go&logoColor=white&labelColor=0d1117"></a>
+  <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API"><img alt="Vanilla JS WebCrypto" src="https://img.shields.io/badge/Vanilla%20JS-WebCrypto-30363d?style=flat-square&logo=javascript&logoColor=white&labelColor=0d1117"></a>
+  <a href="https://www.postgresql.org/"><img alt="PostgreSQL 15" src="https://img.shields.io/badge/PostgreSQL-15-30363d?style=flat-square&logo=postgresql&logoColor=white&labelColor=0d1117"></a>
+  <a href="https://docs.docker.com/compose/"><img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-30363d?style=flat-square&logo=docker&logoColor=white&labelColor=0d1117"></a>
+  <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-30363d?style=flat-square&logo=gnu&logoColor=white&labelColor=0d1117"></a>
+</p>
 
 ---
 
