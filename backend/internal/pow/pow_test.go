@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/models"
+	"noaddress/internal/config"
+	"noaddress/internal/models"
 )
 
 func TestChallengeLifecycle(t *testing.T) {
@@ -185,8 +185,8 @@ func TestValidateSolutionWithExpiredChallenge(t *testing.T) {
 	InitPoW()
 	
 	// Create an expired challenge entry manually for testing
-	challengeStr := "testchallenge1234567890abcdef"
-	saltStr := "testsalt1234567890abcdef"
+	challengeStr := "0123456789abcdef0123456789abcdef"
+	saltStr := "fedcba9876543210fedcba9876543210"
 	
 	key := challengeStr + saltStr
 	expiredTime := time.Now().Add(-10 * time.Minute) // Already expired

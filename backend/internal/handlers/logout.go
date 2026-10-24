@@ -3,22 +3,40 @@ package handlers
 import (
 	"net/http"
 
-	"todo-app-backend/internal/auth"
-	"todo-app-backend/internal/models"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/auth"
+	"noaddress/internal/identity"
+	"noaddress/internal/models"
+	"noaddress/internal/realtime"
+	"noaddress/internal/utils"
 )
 
 var logoutLogger = utils.NewLogger("LOGOUT")
 
-// LogoutHandler clears the authentication cookie
-// SECURITY: Client-side logout (server-side JWT invalidation not implemented - stateless design)
-// For full server-side logout, implement JWT blacklist (Redis-based)
+// LogoutHandler revokes every session of the caller and clears the cookie.
+// SECURITY: Bumping the session epoch invalidates all outstanding JWTs (all devices),
+// and live event streams are closed immediately. Invalid/absent tokens still clear the cookie.
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	logoutLogger.Debug("LogoutHandler: processing logout request from %s", r.RemoteAddr)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+
+	token := auth.GetAuthCookie(r)
+	if token != "" {
+		if session, err := auth.VerifyToken(token); err == nil {
+			if err := userRepository.BumpSessionEpoch(session.UserUUID); err != nil {
+				logoutLogger.LogError("BumpSessionEpoch", err)
+			}
+			if tag, err := identity.MemberTag(session.UserUUID); err == nil {
+				realtime.Default.Kick(tag)
+			}
+			logoutLogger.Debug("LogoutHandler: sessions revoked")
+		}
+	}
 
 	// Clear the HttpOnly authentication cookie
 	auth.ClearAuthCookie(w)
-	logoutLogger.Debug("LogoutHandler: cleared authentication cookie")
 
 	utils.EncodeJSONResponse(w, models.LoginResponse{
 		Success: true,

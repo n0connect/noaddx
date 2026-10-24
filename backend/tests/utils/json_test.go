@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/models"
-	"todo-app-backend/internal/utils"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/config"
+	"noaddress/internal/models"
+	"noaddress/internal/utils"
+	"noaddress/tests/testutil"
 )
 
 func setupJSONTestEnv(t *testing.T) {
@@ -23,29 +23,29 @@ func setupJSONTestEnv(t *testing.T) {
 func TestDecodeJSONRequest_ValidDepth(t *testing.T) {
 	setupJSONTestEnv(t)
 
-	// Test with valid depth (depth 2 - TodoRequest with Tags array)
+	// Test with valid depth (depth 2 - RegisterRequest with nested PoW object)
 	jsonBody := `{
-		"title": "Test todo",
-		"completed": false,
-		"tags": ["tag1", "tag2"],
-		"priority": "high"
+		"confirm": false,
+		"pow": {"challenge": "00", "solution": "1", "salt": "00", "difficulty": 18}
 	}`
 
-	req := httptest.NewRequest("POST", "/api/v2/todos", bytes.NewBufferString(jsonBody))
+	req := httptest.NewRequest("POST", "/api/v2/register", bytes.NewBufferString(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	var todoReq models.TodoRequest
-	err := utils.DecodeJSONRequest(req, &todoReq)
+	var registerReq models.RegisterRequest
+	err := utils.DecodeJSONRequest(req, &registerReq)
 	if err != nil {
 		t.Fatalf("DecodeJSONRequest() failed with valid depth: %v", err)
 	}
 
-	if todoReq.Title != "Test todo" {
-		t.Errorf("Expected title 'Test todo', got '%s'", todoReq.Title)
+	if registerReq.PoW == nil || registerReq.PoW.Solution != "1" {
+		t.Errorf("Expected nested pow.solution '1', got %+v", registerReq.PoW)
 	}
-	if len(todoReq.Tags) != 2 {
-		t.Errorf("Expected 2 tags, got %d", len(todoReq.Tags))
-	}
+}
+
+// listBody is a depth-2 shape (object containing an array) used by array-depth tests
+type listBody struct {
+	Items []string `json:"items"`
 }
 
 func TestDecodeJSONRequest_ExceedsMaxDepth(t *testing.T) {
@@ -74,7 +74,7 @@ func TestDecodeJSONRequest_ValidShallowDepth(t *testing.T) {
 
 	// Test with shallow depth (depth 1 - LoginRequest)
 	jsonBody := `{
-		"account_number": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg"
+		"auth_key": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg"
 	}`
 
 	req := httptest.NewRequest("POST", "/api/v2/login", bytes.NewBufferString(jsonBody))
@@ -86,8 +86,8 @@ func TestDecodeJSONRequest_ValidShallowDepth(t *testing.T) {
 		t.Fatalf("DecodeJSONRequest() failed with shallow depth: %v", err)
 	}
 
-	if loginReq.AccountNumber != "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg" {
-		t.Errorf("Expected account_number, got '%s'", loginReq.AccountNumber)
+	if loginReq.AuthKey != "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg" {
+		t.Errorf("Expected auth_key, got '%s'", loginReq.AuthKey)
 	}
 }
 
@@ -96,21 +96,20 @@ func TestDecodeJSONRequest_ArrayDepth(t *testing.T) {
 
 	// Test with array nesting (depth 2)
 	jsonBody := `{
-		"title": "Test",
-		"tags": ["tag1", "tag2"]
+		"items": ["a", "b"]
 	}`
 
-	req := httptest.NewRequest("POST", "/api/v2/todos", bytes.NewBufferString(jsonBody))
+	req := httptest.NewRequest("POST", "/api/v2/test", bytes.NewBufferString(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	var todoReq models.TodoRequest
-	err := utils.DecodeJSONRequest(req, &todoReq)
+	var body listBody
+	err := utils.DecodeJSONRequest(req, &body)
 	if err != nil {
 		t.Fatalf("DecodeJSONRequest() failed with array depth: %v", err)
 	}
 
-	if len(todoReq.Tags) != 2 {
-		t.Errorf("Expected 2 tags, got %d", len(todoReq.Tags))
+	if len(body.Items) != 2 {
+		t.Errorf("Expected 2 items, got %d", len(body.Items))
 	}
 }
 
@@ -119,7 +118,7 @@ func TestDecodeJSONRequest_UnknownFields(t *testing.T) {
 
 	// Test that unknown fields are rejected
 	jsonBody := `{
-		"account_number": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg",
+		"auth_key": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg",
 		"malicious_field": "attack"
 	}`
 
@@ -257,19 +256,37 @@ func TestDecodeJSONRequest_Depth3_ShouldFail(t *testing.T) {
 func TestDecodeJSONRequest_Depth2_ShouldSucceed(t *testing.T) {
 	setupJSONTestEnv(t)
 
-	// Test with depth 2 (should succeed, matches TodoRequest with Tags array)
-	jsonBody := `{"tags": ["tag1", "tag2"]}`
+	// Test with depth 2 (should succeed: object containing an array)
+	jsonBody := `{"items": ["a", "b"]}`
 
-	req := httptest.NewRequest("POST", "/api/v2/todos", bytes.NewBufferString(jsonBody))
+	req := httptest.NewRequest("POST", "/api/v2/test", bytes.NewBufferString(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 
-	var todoReq models.TodoRequest
-	err := utils.DecodeJSONRequest(req, &todoReq)
+	var body listBody
+	err := utils.DecodeJSONRequest(req, &body)
 	if err != nil {
 		t.Errorf("DecodeJSONRequest() should succeed with depth 2, got error: %v", err)
 	}
 
-	if len(todoReq.Tags) != 2 {
-		t.Errorf("Expected 2 tags, got %d", len(todoReq.Tags))
+	if len(body.Items) != 2 {
+		t.Errorf("Expected 2 items, got %d", len(body.Items))
+	}
+}
+
+// Regression: a second top-level value must be rejected (parser-differential PoW bypass)
+func TestDecodeJSONRequest_TrailingValue_Rejected(t *testing.T) {
+	setupJSONTestEnv(t)
+
+	for _, body := range []string{
+		`{"confirm":false,"pow":{"challenge":"x","solution":"1","salt":"y"}} {}`,
+		`{"auth_key":"x"}{"auth_key":"y"}`,
+		`{"auth_key":"x"} 1`,
+	} {
+		req := httptest.NewRequest("POST", "/api/v2/register", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		var v map[string]interface{}
+		if err := utils.DecodeJSONRequest(req, &v); err == nil {
+			t.Errorf("DecodeJSONRequest() accepted trailing data: %q", body)
+		}
 	}
 }

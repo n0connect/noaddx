@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"todo-app-backend/internal/middleware"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/middleware"
+	"noaddress/tests/testutil"
 )
 
 func TestCORSMiddleware_AllowedOrigin(t *testing.T) {

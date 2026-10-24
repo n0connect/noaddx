@@ -4,8 +4,8 @@
 package testutil
 
 import (
-	"todo-app-backend/internal/auth"
-	"todo-app-backend/internal/middleware"
+	"noaddress/internal/auth"
+	"noaddress/internal/middleware"
 )
 
 // resetRateLimiterForTesting calls the test-only reset function

@@ -21,7 +21,7 @@ export DB_HOST=localhost
 export DB_PORT=5432
 export DB_USER=postgres
 export DB_PASSWORD=postgres
-export DB_NAME=todos_test
+export DB_NAME=noaddress_test
 export DB_SSL_MODE=disable
 ```
 
@@ -37,7 +37,7 @@ go test ./tests/database -v -run TestDatabaseMigration
 
 # Schema testleri
 go test ./tests/database -v -run TestUserTableSchema
-go test ./tests/database -v -run TestTodoTableSchema
+go test -tags=test ./tests/database -v -run TestChatTableSchema
 
 # Connection testi
 go test ./tests/database -v -run TestDatabaseConnection
@@ -64,7 +64,7 @@ go run ./cmd/server
 ### 2. Schema Tests
 
 - `TestUserTableSchema`: User tablosunun doğru schema'ya sahip olduğunu test eder
-- `TestTodoTableSchema`: Todo tablosunun doğru schema'ya sahip olduğunu test eder
+- `TestChatTableSchema`: Mesajlaşma tablolarının doğru schema'ya sahip olduğunu ve kullanıcıya bağlanabilecek kolon içermediğini test eder
 
 ### 3. Constraint Tests
 
@@ -73,7 +73,7 @@ go run ./cmd/server
 
 ## ⚠️ Önemli Notlar
 
-1. **Test Database**: Testler `todos_test` database'ini kullanır (production database'i değil)
+1. **Test Database**: Testler `noaddress_test` database'ini kullanır (production database'i değil)
 2. **Migration**: `database.Init()` çağrıldığında migration'lar otomatik çalışır
 3. **Clean State**: Her test öncesi database temizlenmez (manuel cleanup gerekebilir)
 4. **Production**: Production'da bu testler çalıştırılmamalı

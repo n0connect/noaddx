@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/utils"
 )
 
 var securityLogger = utils.NewLogger("SECURITY_MIDDLEWARE")
@@ -16,7 +16,7 @@ func SecurityHeadersMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 
 		if config.IsProductionMode() && IsRequestHTTPS(r) {

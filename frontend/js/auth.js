@@ -2,6 +2,23 @@
 // PROOF OF WORK HELPER FUNCTIONS
 // ========================================
 
+// Trusted Types: the CSP allows exactly one policy, and it whitelists exactly one URL
+const POW_WORKER_PATH = 'js/pow-worker.js';
+const powWorkerPolicy = window.trustedTypes
+    ? window.trustedTypes.createPolicy('noaddress-worker', {
+        createScriptURL: (url) => {
+            if (url !== POW_WORKER_PATH) {
+                throw new TypeError('script URL not whitelisted');
+            }
+            return url;
+        }
+    })
+    : null;
+
+function powWorkerURL() {
+    return powWorkerPolicy ? powWorkerPolicy.createScriptURL(POW_WORKER_PATH) : POW_WORKER_PATH;
+}
+
 // Get PoW challenge from backend
 async function getPowChallenge() {
     try {
@@ -32,7 +49,7 @@ async function getPowChallenge() {
 // Solve PoW challenge using Web Worker
 function solvePowChallenge(challenge) {
     return new Promise((resolve, reject) => {
-        const worker = new Worker('js/pow-worker.js');
+        const worker = new Worker(powWorkerURL());
 
         worker.postMessage({
             challenge: challenge.challenge,
@@ -73,11 +90,32 @@ function solvePowChallenge(challenge) {
 // AUTHENTICATION FUNCTIONS
 // ========================================
 
+// Verifies the server holds the same public key this device derived, then opens the app.
+// A mismatch means the server (or something in between) swapped the identity key.
+async function enterApp(identity, persist) {
+    const check = await apiCall('GET', '/me');
+    if (!check.ok || !check.data || check.data.public_key !== identity.publicKey) {
+        await Keystore.wipe();
+        if (check.ok) {
+            showError('identity mismatch — the server returned a different public key');
+            await apiCall('POST', '/logout');
+        }
+        showMainMenu();
+        return false;
+    }
+    if (persist) {
+        await Keystore.save(identity);
+    }
+    await Chat.start(identity);
+    return true;
+}
+
 async function login() {
     const accountNumberInputElement = document.getElementById('accountNumberInput');
     const errorElement = document.getElementById('loginError');
     const successElement = document.getElementById('loginSuccess');
-    
+    const loginBtn = document.getElementById('loginBtn');
+
     errorElement.textContent = '';
     successElement.textContent = '';
 
@@ -88,10 +126,10 @@ async function login() {
         window.eyeAnimation.stopAnimation();
         window.eyeAnimation.currentZone = 'none';
         window.eyeAnimation.resetToMasked();
-        
+
         // Smoothly mask the input using existing animation
         await animateInputToMask(accountNumberInputElement, originalValue);
-        
+
         // Restore original value after masking
         accountNumberInputElement.value = originalValue;
         accountNumberInputElement.type = 'password';
@@ -109,26 +147,29 @@ async function login() {
         .normalize('NFKC')   // Unicode look-alike cleanup
         .trim();             // Remove leading/trailing hidden whitespace
 
+    if (normalizedAccountNumber.startsWith(NoaddressCrypto.INVITE_PREFIX)) {
+        errorElement.textContent = 'that is an invite — log in first, then use join';
+        return;
+    }
+
     if (
         normalizedAccountNumber.length !== ACCOUNT_NUMBER_LEN ||
         !ACCOUNT_NUMBER_REGEX.test(normalizedAccountNumber)
     ) {
         errorElement.textContent = 'invalid format';
-        console.error('Invalid account number format', {
-            raw: accountNumberInput,
-            normalized: normalizedAccountNumber,
-            length: normalizedAccountNumber.length
-        });
         return;
     }
 
+    loginBtn.disabled = true;
     try {
+        // ZERO-KNOWLEDGE: only HKDF(AccountNumber, "noaddress/auth") goes over the wire
+        const authKey = await NoaddressCrypto.deriveAuthKey(normalizedAccountNumber);
         const response = await fetchWithErrorHandling(`${API_BASE_URL}/login`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ account_number: accountNumberInput })
+            body: JSON.stringify({ auth_key: authKey })
         });
 
         // If fetchWithErrorHandling returned null, it means error was handled and redirected
@@ -137,30 +178,19 @@ async function login() {
         }
 
         const data = await response.json();
-        
+
         if (!data) {
             errorElement.textContent = getUserFriendlyError(null, response.status);
             return;
         }
 
         if (data.success) {
-            // Store account number
-            userAccountNumber = accountNumberInput;
-            sessionStorage.setItem('userAccountNumber', userAccountNumber);
-            
-            if (data.token) {
-                sessionStorage.setItem('jwtToken', data.token);
-                console.log('JWT token stored successfully in sessionStorage');
-            } else {
-                console.warn('Login successful but no token received');
-            }
-            
+            successElement.textContent = 'deriving your keys…';
+            const identity = await NoaddressCrypto.deriveIdentity(normalizedAccountNumber);
+            accountNumberInputElement.value = '';
             errorElement.textContent = '';
-            successElement.textContent = 'login successful';
-            setTimeout(() => {
-                showApp();
-                loadTodos();
-            }, 500);
+            successElement.textContent = '';
+            await enterApp(identity, true);
         } else {
             // SECURITY: Map API error message to generic user-facing message
             const userMsg = getUserFriendlyError(data.message, response.status);
@@ -168,7 +198,9 @@ async function login() {
         }
     } catch (error) {
         errorElement.textContent = 'request failed';
-        console.error('Login error:', error);
+        console.error('Login error:', error && error.name);
+    } finally {
+        loginBtn.disabled = false;
     }
 }
 
@@ -341,7 +373,7 @@ async function copyAccountNumber() {
     } catch (error) {
         // SECURITY: Generic error message, detailed error only in console
         errorElement.textContent = getUserFriendlyError(null, 500).toLowerCase();
-        console.error('AccountNumber generation error:', error);
+        console.error('AccountNumber generation error:', error && error.name);
         accountNumberElement.textContent = 'error - try again';
         // Re-enable copy button on error
         if (copyBtn) {
@@ -506,7 +538,7 @@ async function continueWithAccountNumber() {
         }
 
         const data = await response.json();
-        
+
         if (!data.success) {
             // SECURITY: Map API error message to generic user-facing message
             const userMsg = getUserFriendlyError(data?.message, response.status);
@@ -514,88 +546,34 @@ async function continueWithAccountNumber() {
             showError('Please try again.');
             return;
         }
-        
-        // Account created successfully - use AccountNumber from response (not frontend)
-        userAccountNumber = data.account_number;
-        sessionStorage.setItem('userAccountNumber', userAccountNumber);
-        
+
+        // Account created: derive the E2E identity locally from the account number we hold
+        successElement.textContent = 'deriving your keys…';
+        const identity = await NoaddressCrypto.deriveIdentity(pendingRegistrationAccountNumber);
+
         // Clear pending state
         pendingRegistrationAccountNumber = null;
         pendingRegistrationToken = null;
-        
-        // Store JWT token
-        if (data.token) {
-            sessionStorage.setItem('jwtToken', data.token);
-            showSuccess('Welcome! Your account has been created.');
-            showApp();
-            loadTodos();
-        } else {
-            // Token not provided, try to login
-            loginWithAccountNumber(userAccountNumber);
+        pendingRegistrationPoW = null;
+        document.getElementById('generatedAccountNumber').textContent = '';
+
+        if (await enterApp(identity, true)) {
+            showSuccess('welcome to noaddress.');
         }
-        
+
     } catch (error) {
         // SECURITY: Generic error message, detailed error only in console
-        console.error('Account creation error:', error);
+        console.error('Account creation error:', error && error.name);
         errorElement.textContent = getUserFriendlyError(null, 500).toLowerCase();
         showError('Please try again.');
     }
 }
 
-// Helper function to login with AccountNumber after registration
-async function loginWithAccountNumber(accountNumber) {
-    try {
-        const response = await fetchWithErrorHandling(`${API_BASE_URL}/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ account_number: accountNumber })
-        });
-
-        // If fetchWithErrorHandling returned null, it means error was handled and redirected
-        if (!response) {
-            return;
-        }
-
-        const data = await response.json();
-        
-        if (data.success && data.token) {
-            sessionStorage.setItem('jwtToken', data.token);
-            console.log('JWT token stored from post-registration login');
-            showSuccess('Welcome! You\'re now logged in.');
-            showApp();
-            loadTodos();
-        } else {
-            showError('Please login manually.');
-            showMainMenu();
-        }
-    } catch (error) {
-        console.error('Auto-login error:', error);
-        showError('Please login manually.');
-        showMainMenu();
-    }
-}
-
 async function logout() {
-    // Call logout endpoint to clear HttpOnly cookie
-    try {
-        await fetchWithErrorHandling(`${API_BASE_URL}/logout`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        });
-    } catch (error) {
-        console.error('Logout API call failed:', error);
-        // Continue with client-side cleanup even if API fails
-    }
-
-    // Client-side cleanup
-    userAccountNumber = null;
-    sessionStorage.removeItem('userAccountNumber');
-    sessionStorage.removeItem('jwtToken'); // Legacy token cleanup
-    todos = [];
+    // Forget local key material first, then revoke every server session
+    Chat.stop();
+    await Keystore.wipe();
+    await apiCall('POST', '/logout');
     showMainMenu();
     document.getElementById('accountNumberInput').value = '';
 }

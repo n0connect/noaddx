@@ -3,10 +3,10 @@ package database
 import (
 	"testing"
 
-	"todo-app-backend/internal/database"
-	"todo-app-backend/internal/encryption"
-	"todo-app-backend/internal/models"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/database"
+	"noaddress/internal/encryption"
+	"noaddress/internal/models"
+	"noaddress/tests/testutil"
 )
 
 // TestDatabaseMigration tests that database migrations run successfully
@@ -34,8 +34,10 @@ func TestDatabaseMigration(t *testing.T) {
 		t.Error("users table should exist after migration")
 	}
 
-	if !database.DB.Migrator().HasTable(&models.Todo{}) {
-		t.Error("todos table should exist after migration")
+	for _, table := range []interface{}{&models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{}} {
+		if !database.DB.Migrator().HasTable(table) {
+			t.Errorf("%T table should exist after migration", table)
+		}
 	}
 }
 
@@ -65,6 +67,12 @@ func TestUserTableSchema(t *testing.T) {
 		t.Error("users table should have 'account_hash' column")
 	}
 
+	for _, column := range []string{"public_key", "session_epoch"} {
+		if !database.DB.Migrator().HasColumn(&models.User{}, column) {
+			t.Errorf("users table should have '%s' column", column)
+		}
+	}
+
 	hasEncryptedKey := database.DB.Migrator().HasColumn(&models.User{}, "encrypted_key")
 	if !hasEncryptedKey {
 		t.Error("users table should have 'encrypted_key' column")
@@ -86,8 +94,8 @@ func TestUserTableSchema(t *testing.T) {
 	}
 }
 
-// TestTodoTableSchema tests that Todo table has correct schema
-func TestTodoTableSchema(t *testing.T) {
+// TestChatTableSchema tests that messaging tables store no plaintext-linkable columns
+func TestChatTableSchema(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
 
@@ -96,50 +104,27 @@ func TestTodoTableSchema(t *testing.T) {
 
 	database.Init()
 
-	// Check required columns exist
-	hasID := database.DB.Migrator().HasColumn(&models.Todo{}, "id")
-	if !hasID {
-		t.Error("todos table should have 'id' column")
+	expected := map[interface{}][]string{
+		&models.Invite{}:             {"id", "lookup", "creator_tag", "creator_enc", "master_key_id", "expires_at"},
+		&models.Conversation{}:       {"id"},
+		&models.ConversationMember{}: {"conversation_id", "member_tag", "peer_key_enc", "read_seq"},
+		&models.Message{}:            {"seq", "id", "conversation_id", "sender_tag", "ciphertext"},
+	}
+	for model, columns := range expected {
+		for _, column := range columns {
+			if !database.DB.Migrator().HasColumn(model, column) {
+				t.Errorf("%T should have column %q", model, column)
+			}
+		}
 	}
 
-	hasUserUUID := database.DB.Migrator().HasColumn(&models.Todo{}, "user_uuid")
-	if !hasUserUUID {
-		t.Error("todos table should have 'user_uuid' column")
-	}
-
-	hasTitle := database.DB.Migrator().HasColumn(&models.Todo{}, "title")
-	if !hasTitle {
-		t.Error("todos table should have 'title' column")
-	}
-
-	hasCompleted := database.DB.Migrator().HasColumn(&models.Todo{}, "completed")
-	if !hasCompleted {
-		t.Error("todos table should have 'completed' column")
-	}
-
-	hasTags := database.DB.Migrator().HasColumn(&models.Todo{}, "tags")
-	if !hasTags {
-		t.Error("todos table should have 'tags' column")
-	}
-
-	hasPriority := database.DB.Migrator().HasColumn(&models.Todo{}, "priority")
-	if !hasPriority {
-		t.Error("todos table should have 'priority' column")
-	}
-
-	hasDueDate := database.DB.Migrator().HasColumn(&models.Todo{}, "due_date")
-	if !hasDueDate {
-		t.Error("todos table should have 'due_date' column")
-	}
-
-	hasCreatedAt := database.DB.Migrator().HasColumn(&models.Todo{}, "created_at")
-	if !hasCreatedAt {
-		t.Error("todos table should have 'created_at' column")
-	}
-
-	hasUpdatedAt := database.DB.Migrator().HasColumn(&models.Todo{}, "updated_at")
-	if !hasUpdatedAt {
-		t.Error("todos table should have 'updated_at' column")
+	// Zero-identifier schema: no user UUID or timestamp columns on messaging tables
+	for _, model := range []interface{}{&models.ConversationMember{}, &models.Message{}, &models.Conversation{}} {
+		for _, forbidden := range []string{"user_uuid", "created_at", "updated_at"} {
+			if database.DB.Migrator().HasColumn(model, forbidden) {
+				t.Errorf("%T must not have column %q", model, forbidden)
+			}
+		}
 	}
 }
 
@@ -159,6 +144,13 @@ func TestUserTableIndexes(t *testing.T) {
 
 	if !database.DB.Migrator().HasIndex(&models.User{}, "idx_users_account_lookup") {
 		t.Error("users table should have unique index 'idx_users_account_lookup' on 'account_lookup'")
+	}
+
+	if !database.DB.Migrator().HasIndex(&models.Message{}, "idx_messages_conversation_seq") {
+		t.Error("messages table should have composite index 'idx_messages_conversation_seq'")
+	}
+	if !database.DB.Migrator().HasIndex(&models.Invite{}, "idx_invites_lookup") {
+		t.Error("invites table should have unique index 'idx_invites_lookup'")
 	}
 }
 

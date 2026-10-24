@@ -11,8 +11,8 @@ import (
 
 const (
 	defaultJWTSecretMinLen         = 32
-	defaultJWTIssuer               = "todo-app-backend"
-	defaultJWTAudience             = "todo-app-frontend"
+	defaultJWTIssuer               = "noaddress-backend"
+	defaultJWTAudience             = "noaddress-web"
 	defaultJWTExpirationMinutes    = 15
 	defaultAllowedOrigins          = "http://localhost"
 	defaultAppEnv                  = "development"
@@ -21,17 +21,16 @@ const (
 	defaultDBPort                  = "5432"
 	defaultDBUser                  = "postgres"
 	defaultDBPassword              = "postgres"
-	defaultDBName                  = "todo_app"
+	defaultDBName                  = "noaddress"
 	defaultDBSSLMode               = "disable"
 	defaultBackendPort             = "8080"
-	defaultMaxBase64LoginLen       = 4096
-	defaultMaxBase64TodoLen        = 65536
 	defaultMaxRequestBodyBytes     = 1048576
 	defaultMaxJSONDepth            = 2
-	defaultMaxTitleLength          = 1000
-	defaultMinTitleLength          = 1
-	defaultMaxTagLength            = 6
-	defaultMaxTagsPerTodo          = 10
+	defaultInviteTTLSeconds        = 86400 // Pairing tickets die after 24h
+	defaultMaxActiveInvites        = 5
+	defaultMaxConversationsPerUser = 256
+	defaultMaxMessageBytes         = 8192 // Raw E2E ciphertext (nonce + payload + tag)
+	defaultMessagePageLimit        = 200
 	// Argon2id parameters follow OWASP recommendations (2023)
 	// Memory: 64MiB (65536 KiB) - recommended for password hashing
 	// Time: 3 iterations - balance between security and performance
@@ -40,7 +39,7 @@ const (
 	// High-traffic scenarios (1000+ concurrent) may need adjustment or queueing
 	defaultArgon2MemoryKiB         = 65536
 	defaultArgon2Time              = 3
-	defaultArgon2Parallelism       = 4  // Increased from 2 for better CPU utilization
+	defaultArgon2Parallelism       = 4 // Increased from 2 for better CPU utilization
 	defaultArgon2SaltLength        = 16
 	defaultArgon2HashLength        = 32
 	defaultPendingTokenTTLSeconds  = 300
@@ -56,9 +55,9 @@ const (
 	defaultServerWriteTimeout      = 15
 	defaultServerIdleTimeout       = 60
 	defaultServerMaxHeaderBytes    = 8192
-	defaultPoWDifficulty           = 20  // Strong security with acceptable browser performance (~20-40 sec)
-	minPoWDifficulty               = 18  // Minimum difficulty (low load)
-	maxPoWDifficulty               = 24  // Maximum difficulty (high load, DoS protection)
+	defaultPoWDifficulty           = 20 // Strong security with acceptable browser performance (~20-40 sec)
+	minPoWDifficulty               = 18 // Minimum difficulty (low load)
+	maxPoWDifficulty               = 24 // Maximum difficulty (high load, DoS protection)
 )
 
 // ========================================
@@ -138,20 +137,6 @@ func GetJWTExpiration() time.Duration {
 }
 
 // ========================================
-// API PAYLOAD LIMITS
-// ========================================
-
-// GetMaxBase64LoginLen returns max base64 length for login payloads
-func GetMaxBase64LoginLen() int {
-	return getEnvIntDefault("MAX_BASE64_LOGIN_LEN", defaultMaxBase64LoginLen)
-}
-
-// GetMaxBase64TodoLen returns max base64 length for todo payloads
-func GetMaxBase64TodoLen() int {
-	return getEnvIntDefault("MAX_BASE64_TODO_LEN", defaultMaxBase64TodoLen)
-}
-
-// ========================================
 // REQUEST AND VALIDATION LIMITS
 // ========================================
 
@@ -165,24 +150,37 @@ func GetMaxJSONDepth() int {
 	return getEnvIntDefault("MAX_JSON_DEPTH", defaultMaxJSONDepth)
 }
 
-// GetMaxTitleLength returns max todo title length in runes
-func GetMaxTitleLength() int {
-	return getEnvIntDefault("MAX_TITLE_LENGTH", defaultMaxTitleLength)
+// ========================================
+// MESSAGING CONFIGURATION
+// ========================================
+
+// GetInviteTTL returns how long an unredeemed invite stays valid
+func GetInviteTTL() time.Duration {
+	seconds := getEnvIntDefault("INVITE_TTL_SEC", defaultInviteTTLSeconds)
+	if seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
 }
 
-// GetMinTitleLength returns min todo title length in runes
-func GetMinTitleLength() int {
-	return getEnvIntDefault("MIN_TITLE_LENGTH", defaultMinTitleLength)
+// GetMaxActiveInvites returns the cap on unredeemed invites per user
+func GetMaxActiveInvites() int {
+	return getEnvIntDefault("MAX_ACTIVE_INVITES", defaultMaxActiveInvites)
 }
 
-// GetMaxTagLength returns max tag length
-func GetMaxTagLength() int {
-	return getEnvIntDefault("MAX_TAG_LENGTH", defaultMaxTagLength)
+// GetMaxConversationsPerUser returns the cap on conversations per user
+func GetMaxConversationsPerUser() int {
+	return getEnvIntDefault("MAX_CONVERSATIONS_PER_USER", defaultMaxConversationsPerUser)
 }
 
-// GetMaxTagsPerTodo returns max number of tags per todo
-func GetMaxTagsPerTodo() int {
-	return getEnvIntDefault("MAX_TAGS_PER_TODO", defaultMaxTagsPerTodo)
+// GetMaxMessageBytes returns the max raw ciphertext size of one message
+func GetMaxMessageBytes() int {
+	return getEnvIntDefault("MAX_MESSAGE_BYTES", defaultMaxMessageBytes)
+}
+
+// GetMessagePageLimit returns the max number of messages returned per request
+func GetMessagePageLimit() int {
+	return getEnvIntDefault("MESSAGE_PAGE_LIMIT", defaultMessagePageLimit)
 }
 
 // ========================================
@@ -477,4 +475,3 @@ func MinPoWDifficulty() int {
 func MaxPoWDifficulty() int {
 	return maxPoWDifficulty
 }
-

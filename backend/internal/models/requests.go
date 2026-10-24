@@ -5,27 +5,27 @@
 package models
 
 type LoginRequest struct {
-	AccountNumber string `json:"account_number"`
+	AuthKey string `json:"auth_key"` // HKDF(AccountNumber, "noaddress/auth") — never the AccountNumber itself
 }
 
 type RegisterRequest struct {
-	Confirm      bool   `json:"confirm"`       // false = generate AccountNumber only, true = create account
-	PendingToken string `json:"pending_token"` // required when confirm=true (contains the AccountNumber)
-	PoW          *PoWSolution `json:"pow,omitempty"` // Proof of work solution for registration
+	Confirm      bool         `json:"confirm"`       // false = generate AccountNumber only, true = create account
+	PendingToken string       `json:"pending_token"` // required when confirm=true (references the AccountNumber)
+	PoW          *PoWSolution `json:"pow,omitempty"` // Proof of work solution, required in both phases
 }
 
 type PoWSolution struct {
-	Challenge string `json:"challenge"`
-	Solution  string `json:"solution"`
-	Timestamp int64  `json:"timestamp"`
-	TTL       int64  `json:"ttl"`
-	Difficulty int   `json:"difficulty"`
+	Challenge  string `json:"challenge"`
+	Solution   string `json:"solution"`
+	Timestamp  int64  `json:"timestamp"`
+	TTL        int64  `json:"ttl"`
+	Difficulty int    `json:"difficulty"` // Informational only; the server uses its own issued value
 	Salt       string `json:"salt"`
 }
 
 type PoWChallengeResponse struct {
-	Success   bool         `json:"success"`
-	Message   string       `json:"message"`
+	Success   bool          `json:"success"`
+	Message   string        `json:"message"`
 	Challenge *PoWChallenge `json:"challenge,omitempty"`
 }
 
@@ -52,10 +52,56 @@ type RegisterResponse struct {
 	Confirmed     bool   `json:"confirmed"`               // true if account was created
 }
 
-type TodoRequest struct {
-	Title     string   `json:"title"`
-	Completed bool     `json:"completed"`
-	Tags      []string `json:"tags,omitempty"`
-	DueDate   string   `json:"due_date,omitempty"` // ISO 8601 format
-	Priority  string   `json:"priority,omitempty"` // low, medium, high
+// ---- messaging ----
+
+type MeResponse struct {
+	PublicKey string `json:"public_key"`
+}
+
+type InviteResponse struct {
+	Token     string `json:"token"`      // 16 random bytes, base64url; shown to the user once
+	ExpiresAt int64  `json:"expires_at"` // Unix seconds
+}
+
+type RedeemInviteRequest struct {
+	Token string `json:"token"`
+}
+
+type ConversationDTO struct {
+	ID            string `json:"id"`
+	PeerPublicKey string `json:"peer_public_key"`
+	LastSeq       int64  `json:"last_seq"`
+	ReadSeq       int64  `json:"read_seq"`
+}
+
+type ConversationResponse struct {
+	Conversation ConversationDTO `json:"conversation"`
+}
+
+type ConversationsResponse struct {
+	Conversations []ConversationDTO `json:"conversations"`
+}
+
+type SendMessageRequest struct {
+	ID         string `json:"id"`         // Client-generated UUIDv4, bound into the E2E AAD
+	Ciphertext string `json:"ciphertext"` // base64url(nonce || ciphertext || tag)
+}
+
+type SendMessageResponse struct {
+	Seq int64 `json:"seq"`
+}
+
+type MessageDTO struct {
+	ID         string `json:"id"`
+	Seq        int64  `json:"seq"`
+	Mine       bool   `json:"mine"`
+	Ciphertext string `json:"ciphertext"`
+}
+
+type MessagesResponse struct {
+	Messages []MessageDTO `json:"messages"`
+}
+
+type MarkReadRequest struct {
+	Seq int64 `json:"seq"`
 }

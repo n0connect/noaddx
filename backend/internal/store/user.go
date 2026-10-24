@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"todo-app-backend/internal/database"
-	"todo-app-backend/internal/models"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/database"
+	"noaddress/internal/models"
+	"noaddress/internal/utils"
 
 	"gorm.io/gorm"
 )
@@ -21,6 +21,7 @@ type UserRepository interface {
 	ExistsByUUID(uuid string) (bool, error)
 	ExistsByAccountLookup(lookup string) (bool, error)
 	GetCryptoInfo(uuid string) (string, string, error)
+	BumpSessionEpoch(uuid string) error
 }
 
 // userRepository implements UserRepository
@@ -126,4 +127,19 @@ func (r *userRepository) GetCryptoInfo(uuid string) (string, string, error) {
 	}
 	userRepoLogger.Debug("UserRepository.GetCryptoInfo: retrieved encrypted key for UUID: %s length=%d", uuid, len(user.EncryptedKey))
 	return user.EncryptedKey, user.MasterKeyID, nil
+}
+
+// BumpSessionEpoch invalidates every JWT issued to the user (logout = revoke all sessions)
+func (r *userRepository) BumpSessionEpoch(uuid string) error {
+	userRepoLogger.Debug("UserRepository.BumpSessionEpoch: revoking sessions for UUID: %s", uuid)
+	result := database.DB.Model(&models.User{}).Where("uuid = ?", uuid).
+		UpdateColumn("session_epoch", gorm.Expr("session_epoch + 1"))
+	if result.Error != nil {
+		userRepoLogger.LogError("UserRepository.BumpSessionEpoch", result.Error)
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

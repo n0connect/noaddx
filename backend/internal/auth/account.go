@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/cryptoengine"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/cryptoengine"
+	"noaddress/internal/utils"
 )
 
 var accountLogger = utils.NewLogger("ACCOUNT")

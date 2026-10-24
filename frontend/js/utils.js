@@ -5,30 +5,6 @@
 const API_BASE_URL = '/api/v2';
 const ACCOUNT_NUMBER_LEN = 43;
 const ACCOUNT_NUMBER_REGEX = /^[A-Za-z0-9_-]{43}$/;
-let userAccountNumber = null;
-let currentFilter = 'all';
-let todos = [];
-
-// Get authentication headers
-// SECURITY: Now using HttpOnly cookies (primary) + Bearer token fallback (API clients)
-// Cookie is sent automatically by browser (credentials: 'include' required)
-function getAuthHeaders() {
-    const headers = {
-        'Content-Type': 'application/json'
-    };
-
-    // LEGACY: Support old clients that use Authorization header
-    // Modern clients use HttpOnly cookie (more secure - XSS protection)
-    const token = sessionStorage.getItem('jwtToken');
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-        console.log('getAuthHeaders: Using legacy Authorization header (consider migrating to cookie-only)');
-    } else {
-        console.log('getAuthHeaders: Using HttpOnly cookie authentication');
-    }
-
-    return headers;
-}
 
 // Copy text to clipboard
 function copyToClipboard(text) {
@@ -50,19 +26,6 @@ function copyToClipboard(text) {
             textArea.remove();
         }
     }
-}
-
-// Debounce function for performance
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
 }
 
 // ========================================
@@ -149,9 +112,10 @@ async function handleErrorResponse(response, context = '') {
             break;
         
         case 401:
-            // Special handling: clear token, logout, then redirect
-            sessionStorage.removeItem('jwtToken');
-            sessionStorage.removeItem('userAccountNumber');
+            // Session is gone: forget the stored identity key, then redirect
+            if (typeof Keystore !== 'undefined') {
+                Keystore.wipe();
+            }
             redirectUrl = '/90b6b048-4bc9-4083-8585-9063c8e7332e.html';
             break;
         
@@ -225,4 +189,40 @@ async function fetchWithErrorHandling(url, options = {}) {
         window.location.replace('/9a24ed32-d32d-4b4b-a70e-a0bfd39f6710.html');
         return null;
     }
+}
+
+// JSON API call for in-app actions: never redirects, never throws.
+// Callers decide how to surface errors (notifications) and what 401 means.
+// Returns { ok, status, data } where status 0 means a network failure.
+async function apiCall(method, path, body) {
+    const options = {
+        method: method,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {}
+    };
+    if (body !== undefined) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+    }
+
+    let response;
+    try {
+        response = await fetch(`${API_BASE_URL}${path}`, options);
+    } catch (error) {
+        return { ok: false, status: 0, data: null };
+    }
+
+    let data = null;
+    const contentType = response.headers.get('content-type') || '';
+    if (response.status !== 204 && contentType.includes('application/json')) {
+        try {
+            data = await response.json();
+        } catch (error) {
+            data = null;
+        }
+    } else {
+        await response.text().catch(() => '');
+    }
+    return { ok: response.ok, status: response.status, data: data };
 }

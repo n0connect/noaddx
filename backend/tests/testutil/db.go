@@ -9,10 +9,10 @@ import (
 	"os"
 	"testing"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/database"
-	"todo-app-backend/internal/encryption"
-	"todo-app-backend/internal/models"
+	"noaddress/internal/config"
+	"noaddress/internal/database"
+	"noaddress/internal/encryption"
+	"noaddress/internal/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -48,7 +48,7 @@ func SetupTestDB(t *testing.T) *gorm.DB {
 		os.Setenv("DB_PASSWORD", "postgres")
 	}
 	if os.Getenv("DB_NAME") == "" {
-		os.Setenv("DB_NAME", "todos_test")
+		os.Setenv("DB_NAME", "noaddress_test")
 	}
 	if os.Getenv("DB_SSL_MODE") == "" {
 		os.Setenv("DB_SSL_MODE", "disable")
@@ -112,12 +112,12 @@ func CleanTestDatabase(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
 	// Drop all tables
-	if err := db.Migrator().DropTable(&models.Todo{}, &models.User{}); err != nil {
+	if err := db.Migrator().DropTable(allModels()...); err != nil {
 		t.Logf("Failed to drop tables (may not exist): %v", err)
 	}
 
 	// Run migrations
-	if err := db.AutoMigrate(&models.User{}, &models.Todo{}); err != nil {
+	if err := db.AutoMigrate(allModels()...); err != nil {
 		t.Fatalf("Failed to migrate test database: %v", err)
 	}
 }
@@ -156,7 +156,12 @@ func resetGlobalStateForTesting(t *testing.T) {
 	resetPendingStoreForTesting()
 }
 
-// CleanupTestData removes all test data (users and todos) created during tests
+// allModels lists every table, children before parents
+func allModels() []interface{} {
+	return []interface{}{&models.Message{}, &models.ConversationMember{}, &models.Conversation{}, &models.Invite{}, &models.User{}}
+}
+
+// CleanupTestData removes all test data created during tests
 // This should be called in defer after each test that creates data
 func CleanupTestData(t *testing.T) {
 	t.Helper()
@@ -165,14 +170,10 @@ func CleanupTestData(t *testing.T) {
 		return
 	}
 
-	// Delete all todos first (foreign key constraint)
-	if err := database.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.Todo{}).Error; err != nil {
-		t.Logf("Failed to cleanup todos: %v", err)
-	}
-
-	// Delete all users
-	if err := database.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&models.User{}).Error; err != nil {
-		t.Logf("Failed to cleanup users: %v", err)
+	for _, model := range allModels() {
+		if err := database.DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(model).Error; err != nil {
+			t.Logf("Failed to cleanup %T: %v", model, err)
+		}
 	}
 }
 
@@ -182,11 +183,6 @@ func CleanupTestUser(t *testing.T, userUUID string) {
 
 	if database.DB == nil {
 		return
-	}
-
-	// Delete user's todos first
-	if err := database.DB.Where("user_uuid = ?", userUUID).Delete(&models.Todo{}).Error; err != nil {
-		t.Logf("Failed to cleanup todos for user %s: %v", userUUID, err)
 	}
 
 	// Delete user

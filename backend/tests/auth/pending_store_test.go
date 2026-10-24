@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"todo-app-backend/internal/auth"
-	"todo-app-backend/internal/config"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/auth"
+	"noaddress/internal/config"
+	"noaddress/tests/testutil"
 )
 
 func setupPendingStoreEnv(t *testing.T) {

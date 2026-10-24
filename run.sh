@@ -43,7 +43,7 @@ clean_all() {
     $DC -f docker-compose.test.yaml down -v --rmi local 2>/dev/null || true
     $DC -f docker-compose.yaml down -v --rmi local 2>/dev/null || true
 
-    docker images --filter "reference=*todo*" -q | xargs -r docker rmi -f 2>/dev/null || true
+    docker images --filter "reference=*noaddress*" -q | xargs -r docker rmi -f 2>/dev/null || true
     docker builder prune -f 2>/dev/null || true
 
     rm -rf "$SCRIPT_DIR/test-results" 2>/dev/null || true

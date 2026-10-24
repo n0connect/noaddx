@@ -2,55 +2,59 @@
 // MAIN APPLICATION INITIALIZATION
 // ========================================
 
-// Valid frontend routes (excluding status pages which are handled by nginx)
-const VALID_ROUTES = ['/', ''];
-
 // Check if current URL is a valid frontend route
 function isValidFrontendRoute() {
     const path = window.location.pathname;
-    
+
     // Allow root path
     if (path === '/' || path === '') {
         return true;
     }
-    
+
     // Allow status pages (UUID HTML files) - these are handled by nginx
     const statusPagePattern = /^\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.html$/i;
     if (statusPagePattern.test(path)) {
         return true;
     }
-    
-    // Reject API paths - these should go to backend, not frontend
-    if (path.startsWith('/api/')) {
-        return false;
-    }
-    
-    // Reject any other paths - they don't exist in this SPA
+
+    // Reject any other paths (including /api/*) - they don't exist in this SPA
     return false;
 }
 
+// Resume a session: needs both the stored (non-extractable) identity key and a live cookie
+async function resumeSession() {
+    const identity = await Keystore.load();
+    if (!identity) {
+        showMainMenu();
+        return;
+    }
+    if (!(await enterApp(identity, false))) {
+        showMainMenu();
+    }
+}
+
 // Initialize event listeners when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // Check if current URL is valid for frontend
     if (!isValidFrontendRoute()) {
         // Redirect to 404 page for invalid routes
         window.location.replace('/e0ab670f-6801-4475-b337-c08d5adb9e73.html');
         return;
     }
-    
-    // Check if user is already logged in (using sessionStorage, not localStorage)
-    const savedToken = sessionStorage.getItem('jwtToken');
-    const savedAccountNumber = sessionStorage.getItem('userAccountNumber');
-    
-    if (savedToken) {
-        userAccountNumber = savedAccountNumber;
-        showApp();
-        loadTodos();
-    } else {
-        showMainMenu();
-    }
 
     setupEventListeners();
+
+    // WebCrypto X25519 + secure context are hard requirements (no JS crypto fallbacks)
+    if (!window.isSecureContext || !(await NoaddressCrypto.isSupported())) {
+        showMainMenu();
+        document.getElementById('unsupportedNotice').textContent =
+            'this browser cannot run noaddress. securely (needs https and WebCrypto X25519). update your browser.';
+        document.getElementById('showLoginBtn').disabled = true;
+        document.getElementById('showRegisterFormBtn').disabled = true;
+        return;
+    }
+
+    await resumeSession();
 });
 
 function setupEventListeners() {
@@ -58,15 +62,6 @@ function setupEventListeners() {
     document.getElementById('showLoginBtn').addEventListener('click', showLogin);
     document.getElementById('showRegisterFormBtn').addEventListener('click', showRegisterForm);
     document.getElementById('backToMenuFromLogin').addEventListener('click', showMainMenu);
-    
-    // Yavuzlar logo click handler (placeholder for future functionality)
-    const yavuzlarLogo = document.getElementById('yavuzlarLogo');
-    if (yavuzlarLogo) {
-        yavuzlarLogo.addEventListener('click', function() {
-            // Placeholder for future functionality
-            console.log('Yavuzlar logo clicked');
-        });
-    }
 
     // Brand title click - go back to main menu
     const loginBrandTitle = document.getElementById('loginBrandTitle');
@@ -86,203 +81,63 @@ function setupEventListeners() {
     document.getElementById('accountNumberInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') login();
     });
-    
-    // Eye icon hover to reveal/hide Account Number (handled by eye-hover-animation.js)
-    // const eyeIcon = document.getElementById('eyeIcon');
-    // const accountNumberInput = document.getElementById('accountNumberInput');
-    // if (eyeIcon && accountNumberInput) {
-    //     eyeIcon.addEventListener('mouseenter', function() {
-    //         accountNumberInput.type = 'text';
-    //     });
-    //     eyeIcon.addEventListener('mouseleave', function() {
-    //         accountNumberInput.type = 'password';
-    //     });
-    // }
 
     // Register page event listeners
     document.getElementById('copyBtn').addEventListener('click', copyAccountNumber);
     document.getElementById('continueBtn').addEventListener('click', continueWithAccountNumber);
     document.getElementById('cancelRegistration').addEventListener('click', cancelRegistration);
 
-    // App page event listeners
+    // App: header
     document.getElementById('logoutBtn').addEventListener('click', logout);
-    document.getElementById('addTodoBtn').addEventListener('click', addTodo);
-    
-    // Textarea: Enter to add todo
-    const todoInput = document.getElementById('todoInput');
-    todoInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
+
+    // App: pairing
+    document.getElementById('newInviteBtn').addEventListener('click', () => Chat.createInvite());
+    document.getElementById('showJoinBtn').addEventListener('click', () => {
+        togglePairPanel('joinPanel');
+        document.getElementById('inviteInput').focus();
+    });
+    document.getElementById('closeInviteBtn').addEventListener('click', () => togglePairPanel(null));
+    document.getElementById('closeJoinBtn').addEventListener('click', () => togglePairPanel(null));
+    document.getElementById('copyInviteBtn').addEventListener('click', async () => {
+        const code = document.getElementById('inviteCode').textContent;
+        if (!code) return;
+        try {
+            await copyToClipboard(code);
+            showSuccess('invite copied');
+        } catch (e) {
+            showWarning('copy it manually');
+        }
+    });
+    document.getElementById('joinBtn').addEventListener('click', () => Chat.join());
+    document.getElementById('inviteInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') Chat.join();
+    });
+
+    // App: conversation
+    document.getElementById('backToListBtn').addEventListener('click', () => Chat.backToList());
+    document.getElementById('verifyBtn').addEventListener('click', () => Chat.showSafety());
+    document.getElementById('burnBtn').addEventListener('click', () => Chat.askBurn(true));
+    document.getElementById('burnNoBtn').addEventListener('click', () => Chat.askBurn(false));
+    document.getElementById('burnYesBtn').addEventListener('click', () => Chat.burn());
+    document.getElementById('sendBtn').addEventListener('click', () => Chat.send());
+
+    // Composer: Enter to send, Shift+Enter for a new line
+    const messageInput = document.getElementById('messageInput');
+    messageInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
             e.preventDefault();
-            addTodo();
+            Chat.send();
+        }
+    });
+    messageInput.addEventListener('input', updateComposerMeta);
+
+    // Escape leaves a conversation
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('chatView').style.display !== 'none') {
+            Chat.backToList();
         }
     });
 
-    // Filter buttons
-    document.getElementById('filterAll').addEventListener('click', function() { filterTodos('all'); });
-    document.getElementById('filterActive').addEventListener('click', function() { filterTodos('active'); });
-    document.getElementById('filterCompleted').addEventListener('click', function() { filterTodos('completed'); });
-
-    // Sort select
-    const sortSelect = document.getElementById('sortSelect');
-    if (sortSelect) {
-        sortSelect.addEventListener('change', function() {
-            setSortOrder(this.value);
-        });
-    }
-
-    // Clear completed
-    document.getElementById('clearCompletedBtn').addEventListener('click', clearCompleted);
-    
-    // Close todo menu when clicking outside
-    document.addEventListener('click', function(e) {
-        const menu = document.querySelector('.todo-context-menu');
-        if (menu && !e.target.closest('.todo-context-menu') && !e.target.closest('.more-btn')) {
-            menu.remove();
-        }
-    });
-}
-
-// ========================================
-// TODO CONTEXT MENU
-// ========================================
-
-function showTodoMenu(event, todoId) {
-    event.stopPropagation();
-    
-    // Validate todo ID
-    if (!validateTodoId(todoId)) {
-        showError('Invalid todo ID');
-        return;
-    }
-    
-    // Remove any existing menu
-    const existingMenu = document.querySelector('.todo-context-menu');
-    if (existingMenu) existingMenu.remove();
-    
-    const todo = todos.find(t => t.id === todoId);
-    if (!todo) return;
-    
-    const menu = document.createElement('div');
-    menu.className = 'todo-context-menu';
-    
-    // Priority section
-    const prioritySection = document.createElement('div');
-    prioritySection.className = 'menu-section';
-    
-    const priorityLabel = document.createElement('label');
-    priorityLabel.className = 'menu-label';
-    priorityLabel.textContent = 'priority';
-    prioritySection.appendChild(priorityLabel);
-    
-    const priorityOptions = document.createElement('div');
-    priorityOptions.className = 'menu-options';
-    
-    ['low', 'medium', 'high'].forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = `menu-opt ${todo.priority === p ? 'active' : ''}`;
-        btn.textContent = p === 'medium' ? 'med' : p;
-        btn.addEventListener('click', () => setTodoPriority(todoId, p));
-        priorityOptions.appendChild(btn);
-    });
-    prioritySection.appendChild(priorityOptions);
-    menu.appendChild(prioritySection);
-    
-    // Due date section
-    const dateSection = document.createElement('div');
-    dateSection.className = 'menu-section';
-    
-    const dateLabel = document.createElement('label');
-    dateLabel.className = 'menu-label';
-    dateLabel.textContent = 'due date';
-    dateSection.appendChild(dateLabel);
-    
-    const dateInput = document.createElement('input');
-    dateInput.type = 'date';
-    dateInput.className = 'menu-date';
-    dateInput.value = todo.due_date ? todo.due_date.split('T')[0] : '';
-    dateInput.addEventListener('change', () => setTodoDueDate(todoId, dateInput.value));
-    dateSection.appendChild(dateInput);
-    menu.appendChild(dateSection);
-    
-    // Tags section
-    const tagsSection = document.createElement('div');
-    tagsSection.className = 'menu-section';
-    
-    const tagsLabel = document.createElement('label');
-    tagsLabel.className = 'menu-label';
-    tagsLabel.textContent = 'tags';
-    tagsSection.appendChild(tagsLabel);
-    
-    const tagsInput = document.createElement('input');
-    tagsInput.type = 'text';
-    tagsInput.className = 'menu-tags';
-    tagsInput.placeholder = 'comma separated';
-    tagsInput.value = (todo.tags || []).join(', ');
-    tagsInput.addEventListener('change', () => setTodoTags(todoId, tagsInput.value));
-    tagsSection.appendChild(tagsInput);
-    menu.appendChild(tagsSection);
-    
-    // Position menu near the button
-    const btn = event.target;
-    const rect = btn.getBoundingClientRect();
-    menu.style.position = 'fixed';
-    menu.style.top = (rect.bottom + 5) + 'px';
-    menu.style.right = (window.innerWidth - rect.right) + 'px';
-    
-    document.body.appendChild(menu);
-}
-
-async function setTodoPriority(todoId, priority) {
-    if (!validateTodoId(todoId)) {
-        showError('Invalid todo ID');
-        return;
-    }
-    
-    const todo = todos.find(t => t.id === todoId);
-    if (!todo) return;
-    
-    const priorityValidation = validatePriority(priority);
-    if (!priorityValidation.valid) {
-        showError(priorityValidation.error);
-        return;
-    }
-    
-    await updateTodo(todoId, { priority: priorityValidation.sanitized });
-}
-
-async function setTodoDueDate(todoId, dateStr) {
-    if (!validateTodoId(todoId)) {
-        showError('Invalid todo ID');
-        return;
-    }
-    
-    const todo = todos.find(t => t.id === todoId);
-    if (!todo) return;
-    
-    const dateValidation = validateDate(dateStr || null);
-    if (!dateValidation.valid) {
-        showError(dateValidation.error);
-        return;
-    }
-    
-    await updateTodo(todoId, { due_date: dateValidation.sanitized });
-}
-
-async function setTodoTags(todoId, tagsStr) {
-    if (!validateTodoId(todoId)) {
-        showError('Invalid todo ID');
-        return;
-    }
-    
-    const todo = todos.find(t => t.id === todoId);
-    if (!todo) return;
-    
-    const rawTags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t) : [];
-    const tagsValidation = validateTags(rawTags);
-    if (!tagsValidation.valid) {
-        showError(tagsValidation.error);
-        return;
-    }
-    
-    await updateTodo(todoId, { tags: tagsValidation.sanitized });
+    // Catch up after the tab was hidden or the machine slept
+    document.addEventListener('visibilitychange', () => Chat.onVisible());
 }

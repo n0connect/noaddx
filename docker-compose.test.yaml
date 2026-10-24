@@ -1,14 +1,16 @@
 # docker-compose.test.yaml - Test environment
 # Usage: ./build-test.sh test
 
+name: noaddress-test
+
 services:
   postgres-test:
     image: postgres:15-alpine
-    container_name: todo-postgres-test
+    container_name: noaddress-postgres-test
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: todos_test
+      POSTGRES_DB: noaddress_test
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:
@@ -21,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: test.Dockerfile
-    container_name: todo-test-runner
+    container_name: noaddress-test-runner
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -32,24 +34,24 @@ services:
       DB_PORT: 5432
       DB_USER: postgres
       DB_PASSWORD: postgres
-      DB_NAME: todos_test
+      DB_NAME: noaddress_test
       DB_SSL_MODE: disable
       JWT_SECRET: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       JWT_SECRET_MIN_LEN: "32"
       JWT_EXPIRATION_MINUTES: "15"
-      JWT_ISSUER: "todo-app-backend"
-      JWT_AUDIENCE: "todo-app-frontend"
+      JWT_ISSUER: "noaddress-backend"
+      JWT_AUDIENCE: "noaddress-web"
       MASTER_KEY_ACTIVE: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
       MASTER_KEY_ACTIVE_ID: "test-key-1"
       ACCOUNT_LOOKUP_PEPPER: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-      MAX_BASE64_LOGIN_LEN: "4096"
-      MAX_BASE64_TODO_LEN: "65536"
       MAX_REQUEST_BODY_BYTES: "1048576"
       MAX_JSON_DEPTH: "2"
-      MAX_TITLE_LENGTH: "1000"
-      MIN_TITLE_LENGTH: "1"
-      MAX_TAG_LENGTH: "6"
-      MAX_TAGS_PER_TODO: "10"
+      INVITE_TTL_SEC: "86400"
+      MAX_ACTIVE_INVITES: "5"
+      MAX_CONVERSATIONS_PER_USER: "256"
+      MAX_MESSAGE_BYTES: "8192"
+      MESSAGE_PAGE_LIMIT: "200"
+      POW_DIFFICULTY: "18"
       ARGON2_MEMORY_KIB: "16384"
       ARGON2_TIME: "1"
       ARGON2_PARALLELISM: "2"

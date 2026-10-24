@@ -4,14 +4,23 @@ import (
 	"net/http"
 	"time"
 
-	"todo-app-backend/internal/config"
+	"noaddress/internal/config"
 )
 
 const (
-	AuthCookieName = "__Host-Session"
-	// __Host- prefix requires: Secure flag, no Domain, Path=/
-	// This prevents subdomain cookie attacks and MITM
+	// __Host- prefix requires: Secure flag, no Domain, Path=/ (blocks subdomain/MITM cookie injection)
+	productionCookieName = "__Host-Session"
+	// Browsers reject __Host- cookies without Secure, so plain-HTTP development uses an unprefixed name
+	developmentCookieName = "noaddress_session"
 )
+
+// AuthCookieName returns the session cookie name for the current mode
+func AuthCookieName() string {
+	if config.IsProductionMode() {
+		return productionCookieName
+	}
+	return developmentCookieName
+}
 
 // SetAuthCookie sets a secure, HttpOnly authentication cookie
 // SECURITY: HttpOnly prevents JavaScript access (XSS protection)
@@ -22,10 +31,10 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 	expirationMinutes := config.GetJWTExpiration()
 
 	cookie := &http.Cookie{
-		Name:     AuthCookieName,
+		Name:     AuthCookieName(),
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,  // JavaScript cannot access (XSS protection)
+		HttpOnly: true,                      // JavaScript cannot access (XSS protection)
 		Secure:   config.IsProductionMode(), // HTTPS only in production
 		SameSite: http.SameSiteStrictMode,   // CSRF protection
 		MaxAge:   int(expirationMinutes.Seconds()),
@@ -37,7 +46,7 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 // GetAuthCookie extracts JWT token from cookie
 // Returns empty string if cookie not found or invalid
 func GetAuthCookie(r *http.Request) string {
-	cookie, err := r.Cookie(AuthCookieName)
+	cookie, err := r.Cookie(AuthCookieName())
 	if err != nil {
 		return ""
 	}
@@ -47,7 +56,7 @@ func GetAuthCookie(r *http.Request) string {
 // ClearAuthCookie clears the authentication cookie
 func ClearAuthCookie(w http.ResponseWriter) {
 	cookie := &http.Cookie{
-		Name:     AuthCookieName,
+		Name:     AuthCookieName(),
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,

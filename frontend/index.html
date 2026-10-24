@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>todo.app</title>
+    <meta name="referrer" content="no-referrer">
+    <title>noaddress.</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="account-number-animation.css">
     <link rel="stylesheet" href="eye-hover-animation.css">
@@ -16,27 +17,29 @@
         <!-- MAIN MENU -->
         <div class="main-menu" id="mainMenu">
             <div class="brand">
-                <h1 class="brand-title">todo.app</h1>
-                <p class="tagline">simple. <span class="secure-text" data-text="secure">secure</span>. minimal.</p>
+                <h1 class="brand-title">noaddress.</h1>
+                <p class="tagline">anonymous. <span class="secure-text" data-text="encrypted">encrypted</span>. ephemeral.</p>
             </div>
-            
+
             <div class="main-buttons">
                 <button id="showLoginBtn" class="menu-btn primary-btn">login</button>
-                <button id="showRegisterFormBtn" class="menu-btn secondary-btn">register</button>
+                <button id="showRegisterFormBtn" class="menu-btn secondary-btn">new identity</button>
             </div>
-            
+
+            <p id="unsupportedNotice" class="error"></p>
+
             <footer class="login-footer">
-                <p>encrypted with aes-256-gcm</p>
+                <p>end-to-end · x25519 · aes-256-gcm</p>
             </footer>
         </div>
 
         <!-- LOGIN -->
         <div class="login-container" id="loginContainer" style="display: none;">
             <div class="brand">
-                <h1 class="brand-title clickable" id="loginBrandTitle">todo.app</h1>
-                <p class="tagline">simple. <span class="secure-text" data-text="secure">secure</span>. minimal.</p>
+                <h1 class="brand-title clickable" id="loginBrandTitle">noaddress.</h1>
+                <p class="tagline">anonymous. <span class="secure-text" data-text="encrypted">encrypted</span>. ephemeral.</p>
             </div>
-            
+
             <div class="login-form" id="loginForm">
                 <p class="login-info">enter your account number</p>
                 <div class="login-input-group">
@@ -50,19 +53,19 @@
                 <p id="loginSuccess" class="success"></p>
                 <button id="backToMenuFromLogin" class="text-btn">← back to main menu</button>
             </div>
-            
+
             <footer class="login-footer">
-                <p>encrypted with aes-256-gcm</p>
+                <p>your account number never leaves this device</p>
             </footer>
         </div>
 
         <!-- REGISTER -->
         <div class="register-container" id="registerContainer" style="display: none;">
             <div class="brand">
-                <h1 class="brand-title clickable" id="registerBrandTitle">todo.app</h1>
-                <p class="tagline">simple. <span class="secure-text" data-text="secure">secure</span>. minimal.</p>
+                <h1 class="brand-title clickable" id="registerBrandTitle">noaddress.</h1>
+                <p class="tagline">anonymous. <span class="secure-text" data-text="encrypted">encrypted</span>. ephemeral.</p>
             </div>
-            
+
             <div class="register-form" id="registerForm">
                 <p id="registerError" class="error"></p>
                 <p id="registerSuccess" class="success"></p>
@@ -72,65 +75,103 @@
                         <code id="generatedAccountNumber"></code>
                         <button id="copyBtn" class="copy-btn">copy</button>
                     </div>
-                    <p class="account-number-warning">⚠️ save this account number — it's your only way to access your todos!</p>
+                    <p class="account-number-warning">⚠️ this is your only key. no email, no recovery — lose it and your identity and conversations are gone. never share it.</p>
                     <button id="continueBtn" class="primary-btn" disabled>continue →</button>
                 </div>
-                <button id="cancelRegistration" class="text-btn cancel-reg-btn">✕ cancel registration</button>
+                <button id="cancelRegistration" class="text-btn cancel-reg-btn">✕ cancel</button>
             </div>
-            
+
             <footer class="login-footer">
-                <p>encrypted with aes-256-gcm</p>
+                <p>end-to-end · x25519 · aes-256-gcm</p>
             </footer>
         </div>
 
         <!-- APP -->
         <div class="app-container" id="appContainer" style="display: none;">
             <header>
-                <div class="brand-small">todo.app</div>
+                <div class="brand-small">noaddress.</div>
+                <div class="me-badge" id="meBadge" title="your aura — derived from your public key">
+                    <canvas class="aura-glyph" id="meGlyph" width="5" height="5"></canvas>
+                    <span class="aura-name" id="meName"></span>
+                </div>
                 <button id="logoutBtn" class="text-btn">logout</button>
             </header>
-            
-            <div class="input-section">
-                <div class="add-todo">
-                    <textarea id="todoInput" placeholder="what needs to be done?" rows="1" spellcheck="true"></textarea>
-                    <button id="addTodoBtn" class="add-btn" title="Add todo">+</button>
+
+            <!-- HOME: conversations -->
+            <section id="homeView" class="home-view">
+                <div class="pair-actions">
+                    <button id="newInviteBtn" class="primary-btn">+ invite</button>
+                    <button id="showJoinBtn" class="secondary-btn">join</button>
                 </div>
-                <!-- Hidden inputs for advanced options -->
-                <input type="hidden" id="prioritySelect" value="medium">
-                <input type="hidden" id="dueDateInput" value="">
-                <input type="hidden" id="tagsInput" value="">
-            </div>
 
-            <div class="filters">
-                <button id="filterAll" class="filter-btn active">all</button>
-                <button id="filterActive" class="filter-btn">active</button>
-                <button id="filterCompleted" class="filter-btn">done</button>
-                <select id="sortSelect" class="sort-select">
-                    <option value="created">↕ newest</option>
-                    <option value="due">↕ due date</option>
-                    <option value="priority">↕ priority</option>
-                    <option value="alpha">↕ a-z</option>
-                </select>
-            </div>
+                <div id="invitePanel" class="pair-panel" style="display: none;">
+                    <p class="account-number-label">your invite</p>
+                    <div class="account-number-box" id="inviteBox">
+                        <code id="inviteCode"></code>
+                        <button id="copyInviteBtn" class="copy-btn">copy</button>
+                    </div>
+                    <p class="pair-hint">single use · expires <span id="inviteExpiry"></span> · send it over a channel you trust</p>
+                    <button id="closeInviteBtn" class="text-btn">done</button>
+                </div>
 
-            <div id="tagFilters" class="tag-filters"></div>
+                <div id="joinPanel" class="pair-panel" style="display: none;">
+                    <p class="account-number-label">paste an invite</p>
+                    <div class="join-input-group">
+                        <input type="text" id="inviteInput" placeholder="noaddress:…" maxlength="64" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+                        <button id="joinBtn" class="primary-btn">join</button>
+                    </div>
+                    <button id="closeJoinBtn" class="text-btn">cancel</button>
+                </div>
 
-            <ul id="todoList" class="todo-list"></ul>
+                <ul id="conversationList" class="conversation-list"></ul>
+            </section>
 
-            <div class="todo-footer">
-                <span id="todoCount">0 items</span>
-                <button id="clearCompletedBtn" class="text-btn">clear done</button>
-            </div>
+            <!-- CHAT: one conversation -->
+            <section id="chatView" class="chat-view" style="display: none;">
+                <div class="chat-header">
+                    <button id="backToListBtn" class="action-btn" title="Back">←</button>
+                    <canvas class="aura-glyph" id="peerGlyph" width="5" height="5"></canvas>
+                    <span class="aura-name" id="peerName"></span>
+                    <span id="peerCode" class="aura-code"></span>
+                    <button id="verifyBtn" class="action-btn" title="Verify safety number">verify</button>
+                    <button id="burnBtn" class="action-btn burn-btn" title="Burn conversation">burn</button>
+                </div>
+
+                <div id="safetyPanel" class="pair-panel" style="display: none;">
+                    <p class="account-number-label">safety number</p>
+                    <div id="safetyNumber" class="safety-number"></div>
+                    <p class="pair-hint">compare these digits with your peer on a different channel. a mismatch means someone is in the middle.</p>
+                </div>
+
+                <div id="burnConfirm" class="burn-confirm" style="display: none;">
+                    <span>burn for both sides? this cannot be undone.</span>
+                    <button id="burnYesBtn" class="menu-opt burn-yes">burn</button>
+                    <button id="burnNoBtn" class="menu-opt">keep</button>
+                </div>
+
+                <ol id="messageList" class="message-list"></ol>
+
+                <div class="composer">
+                    <textarea id="messageInput" placeholder="write something…" rows="1" maxlength="2000" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+                    <button id="sendBtn" class="add-btn" title="Send">→</button>
+                </div>
+                <div class="composer-meta">
+                    <span id="charCount">0/2000</span>
+                    <span>enter to send · shift+enter for a new line</span>
+                </div>
+            </section>
         </div>
     </div>
 
     <script src="js/utils.js"></script>
     <script src="js/notifications.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/todo.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/app.js"></script>
+    <script src="js/crypto.js"></script>
+    <script src="js/keystore.js"></script>
     <script src="validation.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/chat.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/app.js"></script>
     <script src="eye-hover-animation.js"></script>
     <script src="secure-hover-animation.js"></script>
     <!-- Notification Container -->

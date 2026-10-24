@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"unicode/utf8"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/cryptoengine"
+	"noaddress/internal/config"
+	"noaddress/internal/cryptoengine"
+
+	"github.com/google/uuid"
 )
 
 var validationLogger = NewLogger("VALIDATION")
 
 // ========================================
-// INPUT VALIDATION - OUTPUT ENCODING APPROACH
+// INPUT VALIDATION - WHITELIST APPROACH
 // ========================================
-// Security Strategy: Accept user input as-is, encode on output
-// XSS Prevention: Frontend uses textContent (auto-escapes HTML)
-// Backend stores data as-is, encrypted with AES-256-GCM
-// This allows emojis, special chars, any Unicode text
+// Security Strategy: the server never sees message plaintext (E2E), so every
+// client field is a fixed-shape token (UUID, base64url key, ciphertext) and is
+// whitelisted by exact format before use. Frontend renders text via textContent.
 
 var (
 	// AccountNumber: Base64URL (no padding) - length derived from byte size
@@ -27,9 +27,13 @@ var (
 	accountNumberBytes   = 32
 	accountNumberLength  = base64.RawURLEncoding.EncodedLen(accountNumberBytes)
 	accountNumberPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+)
 
-	// Base64: Only valid base64 characters
-	base64Pattern = regexp.MustCompile(`^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$`)
+const (
+	// Invite tokens carry 128 bits of CSPRNG output
+	InviteTokenBytes = 16
+	// AES-256-GCM framing: nonce(12) || ciphertext(>=1) || tag(16)
+	minCiphertextBytes = cryptoengine.GCMNonceSize + 1 + cryptoengine.GCMTagSize
 )
 
 func internalIDLength() (int, error) {
@@ -38,32 +42,6 @@ func internalIDLength() (int, error) {
 		return 0, fmt.Errorf("INTERNAL_ID_LENGTH not configured")
 	}
 	return length, nil
-}
-
-func titleLimits() (int, int, error) {
-	minLen := config.GetMinTitleLength()
-	maxLen := config.GetMaxTitleLength()
-	if minLen <= 0 || maxLen <= 0 || minLen > maxLen {
-		return 0, 0, fmt.Errorf("invalid title length configuration")
-	}
-	return minLen, maxLen, nil
-}
-
-func maxTagLength() (int, error) {
-	maxLen := config.GetMaxTagLength()
-	if maxLen <= 0 {
-		return 0, fmt.Errorf("MAX_TAG_LENGTH not configured")
-	}
-	return maxLen, nil
-}
-
-// GetMaxTagsPerTodo returns max tags per todo from config.
-func GetMaxTagsPerTodo() (int, error) {
-	maxTags := config.GetMaxTagsPerTodo()
-	if maxTags <= 0 {
-		return 0, fmt.Errorf("MAX_TAGS_PER_TODO not configured")
-	}
-	return maxTags, nil
 }
 
 func ValidateUUID(uuid string) bool {
@@ -150,111 +128,45 @@ func MaskAccountNumber(accountNumber string) string {
 	return strings.Repeat("*", len(accountNumber)-4) + accountNumber[len(accountNumber)-4:]
 }
 
-// ValidateTitle validates todo title with minimal restrictions
-// Security: XSS is prevented by output encoding (textContent), not input filtering
-// Allows: All Unicode characters including emojis, <, >, quotes, etc.
-// Rejects: Only invalid UTF-8, null bytes, empty strings, and excessive length
-func ValidateTitle(title string) (string, error) {
-	validationLogger.Debug("ValidateTitle: validating input, length: %d", len(title))
-
-	minLen, maxLen, err := titleLimits()
-	if err != nil {
-		return "", err
+// ParseCanonicalUUIDv4 accepts only lowercase, hyphenated, version-4 UUIDs.
+// Rejecting alternate spellings keeps AAD binding and DB keys unambiguous.
+func ParseCanonicalUUIDv4(raw string) (uuid.UUID, bool) {
+	if len(raw) != 36 {
+		return uuid.Nil, false
 	}
-
-	// Step 1: Check for null bytes (security)
-	if strings.Contains(title, "\x00") {
-		validationLogger.Warn("ValidateTitle: null byte detected")
-		return "", fmt.Errorf("invalid characters")
+	parsed, err := uuid.Parse(raw)
+	if err != nil || parsed.Version() != 4 || parsed.Variant() != uuid.RFC4122 || parsed.String() != raw {
+		return uuid.Nil, false
 	}
-
-	// Step 2: Validate UTF-8 encoding
-	if !utf8.ValidString(title) {
-		validationLogger.Warn("ValidateTitle: invalid UTF-8 encoding")
-		return "", fmt.Errorf("invalid encoding")
-	}
-
-	// Step 3: Trim whitespace
-	title = strings.TrimSpace(title)
-
-	if title == "" {
-		validationLogger.Warn("ValidateTitle: empty title rejected")
-		return "", fmt.Errorf("title cannot be empty")
-	}
-
-	// Step 4: Check length (in runes, not bytes - for Unicode support)
-	runeCount := utf8.RuneCountInString(title)
-	if runeCount < minLen {
-		return "", fmt.Errorf("title too short")
-	}
-	if runeCount > maxLen {
-		// Truncate to max length
-		runes := []rune(title)
-		title = string(runes[:maxLen])
-		validationLogger.Debug("ValidateTitle: truncated to %d characters", maxLen)
-	}
-
-	validationLogger.Debug("ValidateTitle: validation passed, final length: %d runes", utf8.RuneCountInString(title))
-	return title, nil
+	return parsed, true
 }
 
-// ValidateBase64Data validates base64 input
-func ValidateBase64Data(data string, maxLen int) error {
-	if data == "" {
-		return fmt.Errorf("empty data")
+// ValidateInviteToken whitelists a base64url (no padding) 16-byte invite token.
+func ValidateInviteToken(token string) ([]byte, bool) {
+	if len(token) != base64.RawURLEncoding.EncodedLen(InviteTokenBytes) || !accountNumberPattern.MatchString(token) {
+		return nil, false
 	}
-	if len(data) > maxLen {
-		return fmt.Errorf("data too large")
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(token)
+	if err != nil || len(raw) != InviteTokenBytes {
+		return nil, false
 	}
-
-	// Whitelist: Only valid base64 characters
-	if !base64Pattern.MatchString(data) {
-		return fmt.Errorf("invalid base64 format")
-	}
-
-	return nil
+	return raw, true
 }
 
-// ValidateTag validates todo tag format
-// Whitelist: Only alphanumeric characters (A-Z, a-z, 0-9), maximum 6 characters
-// Rejects: Special characters, spaces, Unicode, and tags longer than 6 characters
-func ValidateTag(tag string) (string, error) {
-	validationLogger.Debug("ValidateTag: validating input, length: %d", len(tag))
-
-	maxLen, err := maxTagLength()
-	if err != nil {
-		return "", err
+// ValidateCiphertext whitelists an opaque base64url E2E ciphertext within size bounds.
+func ValidateCiphertext(encoded string) bool {
+	maxBytes := config.GetMaxMessageBytes()
+	if maxBytes <= 0 {
+		validationLogger.Error("ValidateCiphertext: MAX_MESSAGE_BYTES not configured")
+		return false
 	}
-
-	// Step 1: Trim whitespace
-	tag = strings.TrimSpace(tag)
-
-	// Step 2: Check if empty
-	if tag == "" {
-		validationLogger.Warn("ValidateTag: empty tag rejected")
-		return "", fmt.Errorf("tag cannot be empty")
+	if len(encoded) < base64.RawURLEncoding.EncodedLen(minCiphertextBytes) ||
+		len(encoded) > base64.RawURLEncoding.EncodedLen(maxBytes) ||
+		!accountNumberPattern.MatchString(encoded) {
+		return false
 	}
-
-	// Step 3: Check length (in bytes, since we only allow ASCII)
-	if len(tag) > maxLen {
-		validationLogger.Warn("ValidateTag: tag too long, length: %d", len(tag))
-		return "", fmt.Errorf("tag too long (maximum %d characters)", maxLen)
-	}
-
-	// Step 4: Validate format - only alphanumeric characters
-	for i := 0; i < len(tag); i++ {
-		if !isAlphaNumeric(tag[i]) {
-			validationLogger.Warn("ValidateTag: invalid tag format")
-			return "", fmt.Errorf("invalid tag format (only letters and numbers allowed)")
-		}
-	}
-	if tag == "" {
-		validationLogger.Warn("ValidateTag: invalid tag format")
-		return "", fmt.Errorf("invalid tag format (only letters and numbers allowed)")
-	}
-
-	validationLogger.Debug("ValidateTag: validation passed, tag: %s", tag)
-	return tag, nil
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
+	return err == nil && len(raw) >= minCiphertextBytes && len(raw) <= maxBytes
 }
 
 func isAlphaNumeric(b byte) bool {

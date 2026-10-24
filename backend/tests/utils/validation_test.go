@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/utils"
 )
 
 func TestGenerateAccountNumber_LengthAndCharset(t *testing.T) {

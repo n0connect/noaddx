@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"runtime"
 	"time"
 )
 
@@ -63,9 +65,31 @@ func (l *Logger) LogResponse(statusCode int, message string) {
 	l.Info("Response sent: status=%d message=%s", statusCode, message)
 }
 
-// LogError logs an error with context
+// LogError logs an error with context and stack trace (RULES.md §6.3)
 func (l *Logger) LogError(operation string, err error) {
-	l.Error("Operation failed: operation=%s error=%v", operation, err)
+	// Get caller info for stack trace
+	_, file, line, ok := runtime.Caller(1)
+	callerInfo := "unknown"
+	if ok {
+		callerInfo = fmt.Sprintf("%s:%d", file, line)
+	}
+
+	// Structured JSON logging (RULES.md §12.2)
+	logEntry := map[string]interface{}{
+		"timestamp": time.Now().Format("2006-01-02T15:04:05.000Z07:00"),
+		"level":     "ERROR",
+		"module":    l.prefix,
+		"operation": operation,
+		"error":     err.Error(),
+		"caller":    callerInfo,
+	}
+
+	if jsonBytes, err := json.Marshal(logEntry); err == nil {
+		log.Println(string(jsonBytes))
+	} else {
+		// Fallback to text format
+		l.Error("Operation failed: operation=%s error=%v caller=%s", operation, err, callerInfo)
+	}
 }
 
 // LogOperation logs the start/end of an operation

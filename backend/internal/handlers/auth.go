@@ -5,13 +5,14 @@ import (
 	"net/http"
 	"strings"
 
-	"todo-app-backend/internal/auth"
-	"todo-app-backend/internal/encryption"
-	"todo-app-backend/internal/middleware"
-	"todo-app-backend/internal/models"
-	"todo-app-backend/internal/pow"
-	"todo-app-backend/internal/store"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/auth"
+	"noaddress/internal/encryption"
+	"noaddress/internal/identity"
+	"noaddress/internal/middleware"
+	"noaddress/internal/models"
+	"noaddress/internal/pow"
+	"noaddress/internal/store"
+	"noaddress/internal/utils"
 )
 
 var (
@@ -47,10 +48,16 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		req.Confirm = false
 	}
 
-	// For Phase 1 (generate AccountNumber), PoW validation is done by middleware
-	if !req.Confirm && req.PoW == nil {
-		authLogger.Warn("PoW solution missing for Phase 1 registration")
+	// SECURITY: PoW is validated here and only here, for both phases, on the exact struct
+	// the handler acts on (no second parser that could disagree about the body)
+	if req.PoW == nil {
+		authLogger.Warn("PoW solution missing for registration (confirm=%v)", req.Confirm)
 		http.Error(w, "Proof of work required", http.StatusPreconditionFailed)
+		return
+	}
+	if !pow.ValidateSolution(req.PoW) {
+		authLogger.Warn("Invalid PoW solution for registration (confirm=%v)", req.Confirm)
+		http.Error(w, "Invalid proof of work", http.StatusForbidden)
 		return
 	}
 
@@ -68,7 +75,13 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Compute lookup for collision check (almost impossible)
-		lookup, err := auth.ComputeAccountLookup(accountNumber)
+		previewAuthKey, err := identity.DeriveAuthKey(accountNumber)
+		if err != nil {
+			authLogger.LogError("DeriveAuthKey", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		lookup, err := auth.ComputeAccountLookup(previewAuthKey)
 		if err != nil {
 			authLogger.LogError("ComputeAccountLookup", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -128,20 +141,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// ZERO-TRUST: Verify pending token and extract AccountNumber from it
 	authLogger.Debug("Phase 2: Confirming account creation")
 
-	// SECURITY: Phase 2 requires PoW validation (separate from Phase 1)
+	// SECURITY: Phase 2 PoW was validated above with a fresh, single-use challenge
 	// This prevents Phase 1 PoW replay and ensures fresh proof-of-work for expensive Argon2id
-	if req.PoW == nil {
-		authLogger.Warn("PoW solution missing for Phase 2 registration")
-		http.Error(w, "Proof of work required", http.StatusPreconditionFailed)
-		return
-	}
-
-	// Validate Phase 2 PoW solution (must be different from Phase 1)
-	if !pow.ValidateSolution(req.PoW) {
-		authLogger.Warn("Invalid PoW solution for Phase 2 registration")
-		http.Error(w, "Invalid proof of work", http.StatusForbidden)
-		return
-	}
 
 	if req.PendingToken == "" {
 		authLogger.Warn("No pending token provided for account confirmation")
@@ -163,8 +164,23 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// ZERO-TRUST: AccountNumber comes from verified token, NOT from user input
 	authLogger.Debug("Phase 2: Creating account with verified AccountNumber: %s", utils.MaskAccountNumber(pendingAccountNumber))
 
+	// ZERO-KNOWLEDGE LOGIN: the server keys the account by a derived auth key, so after this
+	// request it never needs (or sees) the AccountNumber that also seeds the E2E identity
+	authKey, err := identity.DeriveAuthKey(pendingAccountNumber)
+	if err != nil {
+		authLogger.LogError("DeriveAuthKey", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	publicKey, err := identity.DerivePublicKey(pendingAccountNumber)
+	if err != nil {
+		authLogger.LogError("DerivePublicKey", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	// Compute lookup and hash
-	lookup, err := auth.ComputeAccountLookup(pendingAccountNumber)
+	lookup, err := auth.ComputeAccountLookup(authKey)
 	if err != nil {
 		authLogger.LogError("ComputeAccountLookup", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -186,8 +202,8 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Hash account number with Argon2id
-	accountHash, err := auth.HashAccountNumber(pendingAccountNumber)
+	// Hash auth key with Argon2id
+	accountHash, err := auth.HashAccountNumber(authKey)
 	if err != nil {
 		authLogger.LogError("HashAccountNumber", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -220,10 +236,13 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	masterKeyID := encryption.ActiveMasterKeyID()
 
+	// ZERO-TRUST: identity public key is derived server-side from the verified AccountNumber,
+	// never accepted from the client
 	user := models.User{
 		UUID:          internalUUID,
 		AccountLookup: lookup,
 		AccountHash:   accountHash,
+		PublicKey:     publicKey,
 		EncryptedKey:  encryptedUserKey,
 		MasterKeyID:   masterKeyID,
 	}
@@ -236,7 +255,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	authLogger.Info("Successfully registered new user: AccountNumber=%s", utils.MaskAccountNumber(pendingAccountNumber))
 
 	// Generate JWT token for immediate login (using internal UUID as subject)
-	token, err := auth.SignToken(internalUUID)
+	token, err := auth.SignToken(internalUUID, user.SessionEpoch)
 	if err != nil {
 		authLogger.LogError("SignToken", err)
 		// Account created but token failed - user can still login manually
@@ -267,37 +286,6 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	authLogger.LogResponse(http.StatusCreated, "Account created successfully")
 }
 
-// getClientIP extracts the client IP address from the request
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (for proxied requests)
-	forwarded := r.Header.Get("X-Forwarded-For")
-	if forwarded != "" {
-		// Take the first IP if multiple are present
-		parts := strings.Split(forwarded, ",")
-		if len(parts) > 0 {
-			ip := strings.TrimSpace(parts[0])
-			// Remove port if present
-			if colonIndex := strings.Index(ip, ":"); colonIndex != -1 {
-				ip = ip[:colonIndex]
-			}
-			return ip
-		}
-	}
-
-	// Check X-Real-IP header (another common proxy header)
-	realIP := r.Header.Get("X-Real-IP")
-	if realIP != "" {
-		return realIP
-	}
-
-	// Fall back to RemoteAddr
-	ip := r.RemoteAddr
-	if colonIndex := strings.Index(ip, ":"); colonIndex != -1 {
-		ip = ip[:colonIndex]
-	}
-	return ip
-}
-
 func PoWChallengeHandler(w http.ResponseWriter, r *http.Request) {
 	authLogger.LogRequest(r.Method, r.URL.Path, "N/A")
 	authLogger.Debug("Starting PoWChallengeHandler")
@@ -318,8 +306,8 @@ func PoWChallengeHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevent caching of sensitive responses
 	w.Header().Set("Cache-Control", "no-store")
 
-	// Get client IP for rate limiting
-	clientIP := getClientIP(r)
+	// Get client IP for rate limiting (forwarded headers trusted only from TRUSTED_PROXIES)
+	clientIP := middleware.ClientIP(r)
 
 	// Generate a new PoW challenge
 	challenge, err := pow.GenerateChallenge(clientIP)
@@ -372,20 +360,16 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid request"}, http.StatusBadRequest)
 		return
 	}
-	authLogger.Debug("Successfully decoded login request, AccountNumber length: %d", len(req.AccountNumber))
-
-	// SECURITY: Validate AccountNumber format with strict regex pattern before any database operations
-	// This prevents unnecessary database queries for invalid formats
-	// Pattern: ^[A-Za-z0-9_-]{43}$ - exactly 43 base64url characters
-	if !utils.ValidateAccountNumber(req.AccountNumber) {
-		authLogger.Warn("Invalid AccountNumber format in login request: %s", utils.MaskAccountNumber(req.AccountNumber))
+	// SECURITY: Validate auth key format (exactly 32 bytes, base64url) before any database operations
+	// The client sends HKDF(AccountNumber, "noaddress/auth"); the AccountNumber itself never leaves the browser
+	if !identity.ValidateEncodedKey(req.AuthKey) {
+		authLogger.Warn("Invalid auth key format in login request")
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
 		return
 	}
-	authLogger.Debug("AccountNumber format validated: %s", utils.MaskAccountNumber(req.AccountNumber))
 
 	// Compute lookup for database query (only reached if format is valid)
-	lookup, err := auth.ComputeAccountLookup(req.AccountNumber)
+	lookup, err := auth.ComputeAccountLookup(req.AuthKey)
 	if err != nil {
 		authLogger.LogError("ComputeAccountLookup", err)
 		authLogger.Warn("Login failed: lookup computation error")
@@ -409,23 +393,30 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		// This ensures user existence cannot be determined by response time
 		// Even though OpenSSL Argon2id is constant-time within verification,
 		// the absence of verification creates a timing side-channel
-		auth.PerformDummyHashVerification(req.AccountNumber)
+		auth.PerformDummyHashVerification(req.AuthKey)
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
 		return
 	}
 
-	// Verify AccountNumber hash
-	if err := auth.VerifyAccountNumberHash(user.AccountHash, req.AccountNumber); err != nil {
-		authLogger.Warn("Login failed: AccountNumber hash verification failed")
+	// Verify auth key hash
+	if err := auth.VerifyAccountNumberHash(user.AccountHash, req.AuthKey); err != nil {
+		authLogger.Warn("Login failed: auth key hash verification failed")
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
 		return
 	}
 
-	authLogger.Info("Successful login for AccountNumber: %s", utils.MaskAccountNumber(req.AccountNumber))
+	// Accounts created before the E2E identity existed cannot chat: treat as invalid
+	if !identity.ValidateEncodedKey(user.PublicKey) {
+		authLogger.Warn("Login failed: account has no identity key (legacy record)")
+		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
+		return
+	}
+
+	authLogger.Info("Successful login for user UUID: %s", user.UUID)
 
 	// Generate JWT token (using internal UUID as subject)
 	authLogger.Debug("Generating JWT token for user UUID: %s", user.UUID)
-	token, err := auth.SignToken(user.UUID)
+	token, err := auth.SignToken(user.UUID, user.SessionEpoch)
 	if err != nil {
 		authLogger.LogError("SignToken", err)
 		authLogger.Error("Failed to generate JWT token for user UUID: %s", user.UUID)

@@ -1,23 +1,27 @@
 // ========================================
 // UI FUNCTIONS
 // ========================================
+// Rendering only: no network, no crypto. Every user- or server-supplied string
+// reaches the DOM through textContent (never innerHTML).
+
+const VIEW_IDS = ['mainMenu', 'loginContainer', 'registerContainer', 'appContainer'];
+
+function setView(activeId) {
+    VIEW_IDS.forEach(id => {
+        document.getElementById(id).style.display = id === activeId ? 'block' : 'none';
+    });
+}
 
 function showMainMenu() {
-    document.getElementById('mainMenu').style.display = 'block';
-    document.getElementById('loginContainer').style.display = 'none';
-    document.getElementById('registerContainer').style.display = 'none';
-    document.getElementById('appContainer').style.display = 'none';
+    setView('mainMenu');
 }
 
 function showLogin() {
-    document.getElementById('mainMenu').style.display = 'none';
-    document.getElementById('loginContainer').style.display = 'block';
-    document.getElementById('registerContainer').style.display = 'none';
-    document.getElementById('appContainer').style.display = 'none';
+    setView('loginContainer');
     document.getElementById('accountNumberInput').value = '';
     document.getElementById('loginError').textContent = '';
     document.getElementById('loginSuccess').textContent = '';
-    
+
     // Re-initialize eye animation when login page is shown
     // This ensures animation works even if login page is dynamically displayed
     setTimeout(() => {
@@ -29,19 +33,16 @@ function showLogin() {
 }
 
 function showRegisterForm() {
-    document.getElementById('mainMenu').style.display = 'none';
-    document.getElementById('loginContainer').style.display = 'none';
-    document.getElementById('registerContainer').style.display = 'block';
-    document.getElementById('appContainer').style.display = 'none';
+    setView('registerContainer');
     document.getElementById('registerError').textContent = '';
     document.getElementById('registerSuccess').textContent = '';
-    
+
     // Reset Account Number display state
     const accountNumberElement = document.getElementById('generatedAccountNumber');
     const continueBtn = document.getElementById('continueBtn');
     const copyBtn = document.getElementById('copyBtn');
     const accountNumberBox = document.querySelector('.account-number-box');
-    
+
     accountNumberElement.textContent = '';
     accountNumberElement.classList.remove('generating', 'masking', 'revealed');
     continueBtn.disabled = true;
@@ -49,7 +50,7 @@ function showRegisterForm() {
         copyBtn.disabled = false;
     }
     if (accountNumberBox) accountNumberBox.classList.add('show');
-    
+
     // Start fake Account Number animation immediately
     startFakeAccountNumberGeneration(
         accountNumberElement,
@@ -58,180 +59,207 @@ function showRegisterForm() {
     );
 }
 
-function showRegister() {
-    showRegisterForm();
-}
-
 function showApp() {
-    document.getElementById('mainMenu').style.display = 'none';
-    document.getElementById('loginContainer').style.display = 'none';
-    document.getElementById('registerContainer').style.display = 'none';
-    document.getElementById('appContainer').style.display = 'block';
-    setTimeout(() => {
-        document.getElementById('todoInput').focus();
-    }, 300);
+    setView('appContainer');
 }
 
-function renderTodos() {
-    const todoList = document.getElementById('todoList');
-    // Clear safely using removeChild instead of innerHTML
-    while (todoList.firstChild) {
-        todoList.removeChild(todoList.firstChild);
+function clearChildren(element) {
+    while (element.firstChild) {
+        element.removeChild(element.firstChild);
     }
+}
 
-    const filteredTodos = getFilteredAndSortedTodos();
+// ---------- aura ----------
 
-    if (filteredTodos.length === 0) {
-        const emptyMsg = document.createElement('li');
-        emptyMsg.className = 'empty-message';
-        emptyMsg.textContent = 'no todos found';
-        todoList.appendChild(emptyMsg);
-        return;
+// Draws a mirrored 5x5 pixel glyph; CSS scales it up with image-rendering: pixelated
+function drawGlyph(canvas, grid) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 5, 5);
+    ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--fg').trim() || '#000';
+    for (let row = 0; row < 5; row++) {
+        for (let col = 0; col < 5; col++) {
+            if (grid[row][col]) {
+                ctx.fillRect(col, row, 1, 1);
+            }
+        }
     }
+}
 
-    filteredTodos.forEach(todo => {
-        const todoItem = document.createElement('li');
-        // Validate priority before using in className to prevent XSS
-        const priorityValidation = validatePriority(todo.priority || 'medium');
-        const safePriority = priorityValidation.valid ? priorityValidation.sanitized : 'medium';
-        todoItem.className = `todo-item priority-${safePriority}`;
-        
-        // Validate todo ID before setting dataset
-        if (validateTodoId(todo.id)) {
-            todoItem.dataset.todoId = String(todo.id);
-            todoItem.dataset.id = String(todo.id);
-        } else {
-            console.error('Invalid todo ID in render:', todo.id);
-            return; // Skip invalid todos
-        }
-        
-        // Create checkbox
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'todo-checkbox';
-        checkbox.checked = todo.completed;
-        checkbox.addEventListener('change', () => toggleTodo(todo.id));
-        
-        // Create title span
-        const titleSpan = document.createElement('span');
-        titleSpan.className = `todo-title ${todo.completed ? 'completed' : ''}`;
-        titleSpan.textContent = todo.title;
-        titleSpan.addEventListener('dblclick', () => startInlineEdit(titleSpan));
-        
-        // Create edit input
-        const editInput = document.createElement('input');
-        editInput.type = 'text';
-        editInput.className = 'todo-edit-input';
-        editInput.style.display = 'none';
-        editInput.addEventListener('blur', () => finishInlineEdit(editInput));
-        editInput.addEventListener('keydown', (e) => handleEditKeydown(e, editInput));
-        
-        // Create meta group
-        const metaGroup = document.createElement('span');
-        metaGroup.className = 'todo-meta-group';
-        
-        // Priority indicator - only show for high
-        if (todo.priority === 'high') {
-            const prioritySpan = document.createElement('span');
-            prioritySpan.className = 'todo-meta todo-priority-high';
-            prioritySpan.textContent = '!';
-            metaGroup.appendChild(prioritySpan);
-        }
-        
-        // Due date
-        if (todo.due_date) {
-            const dueDate = new Date(todo.due_date);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const isOverdue = dueDate < today && !todo.completed;
-            const isToday = dueDate.toDateString() === today.toDateString();
-            const dateStr = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            
-            const dueDateSpan = document.createElement('span');
-            dueDateSpan.className = `todo-meta todo-due-date ${isOverdue ? 'overdue' : (isToday ? 'today' : '')}`;
-            dueDateSpan.textContent = dateStr;
-            metaGroup.appendChild(dueDateSpan);
-        }
-        
-        // Tags
-        if (todo.tags && todo.tags.length > 0) {
-            const tagsContainer = document.createElement('span');
-            tagsContainer.className = 'todo-tags-inline';
-            todo.tags.forEach(tag => {
-                const tagSpan = document.createElement('span');
-                tagSpan.className = 'todo-tag';
-                tagSpan.textContent = '#' + tag;
-                tagSpan.addEventListener('click', () => filterByTag(tag));
-                tagsContainer.appendChild(tagSpan);
-            });
-            metaGroup.appendChild(tagsContainer);
-        }
-        
-        // Create actions div
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'todo-actions';
-        
-        const editBtn = document.createElement('button');
-        editBtn.className = 'action-btn edit-btn';
-        editBtn.title = 'Edit';
-        editBtn.textContent = '✎';
-        editBtn.addEventListener('click', () => startInlineEditById(todo.id));
-        
-        const moreBtn = document.createElement('button');
-        moreBtn.className = 'action-btn more-btn';
-        moreBtn.title = 'More options';
-        moreBtn.textContent = '⋯';
-        moreBtn.addEventListener('click', (e) => showTodoMenu(e, todo.id));
-        
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'action-btn delete-btn';
-        deleteBtn.title = 'Delete';
-        deleteBtn.textContent = '×';
-        deleteBtn.addEventListener('click', () => deleteTodo(todo.id));
-        
-        actionsDiv.appendChild(editBtn);
-        actionsDiv.appendChild(moreBtn);
-        actionsDiv.appendChild(deleteBtn);
-        
-        // Assemble todo item
-        todoItem.appendChild(checkbox);
-        todoItem.appendChild(titleSpan);
-        todoItem.appendChild(editInput);
-        todoItem.appendChild(metaGroup);
-        todoItem.appendChild(actionsDiv);
-        
-        todoList.appendChild(todoItem);
+function createGlyph(grid) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 5;
+    canvas.height = 5;
+    canvas.className = 'aura-glyph';
+    drawGlyph(canvas, grid);
+    return canvas;
+}
+
+function renderMe(aura) {
+    drawGlyph(document.getElementById('meGlyph'), aura.grid);
+    document.getElementById('meName').textContent = aura.name;
+    document.getElementById('meBadge').title = 'you are ' + aura.name + ' · ' + aura.code;
+}
+
+// ---------- home ----------
+
+function showHome() {
+    document.getElementById('chatView').style.display = 'none';
+    document.getElementById('homeView').style.display = 'block';
+}
+
+function togglePairPanel(panelId) {
+    ['invitePanel', 'joinPanel'].forEach(id => {
+        const panel = document.getElementById(id);
+        panel.style.display = id === panelId && panel.style.display === 'none' ? 'block' : 'none';
     });
 }
 
-function getFilteredTodos() {
-    // This is kept for backward compatibility but getFilteredAndSortedTodos is preferred
-    return getFilteredAndSortedTodos();
+function renderInvite(code, expiresAtSeconds) {
+    const box = document.getElementById('inviteBox');
+    const codeElement = document.getElementById('inviteCode');
+    box.classList.remove('show');
+    codeElement.classList.remove('revealed');
+    codeElement.textContent = code;
+    // Restart the same reveal transition the account number uses
+    requestAnimationFrame(() => {
+        box.classList.add('show');
+        codeElement.classList.add('revealed');
+    });
+    document.getElementById('inviteExpiry').textContent = formatExpiry(expiresAtSeconds);
+    document.getElementById('joinPanel').style.display = 'none';
+    document.getElementById('invitePanel').style.display = 'block';
 }
 
-function filterTodos(filter) {
-    const filterValidation = validateFilter(filter);
-    if (!filterValidation.valid) {
-        showError(filterValidation.error);
+// items: [{ id, aura, unread }] in display order
+function renderConversationList(items, onOpen) {
+    const list = document.getElementById('conversationList');
+    clearChildren(list);
+
+    if (items.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'empty-message';
+        empty.textContent = 'no conversations yet — create an invite and send it to someone you trust';
+        list.appendChild(empty);
         return;
     }
-    
-    currentFilter = filterValidation.sanitized;
-    
-    // Update button states
-    document.querySelectorAll('.filter-btn').forEach(btn => {
-        btn.classList.remove('active');
+
+    items.forEach(item => {
+        const row = document.createElement('li');
+        row.className = 'conversation-item' + (item.unread ? ' unread' : '');
+        row.tabIndex = 0;
+        row.dataset.id = item.id;
+
+        const name = document.createElement('span');
+        name.className = 'aura-name';
+        name.textContent = item.aura.name;
+
+        const code = document.createElement('span');
+        code.className = 'aura-code';
+        code.textContent = '·' + item.aura.code;
+
+        const marker = document.createElement('span');
+        marker.className = 'unread-marker';
+        marker.textContent = item.unread ? 'new' : '›';
+
+        row.appendChild(createGlyph(item.aura.grid));
+        row.appendChild(name);
+        row.appendChild(code);
+        row.appendChild(marker);
+        row.addEventListener('click', () => onOpen(item.id));
+        row.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') onOpen(item.id);
+        });
+        list.appendChild(row);
     });
-    const filterBtn = document.getElementById(`filter${currentFilter.charAt(0).toUpperCase() + currentFilter.slice(1)}`);
-    if (filterBtn) {
-        filterBtn.classList.add('active');
-    }
-    
-    renderTodos();
 }
 
-function updateTodoCount() {
-    const activeCount = todos.filter(todo => !todo.completed).length;
-    const text = `${activeCount} item${activeCount !== 1 ? 's' : ''} left`;
-    document.getElementById('todoCount').textContent = text;
+// ---------- chat ----------
+
+function showChatView(aura) {
+    drawGlyph(document.getElementById('peerGlyph'), aura.grid);
+    document.getElementById('peerName').textContent = aura.name;
+    document.getElementById('peerCode').textContent = '·' + aura.code;
+    document.getElementById('safetyPanel').style.display = 'none';
+    document.getElementById('burnConfirm').style.display = 'none';
+    clearChildren(document.getElementById('messageList'));
+    document.getElementById('homeView').style.display = 'none';
+    document.getElementById('chatView').style.display = 'block';
+}
+
+function renderSafetyNumber(groups) {
+    const box = document.getElementById('safetyNumber');
+    clearChildren(box);
+    groups.forEach(group => {
+        const cell = document.createElement('span');
+        cell.textContent = group;
+        box.appendChild(cell);
+    });
+}
+
+function createMessageElement(message) {
+    const item = document.createElement('li');
+    item.className = 'msg ' + (message.mine ? 'mine' : 'theirs') + (message.broken ? ' broken' : '');
+    item.dataset.seq = String(message.seq);
+
+    const text = document.createElement('div');
+    text.className = 'msg-text';
+    text.textContent = message.broken ? '⚠ unreadable — integrity check failed' : message.text;
+    item.appendChild(text);
+
+    if (!message.broken) {
+        const time = document.createElement('div');
+        time.className = 'msg-time';
+        time.textContent = formatTime(message.sentAt);
+        item.appendChild(time);
+    }
+    return item;
+}
+
+// Appends messages (already sorted by seq) and keeps the view pinned to the bottom
+function appendMessages(messages) {
+    const list = document.getElementById('messageList');
+    const pinned = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+    const empty = list.querySelector('.empty-message');
+    if (empty && messages.length > 0) {
+        empty.remove();
+    }
+    messages.forEach(message => list.appendChild(createMessageElement(message)));
+    if (pinned || messages.some(m => m.mine)) {
+        list.scrollTop = list.scrollHeight;
+    }
+}
+
+function renderEmptyConversation() {
+    const list = document.getElementById('messageList');
+    if (list.children.length === 0) {
+        const empty = document.createElement('li');
+        empty.className = 'empty-message';
+        empty.textContent = 'end-to-end encrypted. say hello.';
+        list.appendChild(empty);
+    }
+}
+
+function updateComposerMeta() {
+    const input = document.getElementById('messageInput');
+    document.getElementById('charCount').textContent = `${[...input.value].length}/${MAX_MESSAGE_CHARS}`;
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+}
+
+// ---------- formatting ----------
+
+function formatTime(ms) {
+    const date = new Date(ms);
+    const now = new Date();
+    const hhmm = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (date.toDateString() === now.toDateString()) {
+        return hhmm;
+    }
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + hhmm;
+}
+
+function formatExpiry(expiresAtSeconds) {
+    const hours = Math.max(0, Math.round((expiresAtSeconds * 1000 - Date.now()) / 3600000));
+    return hours >= 1 ? `in ${hours}h` : 'within the hour';
 }

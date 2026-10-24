@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"todo-app-backend/internal/middleware"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/middleware"
+	"noaddress/tests/testutil"
 )
 
 func TestRateLimitMiddleware_WithinLimit(t *testing.T) {

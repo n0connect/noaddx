@@ -1,17 +1,20 @@
+name: noaddress
+
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: todo-postgres
+    container_name: noaddress-postgres
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
+    # Loopback only: reachable from this machine (psql, local tests), never from the network
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: dev.backend.Dockerfile
-    container_name: todo-backend
+    container_name: noaddress-backend
     environment:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES}
@@ -40,14 +43,14 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE}
       JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES}
       ACCOUNT_LOOKUP_PEPPER: ${ACCOUNT_LOOKUP_PEPPER}
-      MAX_BASE64_LOGIN_LEN: ${MAX_BASE64_LOGIN_LEN}
-      MAX_BASE64_TODO_LEN: ${MAX_BASE64_TODO_LEN}
       MAX_REQUEST_BODY_BYTES: ${MAX_REQUEST_BODY_BYTES}
       MAX_JSON_DEPTH: ${MAX_JSON_DEPTH}
-      MAX_TITLE_LENGTH: ${MAX_TITLE_LENGTH}
-      MIN_TITLE_LENGTH: ${MIN_TITLE_LENGTH}
-      MAX_TAG_LENGTH: ${MAX_TAG_LENGTH}
-      MAX_TAGS_PER_TODO: ${MAX_TAGS_PER_TODO}
+      INVITE_TTL_SEC: ${INVITE_TTL_SEC:-86400}
+      MAX_ACTIVE_INVITES: ${MAX_ACTIVE_INVITES:-5}
+      MAX_CONVERSATIONS_PER_USER: ${MAX_CONVERSATIONS_PER_USER:-256}
+      MAX_MESSAGE_BYTES: ${MAX_MESSAGE_BYTES:-8192}
+      MESSAGE_PAGE_LIMIT: ${MESSAGE_PAGE_LIMIT:-200}
+      POW_DIFFICULTY: ${POW_DIFFICULTY:-20}
       ARGON2_MEMORY_KIB: ${ARGON2_MEMORY_KIB}
       ARGON2_TIME: ${ARGON2_TIME}
       ARGON2_PARALLELISM: ${ARGON2_PARALLELISM}
@@ -68,14 +71,16 @@ services:
       SERVER_MAX_HEADER_BYTES: ${SERVER_MAX_HEADER_BYTES}
       APP_ENV: ${APP_ENV}
       LOG_LEVEL: ${LOG_LEVEL}
+    # Loopback only: browsers must go through nginx (CSP, same-origin); local debugging still works
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --post-data='{\"confirm\": false}' --header='Content-Type: application/json' --server-response --timeout=10 --tries=1 http://localhost:8080/api/v2/register -q -O /dev/null || exit 1"]
+      # GET /api/v2/me without a session must answer 401: proves routing + middleware are up
+      test: ["CMD-SHELL", "wget -S -q -O /dev/null http://localhost:8080/api/v2/me 2>&1 | grep -q ' 401 ' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -85,7 +90,7 @@ services:
     build:
       context: .
       dockerfile: dev.frontend.Dockerfile
-    container_name: todo-frontend
+    container_name: noaddress-frontend
     ports:
       - "80:80"
     depends_on:

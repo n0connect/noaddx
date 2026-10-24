@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/utils"
 )
 
 var rateLimitLogger = utils.NewLogger("RATE_LIMIT")

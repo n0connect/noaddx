@@ -5,10 +5,10 @@ import (
 	"log"
 	"strings"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/encryption"
-	"todo-app-backend/internal/models"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/encryption"
+	"noaddress/internal/models"
+	"noaddress/internal/utils"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -51,7 +51,8 @@ func Init() {
 	dbLogger.Debug("Attempting to connect to PostgreSQL database...")
 	var err error
 	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{ // GORM is go special database lib.
-		Logger: logger.Default.LogMode(gormLogLevel),
+		Logger:         logger.Default.LogMode(gormLogLevel),
+		TranslateError: true, // Surfaces unique violations as gorm.ErrDuplicatedKey
 	})
 	if err != nil {
 		dbLogger.LogError("Database connection", err)
@@ -104,7 +105,7 @@ func Init() {
 	}
 	// Step 3: Now run AutoMigrate to set NOT NULL constraints and indexes
 	// Note: models.Requests is not a database model (only for HTTP request/response DTOs)
-	err = DB.AutoMigrate(&models.User{}, &models.Todo{})
+	err = DB.AutoMigrate(&models.User{}, &models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{})
 	if err != nil {
 		dbLogger.LogError("Database migration", err)
 		log.Fatal("Failed to migrate database:", err)
@@ -157,14 +158,6 @@ func ValidateStartupConfig() error {
 	}
 	dbLogger.Info("ACCOUNT_LOOKUP_PEPPER validated: length=%d bytes", len(pepper))
 
-	// Validate base64 payload limits
-	if config.GetMaxBase64LoginLen() <= 0 {
-		return fmt.Errorf("MAX_BASE64_LOGIN_LEN is required and must be > 0")
-	}
-	if config.GetMaxBase64TodoLen() <= 0 {
-		return fmt.Errorf("MAX_BASE64_TODO_LEN is required and must be > 0")
-	}
-
 	// Validate request limits
 	if config.GetMaxRequestBodyBytes() <= 0 {
 		return fmt.Errorf("MAX_REQUEST_BODY_BYTES is required and must be > 0")
@@ -172,17 +165,15 @@ func ValidateStartupConfig() error {
 	if config.GetMaxJSONDepth() <= 0 {
 		return fmt.Errorf("MAX_JSON_DEPTH is required and must be > 0")
 	}
-	if config.GetMaxTitleLength() <= 0 || config.GetMinTitleLength() <= 0 {
-		return fmt.Errorf("MAX_TITLE_LENGTH and MIN_TITLE_LENGTH are required and must be > 0")
+	// Validate messaging limits
+	if config.GetInviteTTL() <= 0 || config.GetMaxActiveInvites() <= 0 || config.GetMaxConversationsPerUser() <= 0 {
+		return fmt.Errorf("INVITE_TTL_SEC, MAX_ACTIVE_INVITES and MAX_CONVERSATIONS_PER_USER must be > 0")
 	}
-	if config.GetMinTitleLength() > config.GetMaxTitleLength() {
-		return fmt.Errorf("MIN_TITLE_LENGTH cannot exceed MAX_TITLE_LENGTH")
+	if config.GetMaxMessageBytes() <= 0 || config.GetMaxMessageBytes() > config.GetMaxRequestBodyBytes()/2 {
+		return fmt.Errorf("MAX_MESSAGE_BYTES must be > 0 and fit (base64) inside MAX_REQUEST_BODY_BYTES")
 	}
-	if config.GetMaxTagLength() <= 0 {
-		return fmt.Errorf("MAX_TAG_LENGTH is required and must be > 0")
-	}
-	if config.GetMaxTagsPerTodo() <= 0 {
-		return fmt.Errorf("MAX_TAGS_PER_TODO is required and must be > 0")
+	if config.GetMessagePageLimit() <= 0 || config.GetMessagePageLimit() > 1000 {
+		return fmt.Errorf("MESSAGE_PAGE_LIMIT must be between 1 and 1000")
 	}
 	if config.GetInternalIDLength() <= 0 {
 		return fmt.Errorf("INTERNAL_ID_LENGTH is required and must be > 0")

@@ -55,6 +55,19 @@ class EyeHoverAnimation {
             }
         });
 
+        // Typing always wins over the hover effect: restore the real value before the edit lands,
+        // otherwise keystrokes made near the eye are overwritten by the next animation frame
+        const yieldToUser = () => {
+            if (this.currentZone !== 'none') {
+                this.stopAnimation();
+                this.resetToMasked();
+                this.currentZone = 'none';
+                this.updateEyeStyle();
+            }
+        };
+        this.accountNumberInput.addEventListener('keydown', yieldToUser);
+        this.accountNumberInput.addEventListener('paste', yieldToUser);
+
         // Initialize
         this.originalValue = this.accountNumberInput.value;
         this.generateRevealOrder();

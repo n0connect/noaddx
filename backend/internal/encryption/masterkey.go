@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"unsafe"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/utils"
 )
 
 var masterKeyLogger = utils.NewLogger("MASTER_KEY")
@@ -129,4 +130,34 @@ func decodeKeyMaterial(keyRaw string) ([]byte, error) {
 		return []byte(keyRaw), nil
 	}
 	return nil, fmt.Errorf("invalid key length")
+}
+
+// zeroizeKey securely zeros key material in memory (RULES.md §1.2)
+func zeroizeKey(key []byte) {
+	if len(key) == 0 {
+		return
+	}
+	// Zero out the slice
+	for i := range key {
+		key[i] = 0
+	}
+	// Ensure compiler doesn't optimize away the zeroing
+	if len(key) > 0 {
+		ptr := unsafe.Pointer(&key[0])
+		for i := 0; i < len(key); i++ {
+			*(*byte)(unsafe.Add(ptr, i)) = 0
+		}
+	}
+}
+
+// ZeroizeAllKeys explicitly zeros all master keys (call on shutdown)
+func ZeroizeAllKeys() {
+	if masterKeys.active != nil {
+		zeroizeKey(masterKeys.active)
+	}
+	for _, key := range masterKeys.old {
+		if key != nil {
+			zeroizeKey(key)
+		}
+	}
 }

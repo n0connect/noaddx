@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -19,8 +19,17 @@ var (
 
 // Claims represents JWT claims with security best practices
 // Uses RegisteredClaims.Subject for user UUID (standard "sub" claim)
+// SessionEpoch must equal users.session_epoch; logout bumps it to revoke every token
 type Claims struct {
 	jwt.RegisteredClaims
+	SessionEpoch int `json:"sep"`
+}
+
+// Session is the verified result of a session token
+type Session struct {
+	UserUUID     string
+	SessionEpoch int
+	IssuedAt     time.Time
 }
 
 // PendingRegistrationClaims represents JWT claims for pending registration
@@ -62,9 +71,9 @@ func getJWTBaseConfig() (string, string, string, error) {
 	return secret, issuer, audience, nil
 }
 
-// SignToken creates a JWT token for the given user UUID
+// SignToken creates a JWT token for the given user UUID and session epoch
 // Security: Uses HS256, includes iss/aud/iat/exp/nbf claims
-func SignToken(userUUID string) (string, error) {
+func SignToken(userUUID string, sessionEpoch int) (string, error) {
 	jwtLogger.Debug("SignToken: starting token generation for userUUID: %s", userUUID)
 
 	secret, issuer, audience, err := getJWTBaseConfig()
@@ -90,6 +99,7 @@ func SignToken(userUUID string) (string, error) {
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiration)),
 			NotBefore: jwt.NewNumericDate(now),
 		},
+		SessionEpoch: sessionEpoch,
 	}
 
 	// Use HS256 (HMAC-SHA256) - symmetric signing
@@ -209,15 +219,15 @@ func VerifyPendingRegistrationToken(tokenString string) (string, error) {
 	return accountNumber, nil
 }
 
-// VerifyToken verifies a JWT token and returns the user UUID
+// VerifyToken verifies a JWT token and returns the session it carries
 // Security: Validates signing method, issuer, audience, and expiration
-func VerifyToken(tokenString string) (string, error) {
+func VerifyToken(tokenString string) (*Session, error) {
 	jwtLogger.Debug("VerifyToken: starting token verification, tokenLength=%d", len(tokenString))
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
 		jwtLogger.Error("VerifyToken: %v", err)
-		return "", err
+		return nil, err
 	}
 
 	// Parse with explicit validation options
@@ -238,25 +248,25 @@ func VerifyToken(tokenString string) (string, error) {
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			jwtLogger.Warn("VerifyToken: token expired")
-			return "", ErrExpiredToken
+			return nil, ErrExpiredToken
 		}
 		jwtLogger.LogError("VerifyToken", err)
 		jwtLogger.Warn("VerifyToken: invalid token")
-		return "", ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
 	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {
 		jwtLogger.Warn("VerifyToken: token claims invalid or token not valid")
-		return "", ErrInvalidToken
+		return nil, ErrInvalidToken
 	}
 
-	// Validate Subject is not empty
-	if claims.Subject == "" {
-		jwtLogger.Warn("VerifyToken: Subject claim is empty")
-		return "", ErrInvalidToken
+	// Validate Subject is not empty and is not a pending-registration token
+	if claims.Subject == "" || claims.Subject == "pending_registration" || claims.IssuedAt == nil || claims.SessionEpoch < 0 {
+		jwtLogger.Warn("VerifyToken: Subject/iat/sep claims invalid")
+		return nil, ErrInvalidToken
 	}
 
 	jwtLogger.Debug("VerifyToken: successfully verified token for userUUID: %s", claims.Subject)
-	return claims.Subject, nil
+	return &Session{UserUUID: claims.Subject, SessionEpoch: claims.SessionEpoch, IssuedAt: claims.IssuedAt.Time}, nil
 }

@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 
-	"todo-app-backend/internal/config"
+	"noaddress/internal/config"
 )
 
 func maxRequestBodyBytes() (int, error) {
@@ -101,6 +101,11 @@ func DecodeJSONRequest(r *http.Request, v interface{}) error {
 
 	if err := decoder.Decode(v); err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)
+	}
+
+	// Exactly one JSON value per body: trailing data enables parser-differential bypasses
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return fmt.Errorf("invalid JSON: trailing data after top-level value")
 	}
 
 	return nil

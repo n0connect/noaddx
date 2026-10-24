@@ -8,11 +8,9 @@
 *.out
 go.work
 
-# Go binaries (common names)
-server
-main
-backend/server
-backend/main
+# Go binaries built at the module root (anchored: never match source dirs like cmd/server)
+/backend/server
+/backend/main
 
 # Dependencies
 vendor/

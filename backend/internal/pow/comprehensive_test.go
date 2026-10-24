@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"todo-app-backend/internal/models"
+	"noaddress/internal/models"
 )
 
 // TestChallengeLifecycleExtended tests the complete lifecycle of a PoW challenge
@@ -190,7 +190,7 @@ func TestValidateExpiredChallenge(t *testing.T) {
 	// Create a solution (even if it's valid, it should be rejected due to expiration)
 	solution := &models.PoWSolution{
 		Challenge:  challenge.Challenge,
-		Solution:   "any_nonce_would_do",
+		Solution:   "0",
 		Salt:       challenge.Salt,
 		Difficulty: challenge.Difficulty,
 		Timestamp:  challenge.Timestamp,
@@ -429,7 +429,7 @@ func TestMetricsCollection(t *testing.T) {
 	// Try to validate it (should fail and increment expired counter)
 	solution := &models.PoWSolution{
 		Challenge:  expiredChallenge.Challenge,
-		Solution:   "any_nonce",
+		Solution:   "0",
 		Salt:       expiredChallenge.Salt,
 		Difficulty: expiredChallenge.Difficulty,
 		Timestamp:  expiredChallenge.Timestamp,

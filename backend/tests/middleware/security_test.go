@@ -5,15 +5,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"todo-app-backend/internal/middleware"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/middleware"
+	"noaddress/tests/testutil"
 )
 
 func TestSecurityHeadersMiddleware(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
 
-	req := httptest.NewRequest("GET", "/api/v2/todos", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
 
 	rr := httptest.NewRecorder()
 
@@ -30,7 +30,7 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 	headers := map[string]string{
 		"X-Content-Type-Options": "nosniff",
 		"X-Frame-Options":        "DENY",
-		"Referrer-Policy":        "strict-origin-when-cross-origin",
+		"Referrer-Policy":        "no-referrer",
 	}
 
 	for header, expectedValue := range headers {
@@ -50,7 +50,7 @@ func TestSecurityHeadersMiddleware_PermissionsPolicy(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
 
-	req := httptest.NewRequest("GET", "/api/v2/todos", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
 
 	rr := httptest.NewRecorder()
 

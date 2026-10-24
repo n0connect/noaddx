@@ -4,12 +4,11 @@ import (
 	"log"
 	"net/http"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/database"
-	"todo-app-backend/internal/handlers"
-	"todo-app-backend/internal/middleware"
-	"todo-app-backend/internal/pow"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/database"
+	"noaddress/internal/pow"
+	"noaddress/internal/server"
+	"noaddress/internal/utils"
 )
 
 var mainLogger = utils.NewLogger("MAIN")
@@ -22,7 +21,7 @@ func main() {
 		mainLogger.Info("Application is Running in DEVELOPMENT mode")
 	}
 
-	mainLogger.Info("Starting Todo App Backend Server...")
+	mainLogger.Info("Starting noaddress backend server...")
 
 	// Validate database configuration at startup
 	mainLogger.Debug("Validating startup configuration...")
@@ -45,8 +44,7 @@ func main() {
 
 	// -- Server Mux Settings
 	mainLogger.Debug("Setting mux for HTTP server...")
-	mux := http.NewServeMux()
-	setupRoutes(mux)
+	mux := server.NewMux()
 
 	mainLogger.Info("HTTP routes configured successfully")
 
@@ -78,59 +76,4 @@ func main() {
 
 	mainLogger.Info("Server is ready to accept connections")
 	log.Fatal(srv.ListenAndServe())
-}
-
-// Setup routes with proper middleware chain
-// Using http.NewServeMux() for explicit route registration (rejects unregistered endpoints)
-func setupRoutes(mux *http.ServeMux) {
-	mainLogger.Debug("Registering route: GET /api/v2/pow/challenge")
-	mux.HandleFunc("/api/v2/pow/challenge", middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(handlers.PoWChallengeHandler))))
-
-	mainLogger.Debug("Registering route: POST /api/v2/register")
-	mux.HandleFunc("/api/v2/register", middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(middleware.PoWMiddleware(handlers.RegisterHandler)))))
-
-	mainLogger.Debug("Registering route: POST /api/v2/login")
-	mux.HandleFunc("/api/v2/login", middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(middleware.RateLimitMiddleware(handlers.LoginHandler)))))
-
-	mainLogger.Debug("Registering route: POST /api/v2/logout")
-	mux.HandleFunc("/api/v2/logout", middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(handlers.LogoutHandler))))
-
-	mainLogger.Debug("Registering route: GET/POST /api/v2/todos")
-	mux.HandleFunc("/api/v2/todos", middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(middleware.JWTMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			handlers.GetTodosHandler(w, r)
-		case http.MethodPost:
-			handlers.CreateTodoHandler(w, r)
-		default:
-			mainLogger.Warn("Method not allowed for /api/v2/todos: %s", r.Method)
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})))))
-
-	mainLogger.Debug("Registering route: PUT/DELETE /api/v2/todos/")
-	mux.HandleFunc("/api/v2/todos/", middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(middleware.JWTMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPut:
-			handlers.UpdateTodoHandler(w, r)
-		case http.MethodDelete:
-			handlers.DeleteTodoHandler(w, r)
-		default:
-			mainLogger.Warn("Method not allowed for /api/v2/todos/: %s", r.Method)
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})))))
-
-	// Register PoW metrics endpoint
-	mainLogger.Debug("Registering route: GET /api/v2/pow/metrics")
-	mux.HandleFunc("/api/v2/pow/metrics", middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(pow.GetMetricsHandler))))
-
-	// Request Path Whitelist: Handle unknown paths with 404
-	// Only registered paths are allowed, all others return 404
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		mainLogger.Warn("Path not found: %s %s", r.Method, r.URL.Path)
-		http.Error(w, "Not Found", http.StatusNotFound)
-	})
-
-	mainLogger.Info("All routes registered successfully")
 }

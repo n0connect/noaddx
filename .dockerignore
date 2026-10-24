@@ -32,3 +32,6 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+
+# Frontend test sources never ship to nginx
+frontend/tests

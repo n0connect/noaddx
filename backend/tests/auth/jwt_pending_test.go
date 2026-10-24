@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"todo-app-backend/internal/auth"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/auth"
+	"noaddress/tests/testutil"
 )
 
 func setupPendingJWTEnv(t *testing.T) {

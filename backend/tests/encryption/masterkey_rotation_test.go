@@ -4,8 +4,8 @@ import (
 	"os"
 	"testing"
 
-	"todo-app-backend/internal/encryption"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/encryption"
+	"noaddress/tests/testutil"
 )
 
 func TestMasterKeyRotation_DecryptFallback(t *testing.T) {

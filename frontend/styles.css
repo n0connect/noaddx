@@ -295,12 +295,11 @@ button:active {
     transform: translateY(0);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-    transition: all 0.1s ease;
-}
 
-button:hover {
-    background: var(--hover-bg);
-    color: var(--hover-fg);
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .primary-btn {
@@ -521,6 +520,7 @@ header {
 #logoutBtn {
     font-size: 16px;
     padding: 8px 16px;
+    margin-top: 0;
     border: 1px solid transparent;
 }
 
@@ -530,96 +530,27 @@ header {
 }
 
 /* ========================================
-   ADD TODO
+   COMPOSER
    ======================================== */
 
-.add-todo {
+.composer {
     display: flex;
     gap: 12px;
-    margin-bottom: 32px;
+    margin-top: 16px;
 }
 
-.add-todo textarea {
+.composer textarea {
     flex: 1;
     padding: 16px;
     font-size: 18px;
     min-height: 54px;
-    max-height: 200px;
+    max-height: 140px;
 }
 
-.add-todo button {
+.composer button {
     min-width: 54px;
     padding: 16px 24px;
     font-size: 24px;
-}
-
-/* ========================================
-   FILTER BUTTONS
-   ======================================== */
-
-.filters {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 16px;
-}
-
-.filter-btn {
-    font-size: 14px;
-    padding: 4px 10px;
-    background: transparent;
-    border: 1px solid transparent;
-    color: var(--muted);
-    cursor: pointer;
-}
-
-.filter-btn:hover {
-    color: var(--fg);
-}
-
-.filter-btn.active {
-    color: var(--fg);
-    border-color: var(--border);
-}
-
-/* ========================================
-   TODO LIST
-   ======================================== */
-
-.todo-list {
-    list-style: none;
-    margin-bottom: 32px;
-    text-align: left;
-}
-
-/* ========================================
-   TODO FOOTER
-   ======================================== */
-
-.todo-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-}
-
-.todo-footer span {
-    font-size: 14px;
-    color: var(--muted);
-}
-
-.clear-btn {
-    font-size: 14px;
-    padding: 8px 16px;
-    border: none;
-    background: transparent;
-    color: var(--muted);
-}
-
-.clear-btn:hover {
-    color: var(--fg);
-    background: transparent;
 }
 
 /* ========================================
@@ -724,38 +655,26 @@ header {
         padding: 12px 16px;
     }
 
-    .add-todo {
-        flex-direction: column;
-    }
-
-    .add-todo button {
-        width: 100%;
-    }
-
-    .filters {
-        flex-wrap: wrap;
-        gap: 4px;
-    }
-
-    .filter-btn {
-        flex: 1;
-        min-width: 80px;
-    }
-
-    .todo-actions {
-        opacity: 1;
-    }
-
     header {
-        flex-direction: column;
-        gap: 16px;
-        text-align: center;
+        gap: 12px;
+        padding-right: 48px; /* keep logout clear of the fixed logo */
     }
 
-    .todo-footer {
-        flex-direction: column;
-        gap: 12px;
-        text-align: center;
+    /* The glyph alone identifies you on small screens; the name lives in its tooltip */
+    .me-badge .aura-name {
+        display: none;
+    }
+
+    .message-list {
+        height: clamp(200px, calc(100vh - 360px), 560px);
+    }
+
+    .msg {
+        max-width: 88%;
+    }
+
+    .composer-meta span:last-child {
+        display: none;
     }
 
     .account-number-box {
@@ -885,232 +804,27 @@ header {
     animation: fadeInUp 0.6s ease !important;
 }
 
-/* Enhanced add-todo styling */
-.add-todo {
+/* Enhanced composer styling */
+.composer {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
     transition: all 0.2s ease !important;
     gap: 0 !important;
     border: 1px solid var(--border) !important;
 }
 
-.add-todo:focus-within {
+.composer:focus-within {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
     transform: translateY(-1px) !important;
 }
 
-.add-todo textarea {
+.composer textarea {
     border: none !important;
     background: transparent !important;
 }
 
-.add-todo textarea:focus {
+.composer textarea:focus {
     border: none !important;
     box-shadow: none !important;
-}
-
-/* ========================================
-   MINIMAL UI - SORT OPTIONS
-   ======================================== */
-
-/* Sort Select - Compact */
-.sort-select {
-    padding: 4px 8px;
-    font-family: 'VT323', monospace;
-    font-size: 13px;
-    border: 1px solid var(--muted);
-    background: var(--bg);
-    color: var(--muted);
-    border-radius: 3px;
-    cursor: pointer;
-    margin-left: auto;
-}
-
-.sort-select:focus {
-    border-color: var(--fg);
-    outline: none;
-}
-
-/* ========================================
-   TAG SYSTEM STYLES (SIMPLIFIED)
-   ======================================== */
-
-/* Tag Filters Container */
-.tag-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 12px;
-    align-items: center;
-}
-
-.tag-filters:empty {
-    display: none;
-}
-
-.tag-filter-label {
-    font-size: 13px;
-    color: var(--muted);
-}
-
-.tag-filter-btn {
-    background: transparent;
-    border: 1px solid var(--muted);
-    color: var(--muted);
-    padding: 2px 6px;
-    font-family: 'VT323', monospace;
-    font-size: 12px;
-    cursor: pointer;
-    border-radius: 2px;
-    transition: all 0.2s ease;
-}
-
-.tag-filter-btn:hover {
-    border-color: var(--fg);
-    color: var(--fg);
-}
-
-.tag-filter-btn.active {
-    background: var(--fg);
-    color: var(--bg);
-    border-color: var(--fg);
-}
-
-.tag-filter-clear {
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    padding: 2px 6px;
-    font-size: 12px;
-    cursor: pointer;
-}
-
-.tag-filter-clear:hover {
-    color: #ef4444;
-}
-
-/* ========================================
-   TODO ITEM - MINIMAL LAYOUT
-   ======================================== */
-
-.todo-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--border);
-    position: relative;
-}
-
-.todo-item:first-child {
-    border-top: 1px solid var(--border);
-}
-
-.todo-checkbox {
-    width: 16px;
-    height: 16px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    cursor: pointer;
-    flex-shrink: 0;
-    appearance: none;
-    -webkit-appearance: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.todo-checkbox:checked {
-    background: var(--fg);
-}
-
-.todo-checkbox:checked::after {
-    content: '✓';
-    color: var(--bg);
-    font-size: 10px;
-}
-
-.todo-title {
-    flex: 1;
-    font-size: 16px;
-    word-break: break-word;
-    cursor: pointer;
-    transition: opacity 0.2s ease;
-}
-
-.todo-title.completed {
-    text-decoration: line-through;
-    color: var(--muted);
-}
-
-.todo-edit-input {
-    flex: 1;
-    font-family: 'VT323', monospace;
-    font-size: 16px;
-    padding: 4px 8px;
-    border: 1px solid var(--fg);
-    background: var(--bg);
-    color: var(--fg);
-}
-
-/* Meta Group - Inline */
-.todo-meta-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-
-.todo-meta {
-    font-size: 12px;
-    color: var(--muted);
-    white-space: nowrap;
-}
-
-.todo-priority-high {
-    color: #ef4444;
-    font-weight: bold;
-    font-size: 14px;
-}
-
-.todo-due-date.overdue {
-    color: #ef4444;
-}
-
-.todo-due-date.today {
-    color: #f97316;
-}
-
-/* Inline Tags */
-.todo-tags-inline {
-    display: flex;
-    gap: 4px;
-}
-
-.todo-tag {
-    font-size: 11px;
-    color: var(--muted);
-    cursor: pointer;
-    transition: color 0.2s ease;
-}
-
-.todo-tag:hover {
-    color: var(--fg);
-}
-
-/* Todo Actions - Right aligned, visible on hover */
-.todo-actions {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-    margin-left: auto;
-    padding-left: 8px;
-    flex-shrink: 0;
-}
-
-.todo-item:hover .todo-actions {
-    opacity: 1;
 }
 
 /* Action Buttons */
@@ -1128,65 +842,13 @@ header {
     color: var(--fg);
 }
 
-.action-btn.edit-btn:hover {
-    color: #3b82f6;
-}
-
-.action-btn.delete-btn:hover {
+.action-btn.burn-btn:hover {
     color: #ef4444;
 }
 
-/* Priority Border */
-.todo-item.priority-high {
-    border-left: 3px solid #ef4444;
-    padding-left: 8px;
-}
-
-.todo-item.priority-low {
-    border-left: 3px solid #9ca3af;
-    padding-left: 8px;
-}
-
-.todo-item.priority-medium {
-    border-left: 3px solid transparent;
-    padding-left: 8px;
-}
-
 /* ========================================
-   CONTEXT MENU
+   INLINE OPTIONS
    ======================================== */
-
-.todo-context-menu {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    padding: 12px;
-    min-width: 180px;
-    z-index: 1000;
-    font-family: 'VT323', monospace;
-}
-
-.menu-section {
-    margin-bottom: 12px;
-}
-
-.menu-section:last-child {
-    margin-bottom: 0;
-}
-
-.menu-label {
-    display: block;
-    font-size: 11px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 4px;
-}
-
-.menu-options {
-    display: flex;
-    gap: 4px;
-}
 
 .menu-opt {
     flex: 1;
@@ -1211,23 +873,6 @@ header {
     border-color: var(--fg);
 }
 
-.menu-date,
-.menu-tags {
-    width: 100%;
-    padding: 6px 8px;
-    font-family: 'VT323', monospace;
-    font-size: 14px;
-    border: 1px solid var(--muted);
-    background: var(--bg);
-    color: var(--fg);
-}
-
-.menu-date:focus,
-.menu-tags:focus {
-    border-color: var(--fg);
-    outline: none;
-}
-
 /* Empty Message */
 .empty-message {
     text-align: center;
@@ -1235,4 +880,282 @@ header {
     padding: 40px;
     font-style: italic;
     list-style: none;
+}
+/* ========================================
+   NOADDRESS — IDENTITY (AURA)
+   ======================================== */
+
+/* Key-derived 5x5 glyph: drawn at 5px, scaled up crisp */
+.aura-glyph {
+    width: 20px;
+    height: 20px;
+    padding: 2px;
+    box-sizing: content-box;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    image-rendering: pixelated;
+    flex-shrink: 0;
+}
+
+.aura-name {
+    font-size: 18px;
+    letter-spacing: 1px;
+}
+
+.aura-code {
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.me-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    margin-right: 12px;
+    color: var(--muted);
+    cursor: default;
+}
+
+/* ========================================
+   NOADDRESS — PAIRING
+   ======================================== */
+
+.pair-actions {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.pair-actions button {
+    flex: 1;
+}
+
+.pair-panel {
+    border: 1px solid var(--border);
+    padding: 20px;
+    margin-bottom: 24px;
+    text-align: left;
+    animation: fadeInUp 0.3s ease;
+}
+
+.pair-panel .account-number-box code {
+    font-size: 14px;
+    letter-spacing: 1px;
+}
+
+.pair-hint {
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-bottom: 4px;
+}
+
+.pair-panel .text-btn {
+    margin-top: 4px;
+    padding-left: 0;
+}
+
+.join-input-group {
+    display: flex;
+    gap: 12px;
+}
+
+.join-input-group input {
+    flex: 1;
+    font-size: 16px;
+    letter-spacing: 1px;
+}
+
+/* ========================================
+   NOADDRESS — CONVERSATION LIST
+   ======================================== */
+
+.conversation-list {
+    list-style: none;
+    text-align: left;
+    margin-bottom: 16px;
+}
+
+.conversation-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 4px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.2s ease, padding-left 0.2s ease;
+}
+
+.conversation-item:first-child {
+    border-top: 1px solid var(--border);
+}
+
+.conversation-item:hover,
+.conversation-item:focus {
+    background: rgba(0, 0, 0, 0.04);
+    padding-left: 10px;
+    outline: none;
+}
+
+.unread-marker {
+    margin-left: auto;
+    font-size: 14px;
+    color: var(--muted);
+}
+
+.conversation-item.unread .aura-name {
+    font-weight: bold;
+}
+
+.conversation-item.unread .unread-marker {
+    background: var(--fg);
+    color: var(--bg);
+    padding: 0 6px;
+    letter-spacing: 1px;
+}
+
+/* ========================================
+   NOADDRESS — CONVERSATION
+   ======================================== */
+
+@keyframes messageIn {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chat-view {
+    text-align: left;
+    animation: slideInFromRight 0.35s ease;
+}
+
+.chat-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.chat-header .action-btn {
+    font-size: 16px;
+}
+
+.chat-header #verifyBtn {
+    margin-left: auto;
+}
+
+.safety-number {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 22px;
+    letter-spacing: 3px;
+    text-align: center;
+}
+
+.safety-number span {
+    border: 1px solid var(--border);
+    padding: 6px 0;
+}
+
+.burn-confirm {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    color: #cc0000;
+    background: #fff5f5;
+    border-left: 3px solid #cc0000;
+}
+
+.burn-confirm span {
+    flex: 1;
+}
+
+.burn-confirm .menu-opt {
+    flex: 0 0 auto;
+}
+
+.menu-opt.burn-yes {
+    border-color: #cc0000;
+    color: #cc0000;
+}
+
+.menu-opt.burn-yes:hover {
+    background: #cc0000;
+    color: #ffffff;
+}
+
+.message-list {
+    list-style: none;
+    /* Header + chat header + composer stay on screen at any viewport height */
+    height: clamp(200px, calc(100vh - 330px), 560px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 2px;
+    scrollbar-width: thin;
+}
+
+.message-list .empty-message {
+    margin: auto;
+    padding: 0;
+}
+
+.msg {
+    max-width: 78%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    font-size: 17px;
+    line-height: 1.35;
+    animation: messageIn 0.2s ease;
+}
+
+.msg.mine {
+    align-self: flex-end;
+    background: var(--fg);
+    color: var(--bg);
+}
+
+.msg.theirs {
+    align-self: flex-start;
+    background: var(--bg);
+}
+
+.msg.broken {
+    border-style: dashed;
+    background: #fff5f5;
+    color: #cc0000;
+}
+
+.msg-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.msg-time {
+    margin-top: 2px;
+    font-size: 12px;
+    text-align: right;
+    opacity: 0.6;
+}
+
+.composer-meta {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--muted);
 }

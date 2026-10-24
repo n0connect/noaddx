@@ -5,9 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"todo-app-backend/internal/auth"
-	"todo-app-backend/internal/middleware"
-	"todo-app-backend/tests/testutil"
+	"noaddress/internal/auth"
+	"noaddress/internal/middleware"
+	"noaddress/tests/testutil"
 )
 
 func TestJWTMiddleware_ValidToken(t *testing.T) {
@@ -20,13 +20,13 @@ func TestJWTMiddleware_ValidToken(t *testing.T) {
 
 	// Create a valid JWT token
 	userUUID := "test-user-uuid-123456789012"
-	token, err := auth.SignToken(userUUID)
+	token, err := auth.SignToken(userUUID, 0)
 	if err != nil {
 		t.Fatalf("SignToken() failed: %v", err)
 	}
 
 	// Create request with Authorization header
-	req := httptest.NewRequest("GET", "/api/v2/todos", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	// Create response recorder
@@ -63,7 +63,7 @@ func TestJWTMiddleware_MissingHeader(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
 
-	req := httptest.NewRequest("GET", "/api/v2/todos", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
 	// No Authorization header
 
 	rr := httptest.NewRecorder()
@@ -89,7 +89,7 @@ func TestJWTMiddleware_InvalidToken(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
 
-	req := httptest.NewRequest("GET", "/api/v2/todos", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
 	req.Header.Set("Authorization", "Bearer invalid.token.here")
 
 	rr := httptest.NewRecorder()
@@ -117,7 +117,7 @@ func TestJWTMiddleware_ExpiredToken(t *testing.T) {
 
 	// Note: Testing expired tokens requires time manipulation
 	// For now, we test that invalid tokens are rejected
-	req := httptest.NewRequest("GET", "/api/v2/todos", nil)
+	req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
 	req.Header.Set("Authorization", "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiZXhwIjoxfQ.invalid")
 
 	rr := httptest.NewRecorder()
@@ -163,7 +163,7 @@ func TestJWTMiddleware_InvalidHeaderFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/api/v2/todos", nil)
+			req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
 			req.Header.Set("Authorization", tt.header)
 
 			rr := httptest.NewRecorder()

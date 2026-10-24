@@ -1,23 +1,30 @@
 package pow
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
 
-	"todo-app-backend/internal/config"
-	"todo-app-backend/internal/cryptoengine"
-	"todo-app-backend/internal/models"
-	"todo-app-backend/internal/utils"
+	"noaddress/internal/config"
+	"noaddress/internal/cryptoengine"
+	"noaddress/internal/models"
+	"noaddress/internal/utils"
 )
 
 type ChallengeEntry struct {
-	Used      bool
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	Used       bool
+	Difficulty int // Server-issued difficulty; the client's claimed value is never trusted
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
 }
+
+const (
+	challengeBytesLen = 16
+	saltBytesLen      = 16
+	// Worker emits a decimal nonce below 10^7; 20 digits bounds any uint64.
+	maxSolutionDigits = 20
+)
 
 type RateLimiter struct {
 	tokens         int
@@ -106,16 +113,13 @@ func GenerateChallenge(ip string) (*models.PoWChallenge, error) {
 		return nil, fmt.Errorf("rate limit exceeded for IP %s", ip)
 	}
 
-	challengeBytes := make([]byte, 16)
-	_, err := rand.Read(challengeBytes)
+	challengeBytes, err := cryptoengine.RandomBytes(challengeBytesLen)
 	if err != nil {
 		powLogger.LogError("RandomBytes", err)
 		return nil, fmt.Errorf("failed to generate challenge: %w", err)
 	}
 
-	// ONLY OPENSSL USE FOR ANY CRIPTOGRAFIC STATES. FIX IT.
-	saltBytes := make([]byte, 16)
-	_, err = rand.Read(saltBytes)
+	saltBytes, err := cryptoengine.RandomBytes(saltBytesLen)
 	if err != nil {
 		powLogger.LogError("RandomBytes", err)
 		return nil, fmt.Errorf("failed to generate salt: %w", err)
@@ -143,9 +147,10 @@ func GenerateChallenge(ip string) (*models.PoWChallenge, error) {
 	challengeKey := challengeStr + saltStr
 	challengeMutex.Lock()
 	issuedChallenges[challengeKey] = &ChallengeEntry{
-		Used:      false,
-		CreatedAt: now,
-		ExpiresAt: now.Add(time.Duration(ttl) * time.Second),
+		Used:       false,
+		Difficulty: difficulty,
+		CreatedAt:  now,
+		ExpiresAt:  now.Add(time.Duration(ttl) * time.Second),
 	}
 	challengeMutex.Unlock()
 
@@ -233,6 +238,13 @@ func ValidateSolution(solution *models.PoWSolution) bool {
 
 	powLogger.Debug("Validating PoW solution for challenge: %s", truncateForLogging(solution.Challenge))
 
+	// Whitelist the shape of every client-supplied field before touching shared state
+	if !isHexOfLen(solution.Challenge, challengeBytesLen) || !isHexOfLen(solution.Salt, saltBytesLen) || !isDecimal(solution.Solution, maxSolutionDigits) {
+		powLogger.Warn("Malformed PoW solution rejected")
+		RecordValidation(false)
+		return false
+	}
+
 	// Atomic validation - lock once, check everything
 	challengeKey := solution.Challenge + solution.Salt
 
@@ -274,7 +286,7 @@ func ValidateSolution(solution *models.PoWSolution) bool {
 		return false
 	}
 
-	result := hasNLeadingZeros(hash, solution.Difficulty)
+	result := hasNLeadingZeros(hash, entry.Difficulty)
 
 	if result {
 		// Mark as used BEFORE releasing lock
@@ -282,11 +294,36 @@ func ValidateSolution(solution *models.PoWSolution) bool {
 		powLogger.Info("Valid PoW solution accepted for challenge: %s", truncateForLogging(solution.Challenge))
 	} else {
 		powLogger.Warn("Invalid PoW solution for challenge: %s (did not meet difficulty requirement: %d)",
-			truncateForLogging(solution.Challenge), solution.Difficulty)
+			truncateForLogging(solution.Challenge), entry.Difficulty)
 	}
 
 	RecordValidation(result)
 	return result
+}
+
+func isHexOfLen(s string, byteLen int) bool {
+	if len(s) != byteLen*2 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func isDecimal(s string, maxDigits int) bool {
+	if len(s) == 0 || len(s) > maxDigits {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // hasNLeadingZeros checks if the hash has at least n leading zero bits
