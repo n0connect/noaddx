@@ -14,6 +14,7 @@ import (
 	"noaddx/internal/auth"
 	"noaddx/internal/chat"
 	"noaddx/internal/config"
+	"noaddx/internal/cryptoengine"
 	"noaddx/internal/database"
 	"noaddx/internal/encryption"
 	"noaddx/internal/pow"
@@ -32,6 +33,13 @@ func main() {
 	} else {
 		mainLogger.Info("Starting noaddx. backend (development)")
 	}
+
+	// Known-answer self-test of the compiled crypto engine before any key or user data is touched
+	if err := cryptoengine.SelfTest(); err != nil {
+		mainLogger.Error("Crypto engine self-test failed: %v", err)
+		log.Fatal("Crypto engine self-test failed")
+	}
+	mainLogger.Info("Crypto engine: %s (%s), self-test passed", cryptoengine.EngineName(), cryptoengine.EngineVersion())
 
 	if err := database.ValidateStartupConfig(); err != nil {
 		mainLogger.Error("Configuration validation failed: %v", err)

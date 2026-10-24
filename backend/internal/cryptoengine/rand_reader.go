@@ -16,5 +16,5 @@ func (randReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// RandReader exposes the platform CSPRNG (crypto/rand) as an io.Reader.
+// RandReader exposes the active engine's CSPRNG as an io.Reader.
 var RandReader io.Reader = randReader{}

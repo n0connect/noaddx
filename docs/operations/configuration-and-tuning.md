@@ -56,7 +56,13 @@ All settings can be configured via `.env` or injected directly as environment va
 
 ---
 
-### 4. Network, Proxy & Headers
+### 4. Build: Crypto Engine
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `ENGINE` | `openssl` \| `native` | `openssl` | Crypto engine compiled into the backend (`make up ENGINE=native`). Both are byte-for-byte equivalent; the startup log names the engine and library version. A database written by one build is read by the other. |
+
+### 5. Network, Proxy & Headers
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
@@ -70,7 +76,7 @@ All settings can be configured via `.env` or injected directly as environment va
 
 ---
 
-### 5. Argon2id Key Derivation Tuning
+### 6. Argon2id Key Derivation Tuning
 
 Bounds: memory 8192-1048576 KiB (production floor 19456 KiB, the OWASP minimum), time 1-16, parallelism 1-255, salt and hash 16-64 bytes. Stored hashes are checked against the same bounds before verification.
 

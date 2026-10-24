@@ -18,6 +18,24 @@ All cryptographic operations strictly adhere to well-vetted, modern standards:
 | **PKCS#8 for X25519** | RFC 8410 | Encoding private keys for WebCrypto import |
 | **Base64URL** | RFC 4648 Section 5 | URL-safe string encoding (no padding `=` characters) |
 
+### Two Equivalent Crypto Engines
+
+Every server-side primitive goes through one internal API (`backend/internal/cryptoengine`), implemented twice and selected at build time:
+
+| Engine | Build | Library |
+|---|---|---|
+| `openssl` *(default)* | `make up` / `ENGINE=openssl` (Go tag `openssl`, CGO on) | libcrypto >= 3.2: `EVP_Digest`, `EVP_Q_mac`, `EVP_KDF` (`HKDF`, `ARGON2ID`), `EVP_aes_256_gcm`, `EVP_PKEY` X25519, `RAND_bytes`, `CRYPTO_memcmp` |
+| `native` | `make up ENGINE=native` (CGO off, static binary) | Go `crypto/*` + `golang.org/x/crypto/argon2`, `hkdf` |
+
+The engines are **byte-for-byte equivalent**, and this is enforced, not assumed:
+
+1. **One validation layer.** Lengths, ranges and Argon2id parameters are checked once, before an engine is called, so both engines always see the same well-formed input and refuse the same bad input.
+2. **Known-answer tests** (FIPS 180-4, RFC 4231, RFC 5869, the Argon2 reference implementation, GCM test case 16, RFC 7748) run against whichever engine is compiled in.
+3. **Differential tests** (`make test-equivalence`) link both engines into one binary and compare every primitive on random inputs and edge cases: non-canonical and low-order X25519 points, odd Argon2id memory sizes, empty AAD and plaintext, each engine opening what the other sealed, and identical rejection of tampered ciphertext.
+4. **Startup self-test.** The server runs the known-answer vectors on its engine before touching keys or data and refuses to start on any mismatch; the log names the engine and library version.
+
+Accounts, stored records and messages are therefore portable between the two builds: a database written by one engine is read by the other.
+
 ---
 
 ## Key Derivation Hierarchy

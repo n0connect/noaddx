@@ -10,7 +10,7 @@
 +------------------------------------------------------------------------+
 |                        BROWSER (Client Side)                           |
 |  - Vanilla JavaScript (ES2020), no frontend framework or build step    |
-|  - W3C WebCrypto API: X25519, HKDF-SHA256, AES-256-GCM                |
+|  - W3C WebCrypto API: X25519, HKDF-SHA256, AES-256-GCM                 |
 |  - IndexedDB Keystore: non-extractable CryptoKey storage               |
 |  - Web Worker: Proof of Work (PoW) SHA-256 hashcash solver             |
 +-----------------------------------+------------------------------------+
@@ -20,7 +20,7 @@
 |                       NGINX (Reverse Proxy)                            |
 |  - Static SPA file server (/usr/share/nginx/html)                      |
 |  - Zero Telemetry: access logs disabled, error logs restricted to crit |
-|  - Strict CSP + Trusted Types policy ('noaddx-worker')              |
+|  - Strict CSP + Trusted Types policy ('noaddx-worker')                 |
 |  - Unbuffered SSE proxy for /api/v2/events (proxy_buffering off)       |
 |  - Strips/Overrides untrusted client proxy headers                     |
 +-----------------------------------+------------------------------------+
@@ -28,10 +28,10 @@
                                     v
 +------------------------------------------------------------------------+
 |                        GO BACKEND SERVER                               |
-|  - Go 1.26+ (CGO_ENABLED=0, pure Go crypto standard library)           |
+|  - Go 1.26+, crypto engine: OpenSSL (cgo) or Go stdlib (equivalent)    |
 |  - Custom http.ServeMux with strict route & query parameter whitelist  |
-|  - Middleware chain: SecurityHeaders -> CORS -> ContentType -> JWT     |
-|  - In-Memory Realtime Hub (SSE subscriber management & stream tags)   |
+|  - Middleware: Headers -> CORS -> SameOrigin -> ContentType -> JWT     |
+|  - In-Memory Realtime Hub (SSE subscriber management & stream tags)    |
 |  - Master Key Management with dual-key rotation support                |
 |  - Background Retention Daemon (hourly expiration purge)               |
 +-----------------------------------+------------------------------------+

@@ -44,6 +44,16 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
 - **Containers.** Every published port binds to loopback; the backend runs as an unprivileged
   user on a read-only filesystem without capabilities.
 
+### Added
+
+- **Two byte-for-byte equivalent crypto engines.** The OpenSSL engine (libcrypto >= 3.2 through
+  cgo, now with HKDF and X25519) returns alongside the native Go engine; `ENGINE=openssl|native`
+  picks one at build time and OpenSSL is the default. Input validation is shared, known-answer
+  tests run on both, a differential suite proves identical outputs and rejections
+  (`make test-equivalence`), and the server runs a known-answer self-test before it starts.
+- Release tags per engine (`noaddx-openssl-vX.Y.Z`, `noaddx-native-vX.Y.Z`), moving dev tags
+  (`noaddx-openssl-dev`, `noaddx-native-dev`) and `make build-ref REF=<tag>` to rebuild any of them.
+
 ### Changed
 
 - The project is now **noaddx.** (formerly noaddress.). Protocol labels changed with the name, so

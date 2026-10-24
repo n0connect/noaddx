@@ -23,6 +23,9 @@ services:
     build:
       context: .
       dockerfile: test.Dockerfile
+      args:
+        ENGINE: ${ENGINE:-openssl}
+    image: noaddx-test-runner:${ENGINE:-openssl}
     container_name: noaddx-test-runner
     depends_on:
       postgres-test:

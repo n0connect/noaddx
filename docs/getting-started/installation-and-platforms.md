@@ -7,7 +7,7 @@ This guide provides deep, situation-aware setup instructions across **macOS (App
 ## Hardware & Architecture Overview
 
 `noaddx.` is engineered to be portable and lightweight:
-- **Backend:** Pure Go 1.26+ built with `CGO_ENABLED=0` (no CGO, no OpenSSL dependency); the image builds a stripped, reproducible static binary and runs it as an unprivileged user.
+- **Backend:** Go 1.26+ with one of two byte-for-byte equivalent crypto engines: OpenSSL 3.5 LTS through cgo (default) or the Go standard library (`ENGINE=native`, `CGO_ENABLED=0`); the image builds a stripped, reproducible static binary and runs it as an unprivileged user.
 - **Frontend:** Vanilla modern JavaScript using the native W3C WebCrypto API (no webpack, no npm bundle dependencies for runtime).
 - **Docker Images:** `golang:1.27.3-bookworm` (build), `debian:bookworm-slim`, `postgres:15-alpine` and `nginx:1.30-alpine` have official multi-architecture support for both `linux/amd64` and `linux/arm64`.
 
@@ -23,6 +23,8 @@ This guide provides deep, situation-aware setup instructions across **macOS (App
 ### Prerequisites
 
 Install Docker Desktop (or OrbStack / Colima) and, for running tests natively, Go 1.26+ and Node.js 20+ (`brew install go node`). The system `openssl` is enough for `make setup`: it only calls `openssl rand`, which LibreSSL implements with the platform CSPRNG.
+
+Docker builds need nothing else: the OpenSSL engine compiles inside the image against Debian's OpenSSL 3.5 LTS. To run the **OpenSSL engine natively** (`make test-unit ENGINE=openssl`), install OpenSSL >= 3.2 development files and `pkg-config` (`brew install openssl@3 pkg-config`; Debian/Ubuntu: `apt install libssl-dev pkg-config`; on Ubuntu 22.04, whose OpenSSL is 3.0, use Docker or the native engine). The build stops with a clear error on older headers, and the binary refuses to start on an older runtime library.
 
 ### Docker Desktop on macOS
 - Ensure Docker Desktop is running.

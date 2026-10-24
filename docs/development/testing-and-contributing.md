@@ -14,7 +14,7 @@ This guide covers running test suites across Go backend units, database migratio
 +-------------------------------------------------------------+
 | 2. Backend Unit & Cryptographic Tests                       |
 |    go test -tags=test ./internal/...                        |
-|    (Pure Go, runs without external database)                |
+|    (either ENGINE, runs without external database)          |
 +-------------------------------------------------------------+
 | 3. Database Migration & Integration E2E Tests               |
 |    Requires PostgreSQL (containerized or local)             |
@@ -36,7 +36,7 @@ make test
 
 **What this does:**
 1. Starts `postgres-test` with temporary in-memory storage (`tmpfs`).
-2. Builds `test.Dockerfile` using `CGO_ENABLED=0` (pure Go crypto).
+2. Builds `test.Dockerfile` for `ENGINE` (OpenSSL by default, with the equivalence suite; `ENGINE=native` for the Go engine).
 3. Executes unit and integration test packages.
 4. Shuts down and cleans up test containers.
 5. Emits output to `test-results/output.log`.
@@ -49,7 +49,8 @@ If developing natively on your host machine:
 
 #### 1. Non-DB Unit Tests (Instant, No Postgres Required)
 ```bash
-make test-unit
+make test-unit                 # OpenSSL engine (needs OpenSSL >= 3.2 headers + pkg-config)
+make test-unit ENGINE=native   # Go standard library engine
 # Direct command: cd backend && go test -tags=test ./internal/... ./tests/auth/... ./tests/encryption/... ./tests/identity/... ./tests/middleware/... ./tests/utils/...
 ```
 

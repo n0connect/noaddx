@@ -28,6 +28,7 @@
 - **Per-Conversation Sequencing:** Sequence numbers (`seq`) are strictly per-conversation atomic counters, eliminating global activity correlation across rooms.
 - **Automated Ephemerality:** Ciphertexts are purged via a day-granular hourly background retention daemon (`MESSAGE_TTL_DAYS`, default 7 days). Bilateral "Burn" allows instant, complete erasure on demand.
 - **Zero Telemetry:** Access logging is disabled, IP recording is omitted, and server master keys are zeroized in memory upon shutdown.
+- **Two Equivalent Crypto Engines:** The backend builds against OpenSSL (default) or the Go standard library (`ENGINE=native`). Both produce byte-identical results, proven by a differential test suite and a startup self-test.
 
 ---
 
@@ -149,8 +150,8 @@ The project uses a standard `Makefile` for container management and test automat
 ```bash
 # Manage containers
 make setup        # Generate .env with fresh cryptographic keys
-make build        # Build Docker service images
-make up           # Start all services in the background
+make build        # Build Docker service images (ENGINE=openssl by default, or ENGINE=native)
+make up           # Start all services in the background (same ENGINE choice)
 make down         # Stop and remove containers
 make restart      # Restart containers
 make logs         # Tail live container logs
@@ -158,12 +159,19 @@ make ps           # Check container status
 make clean        # Remove this project's containers, volumes, images and test artifacts
 
 # Run test suites
-make test         # Complete Go suite (incl. database + integration) against a disposable PostgreSQL
+make test         # Complete Go suite (incl. database + integration) for ENGINE against a disposable PostgreSQL
+make test-engines # The complete suite for both engines
+make test-equivalence # Prove openssl and native give byte-identical results
 make test-run     # Test first; if passed, start services
 make test-unit    # Run Go unit tests locally (no database required)
 make test-crypto  # Run frontend WebCrypto derivation tests (Node.js 20+)
 make test-all     # Run both Go unit tests and frontend crypto tests
 make test-db      # Database + integration tests against a local PostgreSQL (TEST_DB_* overrides)
+
+# Releases (both engines are tested first)
+make release VERSION=v1.0.0           # on main: tags noaddx-openssl-v1.0.0 and noaddx-native-v1.0.0
+make tag-dev                          # on noaddx-dev: moves noaddx-openssl-dev / noaddx-native-dev
+make build-ref REF=noaddx-native-v1.0.0  # build the image of any tag or commit
 ```
 
 ---
@@ -181,6 +189,7 @@ make test-db      # Database + integration tests against a local PostgreSQL (TES
 | [PKCS #8 for X25519 · RFC 8410](https://www.rfc-editor.org/rfc/rfc8410) | Importing the derived key as a non-extractable `CryptoKey` |
 | [Base64url · RFC 4648 §5](https://www.rfc-editor.org/rfc/rfc4648#section-5) | Account numbers, keys, invite codes, ciphertext |
 | [Web Cryptography API](https://www.w3.org/TR/WebCryptoAPI/) · [Trusted Types](https://w3c.github.io/trusted-types/dist/spec/) | All browser cryptography; DOM-injection sinks locked by CSP |
+| [OpenSSL 3](https://docs.openssl.org/3.5/man7/crypto/) · [Go crypto](https://pkg.go.dev/crypto) | The two interchangeable server engines (byte-for-byte equivalent) |
 
 ## License
 

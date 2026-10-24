@@ -12,7 +12,7 @@ Exception requests require written justification and approval before implementat
 ### 1.1 Library Requirements
 - C/C++ projects must use OpenSSL 3.x in FIPS 140-3 mode.
 - Rust projects must use OpenSSL-sys binding OR ring OR RustCrypto with documented audit and formal verification.
-- Go projects must use crypto/* standard library packages. OpenSSL via CGO bindings may be used only when required functionality is unavailable in crypto/* and other Go standard implementations.
+- Go projects provide two interchangeable crypto engines behind one internal API: OpenSSL >= 3.2 through cgo (the default build) and the crypto/* standard library (CGO disabled). Both must produce byte-identical outputs and accept and reject exactly the same inputs; a differential test that links both engines must pass before any release, and every primitive must exist in both engines.
 
 ### 1.2 Key Management
 - Keys must never be hardcoded in source code.
