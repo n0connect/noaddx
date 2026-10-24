@@ -269,7 +269,7 @@ func VerifyToken(tokenString string) (*Session, error) {
 
 	// Whitelist: the subject is an internal user id (never a pending-registration token)
 	if !utils.ValidateUUID(claims.Subject) || claims.IssuedAt == nil || claims.SessionEpoch < 0 {
-		jwtLogger.Warn("VerifyToken: Subject/iat/sep claims invalid")
+		jwtLogger.Warn("VerifyToken: subject, issued-at or epoch claim invalid")
 		return nil, ErrInvalidToken
 	}
 

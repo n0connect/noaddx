@@ -28,7 +28,7 @@
                                     v
 +------------------------------------------------------------------------+
 |                        GO BACKEND SERVER                               |
-|  - Go 1.21+ (CGO_ENABLED=0, pure Go crypto standard library)           |
+|  - Go 1.26+ (CGO_ENABLED=0, pure Go crypto standard library)           |
 |  - Custom http.ServeMux with strict route & query parameter whitelist  |
 |  - Middleware chain: SecurityHeaders -> CORS -> ContentType -> JWT     |
 |  - In-Memory Realtime Hub (SSE subscriber management & stream tags)   |

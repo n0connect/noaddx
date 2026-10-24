@@ -5,9 +5,11 @@
 Locks MUST be acquired in the following order (lowest to highest priority) to prevent deadlocks:
 
 ### Priority Level 1 (Lowest) - Application State
-- `globalRateLimiter.mu` (RWMutex) - Rate limiting buckets map
-- `challengeRateLimiters mutex` - PoW challenge rate limiters map
-- `issuedChallenges mutex` - PoW issued challenges map
+- `globalRateLimiter.mu` (RWMutex) - Rate limiting buckets map; held for every lookup/insert, and
+  while evicting it reads each bucket's `lastAccess` (Priority 1 -> 2, the permitted direction)
+- `rateLimiterMutex` - PoW per-client limiters map (released before `challengeMutex` is taken;
+  the two are never held together)
+- `challengeMutex` - PoW issued challenges map
 - `realtime.Hub.mu` (`utils.SafeMutex`, 5 s timeout) - SSE subscriber map; leaf lock, channel sends under it never block
 - `pendingStore.mu` - Pending registration map (leaf lock)
 
@@ -59,9 +61,10 @@ rl.mu.Lock()
 
 ## Lock Timeout Policy
 
-- All locks MUST use `SafeMutex` or `SafeRWMutex` with timeout
-- Default timeout: 5 seconds
-- On timeout: return error, log warning, trigger monitoring alert
+- Locks held across channel operations or I/O use `utils.SafeMutex` (5 second timeout; on
+  timeout the caller gets an error and logs it): today the realtime hub
+- Map-guarding locks (`sync.Mutex`/`sync.RWMutex`) protect short, non-blocking critical
+  sections only: no I/O, no channel operation, no call that can wait while they are held
 
 ## Audit Process
 

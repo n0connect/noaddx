@@ -8,7 +8,8 @@ This guide details real-world pitfalls, diagnostic commands, and immediate copy-
 
 | Error Symptom | Root Cause | Quick Solution |
 |---|---|---|
-| `OpenSSL >= 3.2.0 is required (LibreSSL is not supported)` | macOS default `/usr/bin/openssl` is Apple LibreSSL. | `export PATH="$(brew --prefix openssl@3)/bin:$PATH"` |
+| `Pool overlaps with other one on this address space` | Another Docker network already uses `172.29.73.0/24`. | Pick a free range: set `COMPOSE_SUBNET` and `PROXY_IP` in `.env`. |
+| Everyone gets `429` on login or registration | The backend does not trust the proxy in front of it, so all users share its address. | Set `TRUSTED_PROXIES` to that proxy's address (see section 1). |
 | `TypeError: Cannot read properties of undefined (reading 'subtle')` | Accessing via non-secure HTTP on IP address (e.g. `192.168.x.x`). | Use `http://localhost` or configure HTTPS/TLS. |
 | `bash: \r: invalid command` | Git on Windows converted script line endings to CRLF. | `dos2unix Makefile setup.sh run.sh` |
 | `bind: address already in use (port 80 or 5432)` | Port occupied by another local service (Apache, local Postgres). | `sudo lsof -i :80` or remap ports in `docker-compose.yaml`. |
@@ -18,28 +19,21 @@ This guide details real-world pitfalls, diagnostic commands, and immediate copy-
 
 ---
 
-## 1. macOS: LibreSSL Rejection
+## 1. Docker Network Range and the Trusted Proxy
 
 ### Symptom
-Running `make setup` on macOS exits with:
-```text
-ERROR: OpenSSL >= 3.2.0 is required (LibreSSL is not supported).
-```
+`make up` fails with `Pool overlaps with other one on this address space`, or, behind your own reverse proxy, every user receives `429 Too Many Requests` after a handful of logins.
 
 ### Cause
-macOS ships with `/usr/bin/openssl`, which is actually Apple's LibreSSL fork (v3.3.6). `make setup` requires real OpenSSL >= 3.2.0. Even after `brew install openssl@3`, Homebrew keeps OpenSSL "keg-only" to avoid breaking Apple system utilities.
+Rate limits are keyed by the client address. nginx reaches the backend from a fixed address on the compose network (`PROXY_IP`, default `172.29.73.10` in `COMPOSE_SUBNET` `172.29.73.0/24`), and the backend accepts `X-Forwarded-For`/`X-Real-IP` only from that address (`TRUSTED_PROXIES`). If the range is taken by another Docker network, compose cannot create it; if another proxy sits in front and is not trusted, every request appears to come from that proxy and all users share one rate-limit bucket.
 
-### Immediate Fix
-Copy and paste this into your terminal:
-```bash
-brew install openssl@3
-export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-make setup
-```
-To persist this across all future terminal sessions:
-```bash
-echo 'export PATH="$(brew --prefix openssl@3)/bin:$PATH"' >> ~/.zshrc
-```
+### Fix
+1. **Range collision:** choose a free private range in `.env`, keeping the proxy address inside it:
+   ```bash
+   COMPOSE_SUBNET=172.31.200.0/24
+   PROXY_IP=172.31.200.10
+   ```
+2. **Your own reverse proxy in front of nginx:** list its address (or CIDR) in `TRUSTED_PROXIES`, together with nginx's: `TRUSTED_PROXIES=172.29.73.10,10.0.0.5`. The backend reads `X-Forwarded-For` from the right and takes the first address that is not a trusted proxy.
 
 ---
 

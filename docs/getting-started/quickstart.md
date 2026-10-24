@@ -9,16 +9,8 @@ Get **noaddx.** up and running on your local machine in under 3 minutes.
 Before running any script, make sure your machine has:
 
 - **Docker & Docker Compose** (Docker Compose v2 `docker compose` or v1 `docker-compose`)
-- **OpenSSL >= 3.2.0** *(Important: macOS default `/usr/bin/openssl` is LibreSSL and will be rejected. See the bold note below)*
-- *(Optional)* **Go 1.21+** and **Node.js 20+** if you intend to run unit tests natively without Docker.
-
-> [!IMPORTANT]
-> **macOS Users Attention:**
-> macOS ships with **LibreSSL** by default. Running `make setup` directly will fail with `OpenSSL >= 3.2.0 is required`.
-> Run this single command before running setup:
-> ```bash
-> brew install openssl@3 && export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-> ```
+- **openssl** (any version; only `openssl rand` is used, so the LibreSSL that macOS ships is fine)
+- *(Optional)* **Go 1.26+** and **Node.js 20+** if you intend to run unit tests natively without Docker.
 
 ---
 
@@ -33,8 +25,8 @@ make setup
 ```
 
 **What happens here:**
-- Checks system dependencies (Docker, OpenSSL >= 3.2.0).
-- Generates a 256-bit CSPRNG `JWT_SECRET`, `ACCOUNT_LOOKUP_PEPPER`, and `MASTER_KEY_ACTIVE`.
+- Checks system dependencies (Docker Compose, openssl).
+- Generates a 256-bit CSPRNG `JWT_SECRET`, `ACCOUNT_LOOKUP_PEPPER` and `MASTER_KEY_ACTIVE`, plus a random `DB_PASSWORD`.
 - Populates `.env` with secure default values and strict permissions (`0600`).
 
 ---

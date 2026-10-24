@@ -7,9 +7,9 @@ This guide provides deep, situation-aware setup instructions across **macOS (App
 ## Hardware & Architecture Overview
 
 `noaddx.` is engineered to be portable and lightweight:
-- **Backend:** Pure Go 1.21+ built with `CGO_ENABLED=0` (no CGO, no OpenSSL link-time dependency in the Go binary).
+- **Backend:** Pure Go 1.26+ built with `CGO_ENABLED=0` (no CGO, no OpenSSL dependency); the image builds a stripped, reproducible static binary and runs it as an unprivileged user.
 - **Frontend:** Vanilla modern JavaScript using the native W3C WebCrypto API (no webpack, no npm bundle dependencies for runtime).
-- **Docker Images:** `golang:1.21-bookworm`, `postgres:15-alpine`, and `nginx:alpine` have official multi-architecture support for both `linux/amd64` and `linux/arm64`.
+- **Docker Images:** `golang:1.27.3-bookworm` (build), `debian:bookworm-slim`, `postgres:15-alpine` and `nginx:1.30-alpine` have official multi-architecture support for both `linux/amd64` and `linux/arm64`.
 
 | Architecture | Platform Examples | Build Support | Performance Notes |
 |---|---|---|---|
@@ -20,45 +20,9 @@ This guide provides deep, situation-aware setup instructions across **macOS (App
 
 ## macOS Installation (Apple Silicon & Intel)
 
-### The LibreSSL vs. OpenSSL >= 3.2.0 Trap
+### Prerequisites
 
-macOS ships `/usr/bin/openssl` by default, but it is actually **Apple's LibreSSL fork** (typically LibreSSL 3.3.6).
-`make setup` strictly enforces **OpenSSL >= 3.2.0** to generate high-entropy cryptographic seeds and will abort with:
-```text
-ERROR: OpenSSL >= 3.2.0 is required (LibreSSL is not supported).
-```
-
-Furthermore, Homebrew installs `openssl@3` as **"keg-only"**, meaning Homebrew intentionally **does NOT symlink it** into `/usr/local/bin` or `/opt/homebrew/bin` to prevent breaking Apple system tools.
-
-### Fix for macOS (Copy & Paste)
-
-1. **Install OpenSSL 3 via Homebrew:**
-   ```bash
-   brew install openssl@3
-   ```
-
-2. **Temporarily export to current terminal session:**
-   ```bash
-   export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-   ```
-
-3. **Permanently persist in your shell profile:**
-   - **For Zsh (default on macOS):**
-     ```bash
-     echo 'export PATH="$(brew --prefix openssl@3)/bin:$PATH"' >> ~/.zshrc
-     source ~/.zshrc
-     ```
-   - **For Bash:**
-     ```bash
-     echo 'export PATH="$(brew --prefix openssl@3)/bin:$PATH"' >> ~/.bash_profile
-     source ~/.bash_profile
-     ```
-
-4. **Verify the active OpenSSL version:**
-   ```bash
-   openssl version
-   # Must output: OpenSSL 3.2.x (or higher)
-   ```
+Install Docker Desktop (or OrbStack / Colima) and, for running tests natively, Go 1.26+ and Node.js 20+ (`brew install go node`). The system `openssl` is enough for `make setup`: it only calls `openssl rand`, which LibreSSL implements with the platform CSPRNG.
 
 ### Docker Desktop on macOS
 - Ensure Docker Desktop is running.
@@ -80,11 +44,6 @@ sudo apt-get install -y openssl curl git ca-certificates
 # Install Docker Engine & Docker Compose Plugin
 sudo apt-get install -y docker.io docker-compose-v2
 ```
-
-> [!WARNING]
-> **Ubuntu 22.04 LTS (Jammy) Note:**
-> Ubuntu 22.04 LTS ships with OpenSSL `3.0.2`. `make setup` requires `>= 3.2.0`.
-> If you are on Ubuntu 22.04, upgrade OpenSSL or use Ubuntu 24.04 LTS / Debian 12 (Bookworm).
 
 ### 2. Fedora / Red Hat / Rocky Linux
 
@@ -200,7 +159,7 @@ If you prefer running the Go server and tests natively on your host machine:
 
 ### 1. Go Toolchain
 ```bash
-# Verify Go version >= 1.21
+# Verify Go version >= 1.26
 go version
 ```
 Dependencies are managed via Go modules (`backend/go.mod`). Run:

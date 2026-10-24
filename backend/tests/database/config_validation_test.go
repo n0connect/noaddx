@@ -34,7 +34,7 @@ func TestValidateStartupConfig_RejectsOutOfRangeValues(t *testing.T) {
 		"argon2 salt too short":         {"ARGON2_SALT_LENGTH", "8"},
 		"argon2 hash too short":         {"ARGON2_HASH_LENGTH", "8"},
 		"jwt min length below 32":       {"JWT_SECRET_MIN_LEN", "8"},
-		"jwt secret below 32 bytes":     {"JWT_SECRET", "0123456789abcdef"},
+		"jwt secret below 32 bytes":     {"JWT_SECRET", testutil.NewAuthKey(t)[:16]},
 		"internal id beyond column":     {"INTERNAL_ID_LENGTH", "40"},
 		"internal id too short":         {"INTERNAL_ID_LENGTH", "8"},
 		"pending id below 128 bits":     {"PENDING_ID_BYTES", "4"},

@@ -11,7 +11,7 @@ const C = vm.runInContext(source + '\n;NoaddxCrypto', context);
 
 // Same vector as backend/tests/identity/identity_test.go
 const ACCOUNT = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
-const GO_AUTH_KEY = 'Thcc1tNIpP2ejPv8dErwLdXtO1dA_hkaGGbEO4LJanA';
+const GO_AUTH_KEY = 'Thcc1tNIpP2ejPv8dErwLdXtO1dA_hkaGGbEO4LJanA'; // gitleaks:allow (public test-account vector)
 const GO_PUBLIC_KEY = '5RnU1Lh-_CuOr8VzbLd0OGx4uFmd9YeLM2YysXB2Bx4';
 const CONV = '3b241101-e2bb-4255-8caf-4136c566a962';
 const B_ACCOUNT = 'HxwdHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA';

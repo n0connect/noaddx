@@ -11,9 +11,10 @@ Requests are subject to strict JSON validation:
 
 ## Authentication & Sessions
 
-- **Session Delivery:** Authenticated endpoints read the `session` (or `__Host-session` in production) HTTP-only cookie. API clients may alternatively supply `Authorization: Bearer <token>`.
+- **Session Delivery:** The only credential is an HttpOnly, `SameSite=Strict` cookie: `noaddx_session` in development, `__Host-Session` (Secure, host-only) in production. The token never appears in a response body and the `Authorization` header is ignored, so page script can never read or replay it.
+- **Same-Origin Writes:** `POST`/`PUT`/`PATCH`/`DELETE` requests are refused with `403` unless the browser marks them `Sec-Fetch-Site: same-origin` (or, without that header, sends an `Origin` listed exactly in `ALLOWED_ORIGINS`). Clients that send neither header are not browsers and hold no ambient cookies.
 - **Sliding Expiration:** Sessions expire after `JWT_EXPIRATION_MINUTES` (default: 15m). If an active session is used past its half-life, the backend automatically issues a refreshed cookie.
-- **Global Invalidation:** `POST /api/v2/logout` increments the user's `session_epoch`, instantly invalidating all JWTs ever issued for that account across all devices.
+- **Global Invalidation:** `POST /api/v2/logout` with a live session increments the user's `session_epoch`, instantly invalidating every JWT issued for that account on every device. A token revoked earlier cannot trigger this (it no longer authenticates); if revocation fails the endpoint answers `500` instead of reporting success. The cookie is cleared in every case.
 
 ---
 
@@ -106,12 +107,11 @@ Requires solving a fresh, single-use PoW challenge.
   }
 }
 ```
-- **Response (201 Created):** Sets `session` HttpOnly cookie.
+- **Response (201 Created):** Sets the HttpOnly session cookie; the body never carries the token.
 ```json
 {
   "success": true,
   "message": "Account created successfully",
-  "token": "eyJhbGciOi...",
   "confirmed": true
 }
 ```
@@ -127,12 +127,11 @@ Authenticates a user via their derived `auth_key`. The `AccountNumber` is **neve
   "auth_key": "43-character-base64url-derived-key"
 }
 ```
-- **Response (200 OK):** Sets `session` HttpOnly cookie.
+- **Response (200 OK):** Sets the HttpOnly session cookie; the body never carries the token.
 ```json
 {
   "success": true,
-  "message": "Login successful",
-  "token": "eyJhbGciOi..."
+  "message": "Login successful"
 }
 ```
 

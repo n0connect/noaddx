@@ -9,7 +9,7 @@
 
 <p align="center">
   <a href="docs/security/cryptography.md"><img alt="E2EE X25519 · AES-256-GCM" src="https://img.shields.io/badge/E2EE-X25519%20%C2%B7%20AES--256--GCM-30363d?style=flat-square&logo=letsencrypt&logoColor=white&labelColor=0d1117"></a>
-  <a href="https://go.dev/"><img alt="Go 1.21" src="https://img.shields.io/badge/Go-1.21-30363d?style=flat-square&logo=go&logoColor=white&labelColor=0d1117"></a>
+  <a href="https://go.dev/"><img alt="Go 1.26+" src="https://img.shields.io/badge/Go-1.26%2B-30363d?style=flat-square&logo=go&logoColor=white&labelColor=0d1117"></a>
   <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API"><img alt="Vanilla JS WebCrypto" src="https://img.shields.io/badge/Vanilla%20JS-WebCrypto-30363d?style=flat-square&logo=javascript&logoColor=white&labelColor=0d1117"></a>
   <a href="https://www.postgresql.org/"><img alt="PostgreSQL 15" src="https://img.shields.io/badge/PostgreSQL-15-30363d?style=flat-square&logo=postgresql&logoColor=white&labelColor=0d1117"></a>
   <a href="https://docs.docker.com/compose/"><img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-30363d?style=flat-square&logo=docker&logoColor=white&labelColor=0d1117"></a>
@@ -38,7 +38,7 @@ Exhaustive, production-grade documentation is organized under the [`docs/`](docs
 | Document | Description |
 |---|---|
 | [**Quick Start Guide**](docs/getting-started/quickstart.md) | Rapid 3-minute setup, verification, and first two-party chat walkthrough. |
-| [**Installation & Platforms**](docs/getting-started/installation-and-platforms.md) | Platform instructions: macOS (LibreSSL fix), Linux, Windows (WSL2), arm64 vs amd64. |
+| [**Installation & Platforms**](docs/getting-started/installation-and-platforms.md) | Platform instructions: macOS, Linux, Windows (WSL2), arm64 vs amd64. |
 | [**System Architecture**](docs/architecture/system-overview.md) | Detailed data flow, identity derivation, database schema, and retention daemon. |
 | [**Threat Model & Security**](docs/security/threat-model.md) | Adversary capabilities matrix, database dump resilience, and memory zeroization. |
 | [**Cryptography Specification**](docs/security/cryptography.md) | WebCrypto, non-extractable keys, 256-byte bucket padding, and PoW hashcash. |
@@ -46,6 +46,8 @@ Exhaustive, production-grade documentation is organized under the [`docs/`](docs
 | [**Configuration & Tuning**](docs/operations/configuration-and-tuning.md) | Environment variables, dual-key rotation runbook, and Argon2id memory tuning. |
 | [**Troubleshooting Guide**](docs/troubleshooting/troubleshooting-guide.md) | Common errors with immediate diagnostic steps and copy-paste solutions. |
 | [**Testing & Development**](docs/development/testing-and-contributing.md) | Automated testing suites, WebCrypto parity verification, and lock hierarchy rules. |
+| [**Security Policy**](SECURITY.md) | How to report a vulnerability, supported versions and scope. |
+| [**Changelog**](CHANGELOG.md) | Notable changes, with every security fix listed explicitly. |
 
 ---
 
@@ -56,10 +58,7 @@ Exhaustive, production-grade documentation is organized under the [`docs/`](docs
 make setup
 ```
 
-> [!IMPORTANT]
-> **macOS Users:** macOS ships with LibreSSL by default. `make setup` requires OpenSSL >= 3.2.0.  
-> Run `brew install openssl@3 && export PATH="$(brew --prefix openssl@3)/bin:$PATH"` before running `make setup`.  
-> Consult the [Installation & Platforms Guide](docs/getting-started/installation-and-platforms.md) for persistence instructions.
+`make setup` generates every secret (JWT secret, lookup pepper, master key, database password) with `openssl rand` into a `0600` `.env`. Any `openssl` works, including the LibreSSL that macOS ships.
 
 ### 2. Start Services
 ```bash
@@ -156,15 +155,15 @@ make down         # Stop and remove containers
 make restart      # Restart containers
 make logs         # Tail live container logs
 make ps           # Check container status
-make clean        # Clean containers, volumes, dangling images, and test artifacts
+make clean        # Remove this project's containers, volumes, images and test artifacts
 
 # Run test suites
-make test         # Run complete test suite in isolated Docker container
+make test         # Complete Go suite (incl. database + integration) against a disposable PostgreSQL
 make test-run     # Test first; if passed, start services
 make test-unit    # Run Go unit tests locally (no database required)
 make test-crypto  # Run frontend WebCrypto derivation tests (Node.js 20+)
 make test-all     # Run both Go unit tests and frontend crypto tests
-make test-db      # Run database migration tests (requires local PostgreSQL)
+make test-db      # Database + integration tests against a local PostgreSQL (TEST_DB_* overrides)
 ```
 
 ---

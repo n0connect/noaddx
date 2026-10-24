@@ -50,12 +50,12 @@ If developing natively on your host machine:
 #### 1. Non-DB Unit Tests (Instant, No Postgres Required)
 ```bash
 make test-unit
-# Direct command: cd backend && go test -tags=test -v ./internal/pow/... ./internal/handlers/... ./tests/identity/... ./tests/encryption/... ./tests/utils/...
+# Direct command: cd backend && go test -tags=test ./internal/... ./tests/auth/... ./tests/encryption/... ./tests/identity/... ./tests/middleware/... ./tests/utils/...
 ```
 
 #### 2. Full Suite (Requires Local Postgres running on 5432)
 ```bash
-# Step 1: Database Migration Tests (MUST RUN FIRST)
+# Step 1: Database and integration tests (override the port etc.: make test-db TEST_DB_PORT=5433)
 make test-db
 
 # Step 2: Full Suite with Race Condition Detector

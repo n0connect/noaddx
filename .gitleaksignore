@@ -1,0 +1,28 @@
+# Reviewed gitleaks findings in published history (2026-10-24). None is a secret:
+# fixed test fixtures such as 0123456789abcdef..., example JWT headers and placeholders
+# in docs, and an interop vector derived from a public test account. Real secrets live
+# only in the git-ignored .env. Re-run `gitleaks git .` before every push.
+0ff9772b5ef6fdf03bf97f93a26bab7db1ceab9d:.env.example:generic-api-key:7
+143b63d3c8edc094a504e631fef46365b4d5c26e:docker-compose.test.yaml:generic-api-key:37
+143b63d3c8edc094a504e631fef46365b4d5c26e:docker-compose.test.yaml:generic-api-key:42
+447f98e9d4484dbb10a3560101876b4a9fb51d36:backend/tests/database/config_validation_test.go:generic-api-key:37
+497bfa83687afeba8f75532f61815f6369fb99d0:frontend/tests/crypto.test.mjs:generic-api-key:14
+a1270cf423a1dd921d0b9566e2b7b766fd6e04aa:backend/internal/auth/jwt.go:generic-api-key:266
+a1270cf423a1dd921d0b9566e2b7b766fd6e04aa:frontend/tests/crypto.test.mjs:generic-api-key:14
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:156
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:176
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:228
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:277
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:604
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:617
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:627
+b6db55fc249785f58b06402ea60a90488f2ddf3e:README.md:generic-api-key:648
+b6db55fc249785f58b06402ea60a90488f2ddf3e:backend/tests/auth/jwt_pending_test.go:generic-api-key:105
+b6db55fc249785f58b06402ea60a90488f2ddf3e:backend/tests/auth/jwt_pending_test.go:generic-api-key:128
+b6db55fc249785f58b06402ea60a90488f2ddf3e:backend/tests/auth/jwt_pending_test.go:generic-api-key:13
+b6db55fc249785f58b06402ea60a90488f2ddf3e:backend/tests/auth/jwt_pending_test.go:generic-api-key:63
+b6db55fc249785f58b06402ea60a90488f2ddf3e:backend/tests/encryption/crypto_test.go:generic-api-key:180
+b6db55fc249785f58b06402ea60a90488f2ddf3e:backend/tests/testutil/env.go:generic-api-key:13
+b6db55fc249785f58b06402ea60a90488f2ddf3e:backend/tests/testutil/env.go:generic-api-key:14
+d28c2759e71399f40da8209e9d6dba975c578ea9:docs/operations/configuration-and-tuning.md:generic-api-key:96
+df0ccf843d16faa1ea427842bbd56d25490b5d88:backend/tests/testutil/env.go:generic-api-key:16

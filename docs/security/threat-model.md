@@ -36,7 +36,7 @@ What an adversary learns if they obtain a full SQL database dump:
 | **Database Thief (Stolen SQL backup)** | - Message contents (encrypted client-side)<br>- Account numbers (Argon2id + HMAC)<br>- Cross-conversation user linkage (per-room HMAC tags)<br>- Fine-grained send timestamps (server stores no seconds/minutes) | - Total message count per room<br>- Internal message ordering within a single room<br>- Coarse day of scheduled message deletion |
 | **Curious Server Operator (Has DB + `.env` + Master Keys)** | - Message plaintext (Keys are derived in browser WebCrypto; server never has private X25519 keys) | - Social graph: operator can decrypt `member_ref_enc` to link users to conversations<br>- Active connection presence via realtime hub |
 | **Malicious Server at Runtime (Compromised backend)** | - Past messages sent to verified peers cannot be retroactively decrypted.<br>- Peer key substitution is detected by Bob via invite fingerprinting or safety numbers. | - **Web Security Limit:** A malicious server that serves modified JavaScript to the browser can exfiltrate private keys at execution time. |
-| **Session Cookie Interceptor** | - Cookie is `HttpOnly`, `SameSite=Strict`, and `Secure` (`__Host-` prefixed in prod).<br>- Logout immediately invalidates all sessions via `session_epoch` bump. | - Access to the authenticated account until the session cookie expires (15m sliding window) or logout is invoked. |
+| **Session Cookie Interceptor** | - Cookie is `HttpOnly`, `SameSite=Strict`, and `Secure` (`__Host-` prefixed in prod); the token never appears in a response body and no header can carry it.<br>- Cross-origin and same-site writes (other ports, sibling subdomains) are refused via `Sec-Fetch-Site`/`Origin`.<br>- Logout immediately invalidates all sessions via `session_epoch` bump; an already revoked token cannot trigger it. | - Access to the authenticated account until the session cookie expires (15m sliding window) or logout is invoked. |
 | **User Loses AccountNumber** | - High security: zero backdoor access. | - **Unrecoverable:** By cryptographic design, no admin reset, SMS code, or email recovery exists. |
 
 ---
@@ -75,8 +75,20 @@ Total Length = 55 bytes
 
 To protect against cold-boot attacks and post-termination RAM dumps:
 - On `SIGINT` or `SIGTERM`, `backend/cmd/server/main.go` triggers `encryption.ZeroizeAllKeys()`.
-- Wipes active and old master keys (`MASTER_KEY_ACTIVE`, `MASTER_KEY_OLD`) from heap memory using `cryptoengine.Zeroize()` (which overwrites byte slices with `0x00`).
+- Overwrites the active and old master keys (`MASTER_KEY_ACTIVE`, `MASTER_KEY_OLD`) in heap memory with `0x00`.
 - Background janitors are safely stopped, and open Server-Sent Events streams are severed.
+
+---
+
+## Known Limitations
+
+These are properties of the design, stated so nobody relies on a guarantee that is not there:
+
+- **No forward secrecy.** Each account has one static X25519 identity key derived from its AccountNumber, and each conversation one key derived from the two identities. Whoever obtains an AccountNumber can decrypt every message of that account that is still stored (up to `MESSAGE_TTL_DAYS`) or was recorded in transit. Retention and **Burn** bound the exposure; treat the AccountNumber like a master key.
+- **The invite creator trusts the server for the peer key.** The fingerprint in the invite code protects the *redeemer* against a substituted creator key. The creator learns the redeemer's key from the server and is protected only after both compare safety numbers.
+- **Code delivery is trust in the server.** A browser application runs the JavaScript it is served; a malicious or compromised deployment can serve code that leaks keys (see the matrix above).
+- **Withheld-message detection is per device.** The encrypted sender counter reveals gaps in what one device has seen; it is not a cross-device delivery guarantee.
+- **Network metadata.** The server sees connection addresses and timing in transit. It does not log them (`access_log off`; rate-limit keys are HMACs of the address under a per-boot secret), but an operator could capture them at runtime.
 
 ---
 
