@@ -1,8 +1,6 @@
 package encryption
 
 import (
-	"fmt"
-
 	"noaddx/internal/cryptoengine"
 	"noaddx/internal/utils"
 
@@ -56,24 +54,4 @@ func BuildAAD(subject string, recordID uuid.UUID, field Field, purpose Purpose) 
 	aad = append(aad, byte(field))
 	aad = append(aad, byte(purpose))
 	return aad
-}
-
-// ValidateField validates that a field code is valid
-func ValidateField(field Field) error {
-	switch field {
-	case FieldPeerPublicKey, FieldInviteCreator, FieldMemberRef, FieldConversationIndex:
-		return nil
-	default:
-		return fmt.Errorf("invalid field code: %d", field)
-	}
-}
-
-// ValidatePurpose validates that a purpose code is valid
-func ValidatePurpose(purpose Purpose) error {
-	switch purpose {
-	case PurposeStoredRecord:
-		return nil
-	default:
-		return fmt.Errorf("invalid purpose code: %d", purpose)
-	}
 }

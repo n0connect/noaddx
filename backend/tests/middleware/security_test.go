@@ -75,3 +75,27 @@ func TestSecurityHeadersMiddleware_PermissionsPolicy(t *testing.T) {
 		}
 	}
 }
+
+// API responses are data, never documents: if one were ever rendered (sniffing, a proxy
+// error page, a mistaken navigation) it may load and run nothing, and no cache keeps it.
+func TestSecurityHeadersMiddleware_APIResponsesAreInertAndUncached(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	defer testutil.TeardownTestEnv(t)
+
+	rr := httptest.NewRecorder()
+	middleware.SecurityHeadersMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})(rr, httptest.NewRequest("GET", "/api/v2/me", nil))
+
+	want := map[string]string{
+		"Content-Security-Policy":      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+		"Cache-Control":                "no-store",
+		"Cross-Origin-Resource-Policy": "same-origin",
+		"Cross-Origin-Opener-Policy":   "same-origin",
+	}
+	for header, value := range want {
+		if got := rr.Header().Get(header); got != value {
+			t.Errorf("%s = %q, want %q", header, got, value)
+		}
+	}
+}

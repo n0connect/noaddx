@@ -44,42 +44,37 @@ func TestRateLimitMiddleware_WithinLimit(t *testing.T) {
 	}
 }
 
+// A burst of RATE_LIMIT_MAX_TOKENS (20) requests passes; the next one, sent before a token
+// refills (one per 3 s), is refused with 429 and never reaches the handler.
 func TestRateLimitMiddleware_ExceedsLimit(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
-
-	// Reset rate limiter to ensure clean state
 	middleware.ResetRateLimiterForTesting()
 
-	req := httptest.NewRequest("POST", "/api/v2/login", nil)
-	req.RemoteAddr = "127.0.0.1:54321"
-
-	rr := httptest.NewRecorder()
-
-	handlerCalled := false
-	testHandler := middleware.RateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		handlerCalled = true
+	calls := 0
+	handler := middleware.RateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
 	})
-
-	handler := http.HandlerFunc(testHandler)
-
-	// Make 21 requests (limit is 20 per minute)
-	for i := 0; i < 21; i++ {
-		rr = httptest.NewRecorder()
-		handler.ServeHTTP(rr, req)
+	serveOnce := func() int {
+		req := httptest.NewRequest("POST", "/api/v2/login", nil)
+		req.RemoteAddr = "127.0.0.1:54321"
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+		return rr.Code
 	}
 
-	// Verify last request was rate limited
-	if handlerCalled {
-		// If handler was called, it means we didn't hit the limit yet
-		// This is expected if tokens refill quickly
-		// Let's check the status code instead
+	for i := 0; i < 20; i++ {
+		if code := serveOnce(); code != http.StatusOK {
+			t.Fatalf("request %d of the burst: status %d, want 200", i+1, code)
+		}
 	}
-
-	// The rate limiter uses token bucket with refill
-	// After 21 requests, we should hit the limit
-	// But tokens refill every 3 seconds, so timing matters
-	// For a reliable test, we'd need to control time
+	if code := serveOnce(); code != http.StatusTooManyRequests {
+		t.Fatalf("request 21: status %d, want 429", code)
+	}
+	if calls != 20 {
+		t.Fatalf("handler ran %d times, want 20", calls)
+	}
 }
 
 func TestRateLimitMiddleware_DifferentIPs(t *testing.T) {

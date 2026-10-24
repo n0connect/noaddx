@@ -254,27 +254,27 @@ func GetHSTSPreload() bool {
 	return getEnvBool("HSTS_PRELOAD")
 }
 
-// GetSecurityHeaderCOOP returns Cross-Origin-Opener-Policy value
+// GetSecurityHeaderCOOP returns Cross-Origin-Opener-Policy (default same-origin; "off" disables)
 func GetSecurityHeaderCOOP() string {
-	value := strings.TrimSpace(GetEnv("SEC_HEADER_COOP", ""))
+	value := strings.TrimSpace(GetEnv("SEC_HEADER_COOP", "same-origin"))
 	if strings.EqualFold(value, "off") || strings.EqualFold(value, "disabled") {
 		return ""
 	}
 	return value
 }
 
-// GetSecurityHeaderCORP returns Cross-Origin-Resource-Policy value
+// GetSecurityHeaderCORP returns Cross-Origin-Resource-Policy (default same-origin; "off" disables)
 func GetSecurityHeaderCORP() string {
-	value := strings.TrimSpace(GetEnv("SEC_HEADER_CORP", ""))
+	value := strings.TrimSpace(GetEnv("SEC_HEADER_CORP", "same-origin"))
 	if strings.EqualFold(value, "off") || strings.EqualFold(value, "disabled") {
 		return ""
 	}
 	return value
 }
 
-// GetSecurityHeaderCOEP returns Cross-Origin-Embedder-Policy value
+// GetSecurityHeaderCOEP returns Cross-Origin-Embedder-Policy (default require-corp; "off" disables)
 func GetSecurityHeaderCOEP() string {
-	value := strings.TrimSpace(GetEnv("SEC_HEADER_COEP", ""))
+	value := strings.TrimSpace(GetEnv("SEC_HEADER_COEP", "require-corp"))
 	if strings.EqualFold(value, "off") || strings.EqualFold(value, "disabled") {
 		return ""
 	}

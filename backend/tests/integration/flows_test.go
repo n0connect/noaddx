@@ -152,7 +152,7 @@ func TestPairingAndMessaging(t *testing.T) {
 		t.Fatalf("after=last returned %d messages", len(none.Messages))
 	}
 
-	expectStatus(t, alice.do("POST", "/api/v2/conversations/"+convID+"/read", models.MarkReadRequest{Seq: sent.Seq}), http.StatusNoContent, "mark read")
+	expectStatus(t, alice.do("POST", "/api/v2/conversations/"+convID+"/read", models.MarkReadRequest(sent)), http.StatusNoContent, "mark read")
 	expectStatus(t, alice.do("POST", "/api/v2/conversations/"+convID+"/read", models.MarkReadRequest{Seq: sent.Seq + 1000}), http.StatusBadRequest, "read past end")
 }
 

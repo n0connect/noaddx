@@ -370,8 +370,3 @@ func getAdaptiveDifficulty() int {
 
 	return difficulty
 }
-
-// GetPoWDifficulty returns the current difficulty level
-func GetPoWDifficulty() int {
-	return getAdaptiveDifficulty()
-}

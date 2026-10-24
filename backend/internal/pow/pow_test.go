@@ -230,7 +230,7 @@ func TestDifficulty_ClampedToConfiguredRange(t *testing.T) {
 		"100": config.MaxPoWDifficulty(),
 	} {
 		t.Setenv("POW_DIFFICULTY", env)
-		if got := GetPoWDifficulty(); got != want {
+		if got := getAdaptiveDifficulty(); got != want {
 			t.Errorf("POW_DIFFICULTY=%s → %d, want %d", env, got, want)
 		}
 	}
