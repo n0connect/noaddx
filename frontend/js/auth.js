@@ -22,12 +22,7 @@ function powWorkerURL() {
 // Get PoW challenge from backend
 async function getPowChallenge() {
     try {
-        const response = await fetchWithErrorHandling(`${API_BASE_URL}/pow/challenge`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        });
+        const response = await fetchWithErrorHandling(`${API_BASE_URL}/pow/challenge`, { method: 'GET' });
 
         if (!response) {
             return null;
@@ -209,7 +204,6 @@ async function login() {
 let scrambleInterval = null;
 let pendingRegistrationAccountNumber = null;
 let pendingRegistrationToken = null;  // Zero-trust: token from backend
-let pendingRegistrationPoW = null;    // PoW solution from Phase 1
 
 // Scramble animation: random characters cycle until the real AccountNumber arrives (visual only)
 function startAccountNumberScramble(accountNumberElement, successElement, accountNumberDisplay) {
@@ -350,8 +344,6 @@ async function copyAccountNumber() {
         // Store pending AccountNumber and token for account creation on continue
         pendingRegistrationAccountNumber = realAccountNumber;
         pendingRegistrationToken = pendingToken;
-        // Also store the PoW solution for the confirmation step
-        pendingRegistrationPoW = powSolution;
         
         // Reveal the real AccountNumber with animation
         await revealRealAccountNumber(accountNumberElement, realAccountNumber);
@@ -512,7 +504,7 @@ async function continueWithAccountNumber() {
         // Phase 2: Create account using pending token (not Account Number from frontend)
         const response = await fetch(`${API_BASE_URL}/register`, {
             method: 'POST',
-            credentials: 'include', // Send cookies (HttpOnly cookie will be set)
+            credentials: 'same-origin', // the HttpOnly session cookie is set by the response
             headers: {
                 'Content-Type': 'application/json',
             },
@@ -561,7 +553,6 @@ async function continueWithAccountNumber() {
         // Clear pending state
         pendingRegistrationAccountNumber = null;
         pendingRegistrationToken = null;
-        pendingRegistrationPoW = null;
         document.getElementById('generatedAccountNumber').textContent = '';
 
         if (await enterApp(identity, true)) {
@@ -580,9 +571,13 @@ async function logout() {
     // Forget local key material first, then revoke every server session
     Chat.stop();
     await Keystore.wipe();
-    await apiCall('POST', '/logout');
+    const result = await apiCall('POST', '/logout');
     showMainMenu();
     document.getElementById('accountNumberInput').value = '';
+    if (!result.ok) {
+        // This device is logged out either way; say so if other sessions could not be revoked
+        showWarning('logged out here, but the server could not be reached: other sessions stay valid until they expire');
+    }
 }
 
 // Cancel registration - just go back (no account was created yet)
@@ -593,8 +588,7 @@ function cancelRegistration() {
     // Clear any pending state
     pendingRegistrationAccountNumber = null;
     pendingRegistrationToken = null;
-    pendingRegistrationPoW = null;
-    
+
     // Return to main menu
     showMainMenu();
 }

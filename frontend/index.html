@@ -32,7 +32,7 @@
         </div>
 
         <!-- LOGIN -->
-        <div class="login-container" id="loginContainer" style="display: none;">
+        <div class="login-container" id="loginContainer" data-hidden>
             <div class="brand">
                 <h1 class="brand-title clickable" id="loginBrandTitle">noaddx.</h1>
                 <p class="tagline">anonymous. <span class="secure-text" data-text="encrypted">encrypted</span>. ephemeral.</p>
@@ -58,7 +58,7 @@
         </div>
 
         <!-- REGISTER -->
-        <div class="register-container" id="registerContainer" style="display: none;">
+        <div class="register-container" id="registerContainer" data-hidden>
             <div class="brand">
                 <h1 class="brand-title clickable" id="registerBrandTitle">noaddx.</h1>
                 <p class="tagline">anonymous. <span class="secure-text" data-text="encrypted">encrypted</span>. ephemeral.</p>
@@ -85,7 +85,7 @@
         </div>
 
         <!-- APP -->
-        <div class="app-container" id="appContainer" style="display: none;">
+        <div class="app-container" id="appContainer" data-hidden>
             <header>
                 <div class="brand-small">noaddx.</div>
                 <div class="me-badge" id="meBadge" title="your aura — derived from your public key">
@@ -102,7 +102,7 @@
                     <button id="showJoinBtn" class="secondary-btn">join</button>
                 </div>
 
-                <div id="invitePanel" class="pair-panel" style="display: none;">
+                <div id="invitePanel" class="pair-panel" data-hidden>
                     <p class="account-number-label">your invite</p>
                     <div class="account-number-box" id="inviteBox">
                         <code id="inviteCode"></code>
@@ -112,7 +112,7 @@
                     <button id="closeInviteBtn" class="text-btn">done</button>
                 </div>
 
-                <div id="joinPanel" class="pair-panel" style="display: none;">
+                <div id="joinPanel" class="pair-panel" data-hidden>
                     <p class="account-number-label">paste an invite</p>
                     <div class="join-input-group">
                         <input type="text" id="inviteInput" placeholder="noaddx:…" maxlength="64" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
@@ -125,25 +125,25 @@
             </section>
 
             <!-- CHAT: one conversation -->
-            <section id="chatView" class="chat-view" style="display: none;">
+            <section id="chatView" class="chat-view" data-hidden>
                 <div class="chat-header">
                     <button id="backToListBtn" class="action-btn" title="Back">←</button>
                     <canvas class="aura-glyph" id="peerGlyph" width="5" height="5"></canvas>
                     <span class="aura-name" id="peerName"></span>
                     <span id="peerCode" class="aura-code"></span>
-                    <span id="peerVerified" class="verified-mark" title="safety number verified on this device" style="display: none;">✓</span>
+                    <span id="peerVerified" class="verified-mark" title="safety number verified on this device" data-hidden>✓</span>
                     <button id="verifyBtn" class="action-btn" title="Verify safety number">verify</button>
                     <button id="burnBtn" class="action-btn burn-btn" title="Burn conversation">burn</button>
                 </div>
 
-                <div id="safetyPanel" class="pair-panel" style="display: none;">
+                <div id="safetyPanel" class="pair-panel" data-hidden>
                     <p class="account-number-label">safety number</p>
                     <div id="safetyNumber" class="safety-number"></div>
                     <p class="pair-hint">compare these digits with your peer on a different channel. a mismatch means someone is in the middle.</p>
                     <button id="markVerifiedBtn" class="menu-opt verify-opt">mark as verified</button>
                 </div>
 
-                <div id="burnConfirm" class="burn-confirm" style="display: none;">
+                <div id="burnConfirm" class="burn-confirm" data-hidden>
                     <span>burn for both sides? this cannot be undone.</span>
                     <button id="burnYesBtn" class="menu-opt burn-yes">burn</button>
                     <button id="burnNoBtn" class="menu-opt">keep</button>

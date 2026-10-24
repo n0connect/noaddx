@@ -146,11 +146,30 @@ function hasNLeadingZeros(hexString, n) {
 }
 
 // Main message handler for the Web Worker
-self.onmessage = function(e) {
-    const { challenge, difficulty, salt } = e.data;
+const HEX_32_BYTES = /^[0-9a-f]{32}$/;
+const MAX_DIFFICULTY = 32;
 
-    // Maximum attempts to prevent infinite loops
-    const maxAttempts = 10000000;
+// Only work on a task with the exact shape the server issues
+function isValidTask(task) {
+    return task !== null && typeof task === 'object' &&
+        typeof task.challenge === 'string' && HEX_32_BYTES.test(task.challenge) &&
+        typeof task.salt === 'string' && HEX_32_BYTES.test(task.salt) &&
+        Number.isInteger(task.difficulty) && task.difficulty >= 1 && task.difficulty <= MAX_DIFFICULTY;
+}
+
+// Expected work is 2^difficulty hashes; 16x that fails with probability e^-16 (~1e-7).
+// Capped so a bogus difficulty cannot pin the worker forever.
+function attemptBudget(difficulty) {
+    return Math.min(2 ** (difficulty + 4), 2 ** 31);
+}
+
+self.onmessage = function(e) {
+    if (!isValidTask(e.data)) {
+        self.postMessage({ success: false, error: 'Processing failed', attempts: 0 });
+        return;
+    }
+    const { challenge, difficulty, salt } = e.data;
+    const maxAttempts = attemptBudget(difficulty);
 
     for (let nonce = 0; nonce < maxAttempts; nonce++) {
         // Create the input for hashing: challenge + nonce + salt
@@ -159,7 +178,6 @@ self.onmessage = function(e) {
         const hash = sha256(input);
 
         if (hasNLeadingZeros(hash, difficulty)) {
-            // Found a valid solution
             self.postMessage({
                 success: true,
                 solution: nonce.toString(),
@@ -168,9 +186,8 @@ self.onmessage = function(e) {
             return;
         }
 
-        // Occasionally yield control back to the browser
+        // Post a progress update now and then
         if (nonce % 10000 === 0) {
-            // Post progress update
             self.postMessage({
                 progress: true,
                 attempts: nonce,
@@ -179,7 +196,7 @@ self.onmessage = function(e) {
         }
     }
 
-    // If we reach here, no solution was found within max attempts
+    // No solution within the budget (vanishingly unlikely for a genuine challenge)
     self.postMessage({
         success: false,
         error: 'Processing failed',

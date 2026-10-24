@@ -41,6 +41,20 @@ function validateMessageText(input) {
     return { valid: true, sanitized: normalized, error: '' };
 }
 
+// Every forbidden character, for replacement in text received from a peer
+const FORBIDDEN_TEXT_CHARS_ALL = new RegExp(FORBIDDEN_TEXT_CHARS.source, 'gu');
+
+/**
+ * Neutralizes a decrypted peer message before display. The sender's client already refuses
+ * these characters, but a modified client can encrypt them anyway: bidi overrides would
+ * reorder what is shown (e.g. disguise a file name), so each becomes U+FFFD.
+ * @param {string} text - Decrypted message text
+ * @returns {string}
+ */
+function neutralizeReceivedText(text) {
+    return String(text).replace(FORBIDDEN_TEXT_CHARS_ALL, '\uFFFD');
+}
+
 /**
  * True when a string has the exact shape of a secret AccountNumber.
  * Used to stop users from pasting their account number where an invite belongs.

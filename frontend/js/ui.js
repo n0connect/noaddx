@@ -6,6 +6,12 @@
 
 const VIEW_IDS = ['mainMenu', 'loginContainer', 'registerContainer', 'appContainer'];
 
+// Elements marked data-hidden start hidden through the stylesheet; the view code reads and
+// toggles element.style.display, so mirror that state into it once (CSSOM, CSP-safe).
+document.querySelectorAll('[data-hidden]').forEach(element => {
+    element.style.display = 'none';
+});
+
 function setView(activeId) {
     VIEW_IDS.forEach(id => {
         document.getElementById(id).style.display = id === activeId ? 'block' : 'none';
@@ -229,7 +235,7 @@ function createMessageElement(message) {
 
     const text = document.createElement('div');
     text.className = 'msg-text';
-    text.textContent = message.broken ? '⚠ unreadable — integrity check failed' : message.text;
+    text.textContent = message.broken ? '⚠ unreadable — integrity check failed' : neutralizeReceivedText(message.text);
     item.appendChild(text);
 
     if (!message.broken) {

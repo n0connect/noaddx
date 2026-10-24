@@ -39,8 +39,6 @@ const USER_ERROR_MESSAGES = {
     'Invalid credentials': 'Invalid credentials',
     'Unauthorized': 'Unauthorized',
     'Invalid request': 'Invalid request',
-    'Invalid or expired registration token': 'Unauthorized',
-    'Account already created': 'Unauthorized',
     'Pending token required': 'Invalid request',
     
     // Generic errors
@@ -48,9 +46,9 @@ const USER_ERROR_MESSAGES = {
     'Method not allowed': 'Method not allowed',
     'Not found': 'Invalid request',
     'Too many requests': 'Too many requests',
+    'Service unavailable': 'Service unavailable',
     'Forbidden': 'Forbidden',
     'Unsupported Media Type': 'Invalid request',
-    'CORS origin not allowed': 'Forbidden',
     
     // Default fallback
     'default': 'Request failed'
@@ -132,6 +130,9 @@ async function handleErrorResponse(response, context = '') {
             break;
         
         case 500:
+        case 502:
+        case 503:
+        case 504:
             redirectUrl = '/9a24ed32-d32d-4b4b-a70e-a0bfd39f6710.html';
             break;
         
@@ -166,13 +167,12 @@ async function handleErrorResponse(response, context = '') {
 }
 
 // Fetch wrapper with automatic error handling and status page redirects
-// SECURITY: Automatically includes credentials (HttpOnly cookies) in all requests
+// SECURITY: the HttpOnly session cookie travels with same-origin requests only
 async function fetchWithErrorHandling(url, options = {}) {
     try {
-        // Ensure credentials are included (required for HttpOnly cookies)
         const fetchOptions = {
             ...options,
-            credentials: 'include', // Send cookies with every request
+            credentials: 'same-origin',
         };
 
         const response = await fetch(url, fetchOptions);

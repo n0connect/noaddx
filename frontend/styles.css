@@ -11,6 +11,12 @@
     font-display: swap;
 }
 
+/* Initially hidden elements (no inline style attributes: the CSP forbids them).
+   ui.js mirrors this into element.style on load, which is what the view code toggles. */
+[data-hidden] {
+    display: none;
+}
+
 * {
     margin: 0;
     padding: 0;
