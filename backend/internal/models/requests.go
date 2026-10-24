@@ -55,7 +55,8 @@ type RegisterResponse struct {
 // ---- messaging ----
 
 type MeResponse struct {
-	PublicKey string `json:"public_key"`
+	PublicKey      string `json:"public_key"`
+	MessageTTLDays int    `json:"message_ttl_days"` // ciphertext is deleted after this many days
 }
 
 type InviteResponse struct {

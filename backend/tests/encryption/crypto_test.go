@@ -2,9 +2,8 @@ package encryption
 
 import (
 	"encoding/hex"
+	"strings"
 	"testing"
-
-	"github.com/google/uuid"
 
 	"noaddress/internal/encryption"
 	"noaddress/tests/testutil"
@@ -26,8 +25,8 @@ func TestEncryptWithAAD_Basic(t *testing.T) {
 
 	// Test data
 	plaintext := "Y7KAl2oV4VL5Ox6nNgvQIcD4jXZK4scXV2k7WwsA2ms"
-	userUUID := "test-user-uuid-123456789012"
-	recordID, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440000")
+	userUUID := testutil.NewInternalID(t)
+	recordID := testutil.NewRecordID(t)
 	field := encryption.FieldPeerPublicKey
 	purpose := encryption.PurposeStoredRecord
 
@@ -90,7 +89,7 @@ func TestEncryptWithAAD_CrossUserSwap_ShouldFail(t *testing.T) {
 	plaintext := "user1 peer key"
 	userUUID1 := "user1-uuid-123456789012"
 	userUUID2 := "user2-uuid-987654321098"
-	recordID, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440000")
+	recordID := testutil.NewRecordID(t)
 	field := encryption.FieldPeerPublicKey
 	purpose := encryption.PurposeStoredRecord
 
@@ -133,8 +132,8 @@ func TestEncryptWithAAD_DifferentFields_ShouldFail(t *testing.T) {
 	}
 
 	plaintext := "Test data"
-	userUUID := "test-user-uuid-123456789012"
-	recordID, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440000")
+	userUUID := testutil.NewInternalID(t)
+	recordID := testutil.NewRecordID(t)
 	purpose := encryption.PurposeStoredRecord
 
 	// Encrypt with FieldTitle
@@ -162,9 +161,9 @@ func TestEncryptWithAAD_DifferentRecordIDs_ShouldFail(t *testing.T) {
 	}
 
 	plaintext := "Test data"
-	userUUID := "test-user-uuid-123456789012"
-	recordID1, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440000")
-	recordID2, _ := uuid.Parse("660e8400-e29b-41d4-a716-446655440001")
+	userUUID := testutil.NewInternalID(t)
+	recordID1 := testutil.NewRecordID(t)
+	recordID2 := testutil.NewRecordID(t)
 	field := encryption.FieldPeerPublicKey
 	purpose := encryption.PurposeStoredRecord
 
@@ -186,35 +185,33 @@ func TestEncryptWithAAD_DifferentRecordIDs_ShouldFail(t *testing.T) {
 func TestEncryptWithMasterKey(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
+	// The master key comes from the environment SetupTestEnv generated; no database involved
+	encryption.ResetMasterKeysForTesting()
+	defer encryption.ResetMasterKeysForTesting()
 
-	// Skip: This test requires master key initialization with database.Init()
-	// For full test, see integration tests with database setup
-	t.Skip("TestEncryptWithMasterKey requires master key initialization (database.Init())")
+	userKey, err := encryption.GenerateUserAESKey()
+	if err != nil {
+		t.Fatalf("GenerateUserAESKey() failed: %v", err)
+	}
+	userKeyHex := hex.EncodeToString(userKey)
 
-	// Convert to hex for storage
-	userKeyHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-
-	// Encrypt with master key
 	encrypted, err := encryption.EncryptWithMasterKey(userKeyHex)
 	if err != nil {
 		t.Fatalf("EncryptWithMasterKey() failed: %v", err)
 	}
-
-	if encrypted == "" {
-		t.Error("EncryptWithMasterKey() returned empty encrypted key")
+	if encrypted == "" || strings.Contains(encrypted, userKeyHex) {
+		t.Fatal("EncryptWithMasterKey() returned an empty or plaintext-bearing result")
 	}
 
-	// Decrypt
 	decryptedBytes, err := encryption.DecryptUserKey(encrypted, encryption.ActiveMasterKeyID())
 	if err != nil {
 		t.Fatalf("DecryptUserKey() failed: %v", err)
 	}
-
-	// DecryptUserKey returns []byte (decoded from hex)
-	// Convert back to hex string for comparison
-	decryptedHex := hex.EncodeToString(decryptedBytes)
-	if decryptedHex != userKeyHex {
-		t.Errorf("DecryptUserKey() = %q, want %q", decryptedHex, userKeyHex)
+	if hex.EncodeToString(decryptedBytes) != userKeyHex {
+		t.Error("DecryptUserKey() did not return the wrapped key")
+	}
+	if _, err := encryption.DecryptUserKey(encrypted, "unknown-key-id"); err == nil {
+		t.Error("DecryptUserKey() accepted an unknown master key id")
 	}
 }
 
@@ -228,8 +225,8 @@ func TestEncryptWithAAD_EmptyPlaintext(t *testing.T) {
 	}
 
 	plaintext := ""
-	userUUID := "test-user-uuid-123456789012"
-	recordID, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440000")
+	userUUID := testutil.NewInternalID(t)
+	recordID := testutil.NewRecordID(t)
 	aad := encryption.BuildAAD(userUUID, recordID, encryption.FieldPeerPublicKey, encryption.PurposeStoredRecord)
 
 	// Encrypt empty string
@@ -264,8 +261,8 @@ func TestEncryptWithAAD_LongPlaintext(t *testing.T) {
 		plaintext += "A"
 	}
 
-	userUUID := "test-user-uuid-123456789012"
-	recordID, _ := uuid.Parse("550e8400-e29b-41d4-a716-446655440000")
+	userUUID := testutil.NewInternalID(t)
+	recordID := testutil.NewRecordID(t)
 	aad := encryption.BuildAAD(userUUID, recordID, encryption.FieldPeerPublicKey, encryption.PurposeStoredRecord)
 
 	// Encrypt

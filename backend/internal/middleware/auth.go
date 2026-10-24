@@ -34,11 +34,9 @@ func sessionToken(r *http.Request) string {
 // SECURITY: Sliding session: tokens past half their lifetime are re-issued as a fresh cookie
 func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authMiddlewareLogger.Debug("JWTMiddleware: checking authentication for path: %s", r.URL.Path)
-
 		tokenString := sessionToken(r)
 		if tokenString == "" {
-			authMiddlewareLogger.Warn("JWTMiddleware: missing authentication for path: %s", r.URL.Path)
+			authMiddlewareLogger.Debug("JWTMiddleware: missing authentication")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -46,9 +44,9 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		session, err := auth.VerifyToken(tokenString)
 		if err != nil {
 			if errors.Is(err, auth.ErrExpiredToken) {
-				authMiddlewareLogger.Warn("JWTMiddleware: expired token for path: %s", r.URL.Path)
+				authMiddlewareLogger.Debug("JWTMiddleware: expired token")
 			} else {
-				authMiddlewareLogger.Warn("JWTMiddleware: invalid token for path: %s", r.URL.Path)
+				authMiddlewareLogger.Warn("JWTMiddleware: invalid token")
 			}
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -62,7 +60,7 @@ func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if user.SessionEpoch != session.SessionEpoch {
-			authMiddlewareLogger.Warn("JWTMiddleware: revoked session presented for path: %s", r.URL.Path)
+			authMiddlewareLogger.Warn("JWTMiddleware: revoked session presented")
 			auth.ClearAuthCookie(w)
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return

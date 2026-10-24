@@ -11,6 +11,8 @@ import (
 	"noaddress/internal/config"
 	"noaddress/internal/cryptoengine"
 	"noaddress/internal/utils"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -19,11 +21,13 @@ const (
 	// EncodedKeyLength is the base64url (no padding) length of a 32-byte value.
 	EncodedKeyLength = 43
 
-	derivationSalt   = "noaddress.v1"
-	infoAuthKey      = "noaddress/auth"
-	infoIdentityKey  = "noaddress/identity/x25519"
-	infoMemberTag    = "noaddress/member-tag"
-	infoInviteLookup = "noaddress/invite-lookup"
+	derivationSalt      = "noaddress.v1"
+	infoAuthKey         = "noaddress/auth"
+	infoIdentityKey     = "noaddress/identity/x25519"
+	infoStreamTag       = "noaddress/stream-tag"
+	infoConversationTag = "noaddress/conversation-tag"
+	infoInviteCreator   = "noaddress/invite-creator"
+	infoInviteLookup    = "noaddress/invite-lookup"
 )
 
 var (
@@ -65,18 +69,32 @@ func DeriveAuthKey(accountNumber string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(key), nil
 }
 
+// DeriveIdentityPrivateKey returns the account's 32-byte X25519 private scalar.
+// The server calls it only inside DerivePublicKey at signup and never stores the result;
+// clients (the browser, internal/e2e) use it to talk.
+func DeriveIdentityPrivateKey(accountNumber string) ([]byte, error) {
+	return deriveFromAccount(accountNumber, infoIdentityKey)
+}
+
 // DerivePublicKey returns the account's X25519 identity public key (base64url).
-// The matching private scalar is re-derived client-side and never stored anywhere.
 func DerivePublicKey(accountNumber string) (string, error) {
-	seed, err := deriveFromAccount(accountNumber, infoIdentityKey)
+	seed, err := DeriveIdentityPrivateKey(accountNumber)
 	if err != nil {
 		return "", err
 	}
+	defer zero(seed)
 	pub, err := cryptoengine.X25519PublicKey(seed)
 	if err != nil {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(pub), nil
+}
+
+// zero wipes key material once it is no longer needed (RULES.md §1.2)
+func zero(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
 }
 
 // ValidateEncodedKey whitelists a base64url-encoded 32-byte value (public key or auth key).
@@ -105,13 +123,36 @@ func keyedTag(info string, data []byte) (string, error) {
 	return hex.EncodeToString(mac), nil
 }
 
-// MemberTag is the pseudonym a user carries inside conversations, invites and events.
-// Without the pepper, a database dump cannot link conversation rows back to users.
-func MemberTag(userUUID string) (string, error) {
+// Every pseudonym below is keyed by its own HKDF subkey of the pepper, so tags from
+// different contexts can never be joined against each other.
+
+// StreamTag addresses a user's live event streams. It exists only in memory, never on disk.
+func StreamTag(userUUID string) (string, error) {
 	if !utils.ValidateUUID(userUUID) {
 		return "", ErrInvalidKey
 	}
-	return keyedTag(infoMemberTag, []byte(userUUID))
+	return keyedTag(infoStreamTag, []byte(userUUID))
+}
+
+// ConversationTag is the pseudonym a user carries inside ONE conversation. It differs per
+// conversation, so a database dump cannot tell that two conversations share a member.
+func ConversationTag(userUUID string, conversationID uuid.UUID) (string, error) {
+	if !utils.ValidateUUID(userUUID) || conversationID == uuid.Nil {
+		return "", ErrInvalidKey
+	}
+	data := make([]byte, 0, len(userUUID)+len(conversationID))
+	data = append(data, userUUID...)
+	data = append(data, conversationID[:]...)
+	return keyedTag(infoConversationTag, data)
+}
+
+// InviteCreatorTag groups a user's pending invites (for the active-invite cap) without
+// being joinable with conversation or stream tags.
+func InviteCreatorTag(userUUID string) (string, error) {
+	if !utils.ValidateUUID(userUUID) {
+		return "", ErrInvalidKey
+	}
+	return keyedTag(infoInviteCreator, []byte(userUUID))
 }
 
 // InviteLookup maps a raw invite token to its storage key; tokens are never stored.

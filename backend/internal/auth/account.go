@@ -22,10 +22,12 @@ type argon2Params struct {
 	hashLength uint32
 }
 
+// decoyHash is a genuine Argon2id hash of a random secret nobody knows. Logins for unknown
+// accounts verify against it so they cost exactly what a real verification costs.
 var (
-	dummyHashOnce sync.Once
-	dummyHash     string
-	dummyHashErr  error
+	decoyHashOnce sync.Once
+	decoyHash     string
+	decoyHashErr  error
 )
 
 func getArgon2Params() (argon2Params, error) {
@@ -165,43 +167,26 @@ func VerifyAccountNumberHash(encodedHash, accountNumber string) error {
 	return nil
 }
 
-func getDummyHash() (string, error) {
-	dummyHashOnce.Do(func() {
-		params, err := getArgon2Params()
+func getDecoyHash() (string, error) {
+	decoyHashOnce.Do(func() {
+		secret, err := cryptoengine.RandomBytes(32)
 		if err != nil {
-			dummyHashErr = err
+			decoyHashErr = err
 			return
 		}
-		salt, err := cryptoengine.RandomBytes(int(params.saltLength))
-		if err != nil {
-			dummyHashErr = err
-			return
-		}
-		hash, err := cryptoengine.Argon2idKey([]byte("dummy-account"), salt, params.time, params.memoryKiB, params.parallel, params.hashLength)
-		if err != nil {
-			dummyHashErr = err
-			return
-		}
-		dummyHash = fmt.Sprintf("argon2id$m=%d$t=%d$p=%d$%s$%s",
-			params.memoryKiB,
-			params.time,
-			params.parallel,
-			hex.EncodeToString(salt),
-			hex.EncodeToString(hash))
+		decoyHash, decoyHashErr = HashAccountNumber(hex.EncodeToString(secret))
 	})
-	return dummyHash, dummyHashErr
+	return decoyHash, decoyHashErr
 }
 
-// PerformDummyHashVerification performs a dummy Argon2id hash verification
-// to prevent timing attacks by making all login attempts take similar time
-// regardless of whether the user exists or not
-// This is exported so handlers can use it for timing attack prevention
-func PerformDummyHashVerification(accountNumber string) {
-	dummyHash, err := getDummyHash()
+// EqualizeVerificationTiming runs a full Argon2id verification against the decoy hash,
+// so a login for a non-existent account takes as long as one for a real account
+// (no user-enumeration timing side channel). The result is meaningless by design.
+func EqualizeVerificationTiming(authKey string) {
+	hash, err := getDecoyHash()
 	if err != nil {
-		accountLogger.LogError("PerformDummyHashVerification", err)
+		accountLogger.LogError("EqualizeVerificationTiming", err)
 		return
 	}
-	_ = VerifyAccountNumberHash(dummyHash, accountNumber)
-	// Ignore error - this is just for timing protection
+	_ = VerifyAccountNumberHash(hash, authKey)
 }

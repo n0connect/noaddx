@@ -2,8 +2,8 @@ package integration
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"noaddress/internal/auth"
+	"noaddress/internal/e2e"
 	"noaddress/internal/identity"
 	"noaddress/internal/models"
 	"noaddress/internal/server"
@@ -24,15 +25,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// TestMain skips the whole package when no PostgreSQL is reachable, instead of
-// letting database.Init() log.Fatal the test binary.
+// TestMain fails fast and loudly when PostgreSQL is unreachable: these tests exercise the
+// real database and must never report success without running.
 func TestMain(m *testing.M) {
 	testutil.SetupTestDatabaseEnv()
 	addr := net.JoinHostPort(os.Getenv("DB_HOST"), os.Getenv("DB_PORT"))
 	conn, err := net.DialTimeout("tcp", addr, time.Second)
 	if err != nil {
-		fmt.Printf("SKIP integration: PostgreSQL not reachable at %s (%v)\n", addr, err)
-		os.Exit(0)
+		fmt.Printf("FAIL integration: PostgreSQL not reachable at %s (%v)\n", addr, err)
+		os.Exit(1)
 	}
 	conn.Close()
 	os.Exit(m.Run())
@@ -151,12 +152,14 @@ func (c *client) solvePoW() *models.PoWSolution {
 	return nil
 }
 
-// user is a registered identity plus a logged-in client.
+// user is a registered identity plus a logged-in client. Its private key is derived from the
+// real AccountNumber exactly as the browser does, so its messages are genuine E2E ciphertext.
 type user struct {
 	*client
 	accountNumber string
 	authKey       string
 	publicKey     string
+	privateKey    []byte
 }
 
 func register(t *testing.T, mux http.Handler) *user {
@@ -182,7 +185,11 @@ func register(t *testing.T, mux http.Handler) *user {
 	if err != nil {
 		t.Fatalf("DerivePublicKey: %v", err)
 	}
-	return &user{client: c, accountNumber: phase1.AccountNumber, authKey: authKey, publicKey: publicKey}
+	privateKey, err := identity.DeriveIdentityPrivateKey(phase1.AccountNumber)
+	if err != nil {
+		t.Fatalf("DeriveIdentityPrivateKey: %v", err)
+	}
+	return &user{client: c, accountNumber: phase1.AccountNumber, authKey: authKey, publicKey: publicKey, privateKey: privateKey}
 }
 
 // pair makes `a` invite and `b` redeem; returns the conversation ID.
@@ -203,16 +210,50 @@ func pair(t *testing.T, a, b *user) string {
 	return conv.Conversation.ID
 }
 
-// fakeCiphertext stands in for browser output: the server must treat it as opaque bytes.
-func fakeCiphertext(t *testing.T, n int) string {
-	t.Helper()
-	raw := make([]byte, n)
-	for i := range raw {
-		raw[i] = byte(i * 7)
-	}
-	return base64.RawURLEncoding.EncodeToString(raw)
-}
-
 func newMessageID() string {
 	return uuid.New().String()
+}
+
+// seal encrypts text from `from` to `to` in a conversation with the real client protocol.
+func seal(t *testing.T, from, to *user, convID, messageID, text string, counter int64) string {
+	t.Helper()
+	conv := uuid.MustParse(convID)
+	key, err := e2e.ConversationKey(from.privateKey, to.publicKey, conv)
+	if err != nil {
+		t.Fatalf("ConversationKey: %v", err)
+	}
+	ct, err := e2e.Encrypt(key, conv, uuid.MustParse(messageID), from.publicKey, text, time.Now().UnixMilli(), counter)
+	if err != nil {
+		t.Fatalf("Encrypt: %v", err)
+	}
+	return ct
+}
+
+// open decrypts a message as `reader` in a conversation with `peer`.
+func open(t *testing.T, reader, peer *user, convID string, m models.MessageDTO) *e2e.Message {
+	t.Helper()
+	conv := uuid.MustParse(convID)
+	key, err := e2e.ConversationKey(reader.privateKey, peer.publicKey, conv)
+	if err != nil {
+		t.Fatalf("ConversationKey: %v", err)
+	}
+	sender := peer.publicKey
+	if m.Mine {
+		sender = reader.publicKey
+	}
+	msg, err := e2e.Decrypt(key, conv, uuid.MustParse(m.ID), sender, m.Ciphertext)
+	if err != nil {
+		t.Fatalf("Decrypt seq %d: %v", m.Seq, err)
+	}
+	return msg
+}
+
+// randomBytes returns CSPRNG output, used only to build adversarial (non-protocol) inputs.
+func randomBytes(t *testing.T, n int) []byte {
+	t.Helper()
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatalf("crypto/rand: %v", err)
+	}
+	return b
 }

@@ -1,20 +1,20 @@
-# 🗄️ Database Migration Tests
+# Database Migration Tests
 
-## 📋 Amaç
+## Amac
 
-Bu testler **backend ayağa kalkmadan önce** çalıştırılmalıdır. Amaçları:
+Bu testler **backend ayaga kalkmadan once** calistirilmalidir. Amaclari:
 
-1. ✅ Database bağlantısının doğru çalıştığını doğrulamak
-2. ✅ Migration'ların başarıyla çalıştığını test etmek
-3. ✅ Database schema'sının doğru oluşturulduğunu doğrulamak
-4. ✅ Index'lerin ve constraint'lerin doğru ayarlandığını test etmek
-5. ✅ Database'in backend başlamadan önce hazır olduğunu garantilemek
+1. [x] Database baglantisinin dogru calistigini dogrulamak
+2. [x] Migration'larin basariyla calistigini test etmek
+3. [x] Database schema'sinin dogru olusturuldugunu dogrulamak
+4. [x] Index'lerin ve constraint'lerin dogru ayarlandigini test etmek
+5. [x] Database'in backend baslamadan once hazir oldugunu garantilemek
 
-## 🚀 Kullanım
+## Kullanim
 
 ### Test Database Setup
 
-Testler otomatik olarak test database'ine bağlanır. Environment variables:
+Testler otomatik olarak test database'ine baglanir. Environment variables:
 
 ```bash
 export DB_HOST=localhost
@@ -25,68 +25,67 @@ export DB_NAME=noaddress_test
 export DB_SSL_MODE=disable
 ```
 
-### Test Çalıştırma
+### Test Calistirma
 
 ```bash
-# Tüm migration testleri
+# Tum migration testleri
 cd backend
-go test ./tests/database -v
+go test -tags=test ./tests/database -v
 
 # Sadece migration testi
-go test ./tests/database -v -run TestDatabaseMigration
+go test -tags=test ./tests/database -v -run TestDatabaseMigration
 
 # Schema testleri
-go test ./tests/database -v -run TestUserTableSchema
+go test -tags=test ./tests/database -v -run TestUserTableSchema
 go test -tags=test ./tests/database -v -run TestChatTableSchema
 
 # Connection testi
-go test ./tests/database -v -run TestDatabaseConnection
+go test -tags=test ./tests/database -v -run TestDatabaseConnection
 ```
 
-### Backend Başlatmadan Önce
+### Backend Baslatmadan Once
 
 ```bash
-# 1. Migration testlerini çalıştır
-go test ./tests/database -v
+# 1. Migration testlerini calistir
+go test -tags=test ./tests/database -v
 
-# 2. Testler başarılıysa backend'i başlat
+# 2. Testler basariliysa backend'i baslat
 go run ./cmd/server
 ```
 
-## 📝 Test Kategorileri
+## Test Kategorileri
 
 ### 1. Migration Tests
 
-- `TestDatabaseMigration`: Migration'ların başarıyla çalıştığını test eder
-- `TestDatabaseConnection`: Database bağlantısını test eder
-- `TestDatabaseMasterKey`: Master key'in initialize edildiğini test eder
+- `TestDatabaseMigration`: Migration'larin basariyla calistigini test eder
+- `TestDatabaseConnection`: Database baglantisini test eder
+- `TestDatabaseMasterKey`: Master key'in initialize edildigini test eder
 
 ### 2. Schema Tests
 
-- `TestUserTableSchema`: User tablosunun doğru schema'ya sahip olduğunu test eder
-- `TestChatTableSchema`: Mesajlaşma tablolarının doğru schema'ya sahip olduğunu ve kullanıcıya bağlanabilecek kolon içermediğini test eder
+- `TestUserTableSchema`: User tablosunun dogru schema'ya sahip oldugunu test eder
+- `TestChatTableSchema`: Mesajlasma tablolarinin dogru schema'ya sahip oldugunu ve kullaniciya baglanabilecek kolon icermedigini test eder
 
 ### 3. Constraint Tests
 
 - `TestUserTableIndexes`: User tablosundaki index'leri test eder
 - `TestDatabaseConstraints`: NOT NULL constraint'lerini test eder
 
-## ⚠️ Önemli Notlar
+## Onemli Notlar
 
-1. **Test Database**: Testler `noaddress_test` database'ini kullanır (production database'i değil)
-2. **Migration**: `database.Init()` çağrıldığında migration'lar otomatik çalışır
-3. **Clean State**: Her test öncesi database temizlenmez (manuel cleanup gerekebilir)
-4. **Production**: Production'da bu testler çalıştırılmamalı
+1. **Test Database**: Testler `noaddress_test` database'ini kullanir (production database'i degil)
+2. **Migration**: `database.Init()` cagrildiginda migration'lar otomatik calisir
+3. **Clean State**: Her test oncesi database temizlenmez (manuel cleanup gerekebilir)
+4. **Production**: Production'da bu testler calistirilmamali
 
-## 🔧 Test Infrastructure
+## Test Infrastructure
 
-Testler `tests/testutil/db.go` içindeki utility fonksiyonlarını kullanır:
+Testler `tests/testutil/db.go` icindeki utility fonksiyonlarini kullanir:
 
-- `SetupTestDB()`: Test database bağlantısı kurar
-- `TeardownTestDB()`: Test sonrası temizlik
-- `CleanTestDatabase()`: Database'i temizler ve migration'ları yeniden çalıştırır
-- `InitializeTestDatabase()`: Global database connection'ı initialize eder
+- `InitializeTestDatabase()`: Gercek `database.Init()` ile baglanir ve migration'lari calistirir
+- `CleanupTestData()`: Test sonrasi tum tablolari bosaltir
+- `InitializeTestDatabase()`: Global database connection'i initialize eder
 
 ---
 
-**Son Güncelleme:** Ocak 2026
+**Son Guncelleme:** Ekim 2026

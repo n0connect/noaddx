@@ -25,6 +25,8 @@ const NoaddressCrypto = (() => {
     const INVITE_PREFIX = 'noaddress:';
     // Plaintext is framed as len(2) || json || zero padding to a multiple of PAD_BLOCK,
     // so ciphertext length only reveals a coarse size bucket.
+    // json = {"t": text, "ts": sender clock (ms), "n": sender's per-conversation counter};
+    // gaps in a peer's "n" reveal messages the server withheld or deleted.
     const PAD_BLOCK = 256;
     const MAX_PAYLOAD_BYTES = 6000;
     // RFC 8410 PrivateKeyInfo header for an X25519 key (OID 1.3.101.110)
@@ -206,12 +208,17 @@ const NoaddressCrypto = (() => {
         return framed.subarray(2, 2 + length);
     }
 
-    function payloadBytes(text, sentAt) {
-        return encoder.encode(JSON.stringify({ t: text, ts: sentAt }));
+    const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
+
+    function payloadBytes(text, sentAt, counter) {
+        return encoder.encode(JSON.stringify({ t: text, ts: sentAt, n: counter }));
     }
 
-    async function encryptMessage(key, conversationId, messageId, senderPublicKey, text, sentAt) {
-        const plain = frame(payloadBytes(text, sentAt));
+    async function encryptMessage(key, conversationId, messageId, senderPublicKey, text, sentAt, counter) {
+        if (!Number.isSafeInteger(counter) || counter < 1) {
+            throw new Error('invalid counter');
+        }
+        const plain = frame(payloadBytes(text, sentAt, counter));
         const nonce = globalThis.crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
         try {
             const aad = await messageAAD(conversationId, messageId, senderPublicKey);
@@ -237,17 +244,18 @@ const NoaddressCrypto = (() => {
         try {
             const parsed = JSON.parse(decoder.decode(unframe(plain)));
             const keys = Object.keys(parsed);
-            if (keys.length !== 2 || typeof parsed.t !== 'string' || !Number.isSafeInteger(parsed.ts) || parsed.ts <= 0) {
+            if (keys.length !== 3 || typeof parsed.t !== 'string' || !Number.isSafeInteger(parsed.ts) || parsed.ts <= 0 ||
+                !Number.isSafeInteger(parsed.n) || parsed.n < 1 || parsed.n > MAX_COUNTER) {
                 throw new Error('bad payload');
             }
-            return { text: parsed.t, sentAt: parsed.ts };
+            return { text: parsed.t, sentAt: parsed.ts, counter: parsed.n };
         } finally {
             wipe(plain);
         }
     }
 
     function payloadFits(text) {
-        return payloadBytes(text, Date.now()).length <= MAX_PAYLOAD_BYTES;
+        return payloadBytes(text, Date.now(), MAX_COUNTER).length <= MAX_PAYLOAD_BYTES;
     }
 
     // ---------- pairing & verification ----------

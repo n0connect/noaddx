@@ -5,59 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"noaddress/internal/auth"
 	"noaddress/internal/middleware"
 	"noaddress/tests/testutil"
 )
-
-func TestJWTMiddleware_ValidToken(t *testing.T) {
-	testutil.SetupTestEnv(t)
-	defer testutil.TeardownTestEnv(t)
-
-	// Skip: This test requires a database connection for userRepository.FindByUUID
-	// For a full test, a test database would be needed (see tests/testutil/db.go)
-	t.Skip("TestJWTMiddleware_ValidToken requires database connection (userRepository.FindByUUID)")
-
-	// Create a valid JWT token
-	userUUID := "test-user-uuid-123456789012"
-	token, err := auth.SignToken(userUUID, 0)
-	if err != nil {
-		t.Fatalf("SignToken() failed: %v", err)
-	}
-
-	// Create request with Authorization header
-	req := httptest.NewRequest("GET", "/api/v2/conversations", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	// Create response recorder
-	rr := httptest.NewRecorder()
-
-	// Create a test handler
-	handlerCalled := false
-	testHandler := middleware.JWTMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		handlerCalled = true
-		userUUIDFromCtx, ok := auth.GetUserUUID(r.Context())
-		if !ok {
-			t.Error("GetUserUUID() should return true")
-		}
-		if userUUIDFromCtx != userUUID {
-			t.Errorf("GetUserUUID() = %q, want %q", userUUIDFromCtx, userUUID)
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-
-	// Execute
-	handler := http.HandlerFunc(testHandler)
-	handler.ServeHTTP(rr, req)
-
-	// Verify
-	if !handlerCalled {
-		t.Error("Handler should have been called")
-	}
-	if rr.Code != http.StatusOK {
-		t.Errorf("Status code = %d, want %d", rr.Code, http.StatusOK)
-	}
-}
 
 func TestJWTMiddleware_MissingHeader(t *testing.T) {
 	testutil.SetupTestEnv(t)

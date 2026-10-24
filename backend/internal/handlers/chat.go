@@ -10,6 +10,7 @@ import (
 
 	"noaddress/internal/auth"
 	"noaddress/internal/chat"
+	"noaddress/internal/config"
 	"noaddress/internal/middleware"
 	"noaddress/internal/models"
 	"noaddress/internal/realtime"
@@ -78,7 +79,7 @@ func rejectQuery(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func allowOrTooMany(w http.ResponseWriter, bucket string, me *chat.Member) bool {
-	if middleware.AllowKey(bucket + ":" + me.Tag) {
+	if middleware.AllowKey(bucket + ":" + me.StreamTag) {
 		return true
 	}
 	chatLogger.Warn("rate limit exceeded: bucket=%s", bucket)
@@ -97,7 +98,7 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok || rejectQuery(w, r) {
 		return
 	}
-	utils.EncodeJSONResponse(w, models.MeResponse{PublicKey: me.PublicKey}, http.StatusOK)
+	utils.EncodeJSONResponse(w, models.MeResponse{PublicKey: me.PublicKey, MessageTTLDays: config.GetMessageTTLDays()}, http.StatusOK)
 }
 
 // CreateInviteHandler issues a single-use pairing token (POST /api/v2/invites).
@@ -134,12 +135,12 @@ func RedeemInviteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	conversation, creatorTag, err := chatService.RedeemInvite(me, req.Token)
+	conversation, creatorStream, err := chatService.RedeemInvite(me, req.Token)
 	if err != nil {
 		writeChatError(w, err, "RedeemInvite")
 		return
 	}
-	realtime.Default.Publish([]string{creatorTag}, realtime.Event{Kind: realtime.KindConversation})
+	realtime.Default.Publish([]string{creatorStream}, realtime.Event{Kind: realtime.KindConversation})
 	utils.EncodeJSONResponse(w, models.ConversationResponse{Conversation: *conversation}, http.StatusCreated)
 }
 

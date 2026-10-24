@@ -4,18 +4,38 @@
 package testutil
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"os"
+	"sync"
 	"testing"
 )
+
+// Secrets are drawn from the CSPRNG once per test binary, exactly as setup.sh does for a
+// deployment; no key, secret or pepper is ever written into the repository.
+var (
+	secretsOnce sync.Once
+	jwtSecret   string
+	masterKey   string
+	pepper      string
+)
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
 
 // SetupTestEnv sets up test environment variables
 func SetupTestEnv(t *testing.T) {
 	t.Helper()
 
-	// Set required environment variables for testing
-	testJWTSecret := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"     // 64 chars
-	testEncryptionKey := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 64 hex chars = 32 bytes
-	testPepper := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"        // 64 hex chars = 32 bytes
+	secretsOnce.Do(func() {
+		jwtSecret, masterKey, pepper = randomHex(32), randomHex(32), randomHex(32)
+	})
+	testJWTSecret, testEncryptionKey, testPepper := jwtSecret, masterKey, pepper
 
 	os.Setenv("JWT_SECRET", testJWTSecret)
 	os.Setenv("JWT_SECRET_MIN_LEN", "32")
@@ -33,6 +53,7 @@ func SetupTestEnv(t *testing.T) {
 	os.Setenv("MAX_CONVERSATIONS_PER_USER", "256")
 	os.Setenv("MAX_MESSAGE_BYTES", "8192")
 	os.Setenv("MESSAGE_PAGE_LIMIT", "200")
+	os.Setenv("MESSAGE_TTL_DAYS", "7")
 	os.Setenv("POW_DIFFICULTY", "18") // Minimum allowed; keeps registration helpers fast
 	os.Setenv("ARGON2_MEMORY_KIB", "16384")
 	os.Setenv("ARGON2_TIME", "1")
@@ -96,6 +117,7 @@ func TeardownTestEnv(t *testing.T) {
 	os.Unsetenv("MAX_CONVERSATIONS_PER_USER")
 	os.Unsetenv("MAX_MESSAGE_BYTES")
 	os.Unsetenv("MESSAGE_PAGE_LIMIT")
+	os.Unsetenv("MESSAGE_TTL_DAYS")
 	os.Unsetenv("POW_DIFFICULTY")
 	os.Unsetenv("ARGON2_MEMORY_KIB")
 	os.Unsetenv("ARGON2_TIME")

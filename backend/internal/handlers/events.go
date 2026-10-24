@@ -45,7 +45,7 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, cancel, err := realtime.Default.Subscribe(me.Tag)
+	events, cancel, err := realtime.Default.Subscribe(me.StreamTag)
 	if err != nil {
 		chatLogger.Warn("EventsHandler: subscriber limit reached")
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)

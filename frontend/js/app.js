@@ -116,6 +116,7 @@ function setupEventListeners() {
     // App: conversation
     document.getElementById('backToListBtn').addEventListener('click', () => Chat.backToList());
     document.getElementById('verifyBtn').addEventListener('click', () => Chat.showSafety());
+    document.getElementById('markVerifiedBtn').addEventListener('click', () => Chat.toggleVerified());
     document.getElementById('burnBtn').addEventListener('click', () => Chat.askBurn(true));
     document.getElementById('burnNoBtn').addEventListener('click', () => Chat.askBurn(false));
     document.getElementById('burnYesBtn').addEventListener('click', () => Chat.burn());

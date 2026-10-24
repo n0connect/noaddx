@@ -28,8 +28,8 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 			if err := userRepository.BumpSessionEpoch(session.UserUUID); err != nil {
 				logoutLogger.LogError("BumpSessionEpoch", err)
 			}
-			if tag, err := identity.MemberTag(session.UserUUID); err == nil {
-				realtime.Default.Kick(tag)
+			if stream, err := identity.StreamTag(session.UserUUID); err == nil {
+				realtime.Default.Kick(stream)
 			}
 			logoutLogger.Debug("LogoutHandler: sessions revoked")
 		}

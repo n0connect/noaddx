@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -17,44 +16,30 @@ func setupAuthTestEnv(t *testing.T) {
 	})
 }
 
-// TestComputeAccountLookup_Deterministic tests that the same account number
-// with the same pepper produces the same lookup value
+// TestComputeAccountLookup_Deterministic tests that the same auth key under the
+// configured pepper always produces the same lookup value, and different keys differ
 func TestComputeAccountLookup_Deterministic(t *testing.T) {
 	setupAuthTestEnv(t)
 
-	// Set a test pepper
-	originalPepper := os.Getenv("ACCOUNT_LOOKUP_PEPPER")
-	testPepper := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" // 64 hex chars = 32 bytes
-	os.Setenv("ACCOUNT_LOOKUP_PEPPER", testPepper)
-	defer func() {
-		if originalPepper != "" {
-			os.Setenv("ACCOUNT_LOOKUP_PEPPER", originalPepper)
-		} else {
-			os.Unsetenv("ACCOUNT_LOOKUP_PEPPER")
-		}
-	}()
-
-	accountNumber := strings.Repeat("A", 43)
-
-	// Compute lookup twice
-	lookup1, err := auth.ComputeAccountLookup(accountNumber)
+	authKey := testutil.NewAuthKey(t)
+	lookup1, err := auth.ComputeAccountLookup(authKey)
 	if err != nil {
 		t.Fatalf("ComputeAccountLookup() failed: %v", err)
 	}
-
-	lookup2, err := auth.ComputeAccountLookup(accountNumber)
+	lookup2, err := auth.ComputeAccountLookup(authKey)
 	if err != nil {
 		t.Fatalf("ComputeAccountLookup() failed: %v", err)
 	}
-
-	// Should be identical
 	if lookup1 != lookup2 {
 		t.Errorf("ComputeAccountLookup() is not deterministic: got %q and %q", lookup1, lookup2)
 	}
-
-	// Should be hex-encoded (64 hex chars for SHA256)
 	if len(lookup1) != 64 {
 		t.Errorf("ComputeAccountLookup() length = %d, want 64 (hex-encoded SHA256)", len(lookup1))
+	}
+
+	other, err := auth.ComputeAccountLookup(testutil.NewAuthKey(t))
+	if err != nil || other == lookup1 {
+		t.Fatalf("distinct auth keys produced the same lookup (err=%v)", err)
 	}
 }
 
@@ -62,157 +47,79 @@ func TestComputeAccountLookup_Deterministic(t *testing.T) {
 func TestHashAndVerifyAccountNumber(t *testing.T) {
 	setupAuthTestEnv(t)
 
-	accountNumber := strings.Repeat("A", 43)
-
-	// Generate hash
-	hash, err := auth.HashAccountNumber(accountNumber)
+	authKey := testutil.NewAuthKey(t)
+	hash, err := auth.HashAccountNumber(authKey)
 	if err != nil {
 		t.Fatalf("HashAccountNumber() failed: %v", err)
 	}
-
-	// Hash should not be empty
-	if hash == "" {
-		t.Error("HashAccountNumber() returned empty hash")
+	if !strings.HasPrefix(hash, "argon2id$") || len(strings.Split(hash, "$")) != 6 {
+		t.Fatalf("HashAccountNumber() returned malformed hash %q", hash)
 	}
-
-	// Hash should contain argon2id prefix
-	if len(hash) < 20 {
-		t.Errorf("HashAccountNumber() returned hash too short: %d", len(hash))
+	if err := auth.VerifyAccountNumberHash(hash, authKey); err != nil {
+		t.Errorf("VerifyAccountNumberHash() with the correct key failed: %v", err)
 	}
-
-	// Verify with correct account number
-	err = auth.VerifyAccountNumberHash(hash, accountNumber)
-	if err != nil {
-		t.Errorf("VerifyAccountNumberHash() with correct account number failed: %v", err)
-	}
-
-	// Verify with wrong account number
-	wrongAccountNumber := strings.Repeat("B", 43)
-	err = auth.VerifyAccountNumberHash(hash, wrongAccountNumber)
-	if err == nil {
-		t.Error("VerifyAccountNumberHash() with wrong account number should have failed")
+	if err := auth.VerifyAccountNumberHash(hash, testutil.NewAuthKey(t)); err == nil {
+		t.Error("VerifyAccountNumberHash() accepted a different key")
 	}
 }
 
-// TestHashAndVerifyAccountNumber_DifferentSalts tests that same account number
-// produces different hashes (due to random salt)
+// TestHashAndVerifyAccountNumber_DifferentSalts tests that the same key produces
+// different hashes (random salt) that both verify
 func TestHashAndVerifyAccountNumber_DifferentSalts(t *testing.T) {
 	setupAuthTestEnv(t)
 
-	accountNumber := strings.Repeat("A", 43)
-
-	// Generate two hashes
-	hash1, err := auth.HashAccountNumber(accountNumber)
+	authKey := testutil.NewAuthKey(t)
+	hash1, err := auth.HashAccountNumber(authKey)
 	if err != nil {
 		t.Fatalf("HashAccountNumber() failed: %v", err)
 	}
-
-	hash2, err := auth.HashAccountNumber(accountNumber)
+	hash2, err := auth.HashAccountNumber(authKey)
 	if err != nil {
 		t.Fatalf("HashAccountNumber() failed: %v", err)
 	}
-
-	// Hashes should be different (different salts)
 	if hash1 == hash2 {
 		t.Error("HashAccountNumber() produced identical hashes (should have different salts)")
 	}
-
-	// But both should verify correctly
-	err = auth.VerifyAccountNumberHash(hash1, accountNumber)
-	if err != nil {
-		t.Errorf("VerifyAccountNumberHash() with hash1 failed: %v", err)
-	}
-
-	err = auth.VerifyAccountNumberHash(hash2, accountNumber)
-	if err != nil {
-		t.Errorf("VerifyAccountNumberHash() with hash2 failed: %v", err)
+	for i, hash := range []string{hash1, hash2} {
+		if err := auth.VerifyAccountNumberHash(hash, authKey); err != nil {
+			t.Errorf("VerifyAccountNumberHash() with hash%d failed: %v", i+1, err)
+		}
 	}
 }
 
-// TestVerifyAccountNumberHash_InvalidFormat_ShouldFail tests that invalid hash formats
-// return errors without panicking
+// TestVerifyAccountNumberHash_InvalidFormat_ShouldFail corrupts a real stored hash in every
+// way the parser must reject, and checks it fails closed without panicking
 func TestVerifyAccountNumberHash_InvalidFormat_ShouldFail(t *testing.T) {
 	setupAuthTestEnv(t)
 
-	accountNumber := strings.Repeat("A", 43)
-
-	tests := []struct {
-		name        string
-		encodedHash string
-		description string
-	}{
-		{
-			name:        "empty string",
-			encodedHash: "",
-			description: "Empty hash string",
-		},
-		{
-			name:        "missing parts",
-			encodedHash: "argon2id$m=65536$t=3",
-			description: "Missing parts (only 3 parts)",
-		},
-		{
-			name:        "wrong prefix",
-			encodedHash: "bcrypt$m=65536$t=3$p=2$salt$hash",
-			description: "Wrong algorithm prefix",
-		},
-		{
-			name:        "invalid memory format",
-			encodedHash: "argon2id$invalid$t=3$p=2$salt$hash",
-			description: "Invalid memory parameter format",
-		},
-		{
-			name:        "invalid time format",
-			encodedHash: "argon2id$m=65536$invalid$p=2$salt$hash",
-			description: "Invalid time parameter format",
-		},
-		{
-			name:        "invalid parallelism format",
-			encodedHash: "argon2id$m=65536$t=3$invalid$salt$hash",
-			description: "Invalid parallelism parameter format",
-		},
-		{
-			name:        "empty salt",
-			encodedHash: "argon2id$m=65536$t=3$p=2$$hash",
-			description: "Empty salt hex",
-		},
-		{
-			name:        "empty hash",
-			encodedHash: "argon2id$m=65536$t=3$p=2$salt$",
-			description: "Empty hash hex",
-		},
-		{
-			name:        "non-hex salt",
-			encodedHash: "argon2id$m=65536$t=3$p=2$nothex$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-			description: "Non-hex salt encoding",
-		},
-		{
-			name:        "non-hex hash",
-			encodedHash: "argon2id$m=65536$t=3$p=2$0123456789abcdef0123456789abcdef$nothex",
-			description: "Non-hex hash encoding",
-		},
-		{
-			name:        "too many parts",
-			encodedHash: "argon2id$m=65536$t=3$p=2$salt$hash$extra",
-			description: "Too many parts (7 instead of 6)",
-		},
-		{
-			name:        "missing delimiter",
-			encodedHash: "argon2idm=65536t=3p=2salthex",
-			description: "Missing $ delimiters",
-		},
+	authKey := testutil.NewAuthKey(t)
+	real, err := auth.HashAccountNumber(authKey)
+	if err != nil {
+		t.Fatalf("HashAccountNumber() failed: %v", err)
 	}
+	parts := strings.Split(real, "$") // argon2id, m=, t=, p=, salt, hash
+	join := func(p ...string) string { return strings.Join(p, "$") }
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// This should not panic, should return an error
-			err := auth.VerifyAccountNumberHash(tt.encodedHash, accountNumber)
-			if err == nil {
-				t.Errorf("VerifyAccountNumberHash() with %s should have failed, got nil error", tt.description)
-			}
-			// Verify error message is informative
-			if err != nil && err.Error() == "" {
-				t.Error("VerifyAccountNumberHash() returned empty error message")
+	corrupted := map[string]string{
+		"empty string":         "",
+		"missing parts":        join(parts[:3]...),
+		"wrong prefix":         join(append([]string{"bcrypt"}, parts[1:]...)...),
+		"invalid memory":       join(parts[0], "m=x", parts[2], parts[3], parts[4], parts[5]),
+		"invalid time":         join(parts[0], parts[1], "t=x", parts[3], parts[4], parts[5]),
+		"invalid parallelism":  join(parts[0], parts[1], parts[2], "p=x", parts[4], parts[5]),
+		"empty salt":           join(parts[0], parts[1], parts[2], parts[3], "", parts[5]),
+		"empty hash":           join(parts[0], parts[1], parts[2], parts[3], parts[4], ""),
+		"non-hex salt":         join(parts[0], parts[1], parts[2], parts[3], "zz"+parts[4][2:], parts[5]),
+		"non-hex hash":         join(parts[0], parts[1], parts[2], parts[3], parts[4], "zz"+parts[5][2:]),
+		"too many parts":       join(append(parts, parts[5])...),
+		"missing delimiters":   strings.ReplaceAll(real, "$", ""),
+		"truncated hash value": join(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5][:len(parts[5])-2]),
+	}
+	for name, encoded := range corrupted {
+		t.Run(name, func(t *testing.T) {
+			err := auth.VerifyAccountNumberHash(encoded, authKey)
+			if err == nil || err.Error() == "" {
+				t.Errorf("corrupted hash (%s) was not rejected with an error", name)
 			}
 		})
 	}
@@ -220,16 +127,18 @@ func TestVerifyAccountNumberHash_InvalidFormat_ShouldFail(t *testing.T) {
 
 // TestVerifyAccountNumberHash_Empty_ShouldFail tests that empty inputs fail gracefully
 func TestVerifyAccountNumberHash_Empty_ShouldFail(t *testing.T) {
-	// Empty hash string
-	err := auth.VerifyAccountNumberHash("", strings.Repeat("A", 43))
-	if err == nil {
+	setupAuthTestEnv(t)
+
+	authKey := testutil.NewAuthKey(t)
+	if err := auth.VerifyAccountNumberHash("", authKey); err == nil {
 		t.Error("VerifyAccountNumberHash() with empty hash should have failed")
 	}
 
-	// Empty account number (should still parse hash but fail verification)
-	validHash := "argon2id$m=65536$t=3$p=2$0123456789abcdef0123456789abcdef$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	err = auth.VerifyAccountNumberHash(validHash, "")
-	if err == nil {
-		t.Error("VerifyAccountNumberHash() with empty account number should have failed")
+	real, err := auth.HashAccountNumber(authKey)
+	if err != nil {
+		t.Fatalf("HashAccountNumber() failed: %v", err)
+	}
+	if err := auth.VerifyAccountNumberHash(real, ""); err == nil {
+		t.Error("VerifyAccountNumberHash() with an empty key should have failed")
 	}
 }

@@ -1,79 +1,85 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
+	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"noaddress/internal/auth"
+	"noaddress/internal/chat"
 	"noaddress/internal/config"
 	"noaddress/internal/database"
+	"noaddress/internal/encryption"
 	"noaddress/internal/pow"
 	"noaddress/internal/server"
 	"noaddress/internal/utils"
 )
 
+// shutdownGrace bounds how long in-flight requests may finish after SIGINT/SIGTERM
+const shutdownGrace = 10 * time.Second
+
 var mainLogger = utils.NewLogger("MAIN")
 
 func main() {
-	// Log environment mode
 	if config.IsProductionMode() {
-		mainLogger.Info("Application is Running in PRODUCTION mode")
+		mainLogger.Info("Starting noaddress. backend (production)")
 	} else {
-		mainLogger.Info("Application is Running in DEVELOPMENT mode")
+		mainLogger.Info("Starting noaddress. backend (development)")
 	}
 
-	mainLogger.Info("Starting noaddress backend server...")
-
-	// Validate database configuration at startup
-	mainLogger.Debug("Validating startup configuration...")
 	if err := database.ValidateStartupConfig(); err != nil {
 		mainLogger.Error("Configuration validation failed: %v", err)
-		log.Fatalf("Configuration error: %v", err)
+		log.Fatal("Configuration error")
 	}
-	mainLogger.Info("Configuration validation passed!")
 
-	// Initialize PoW system
-	mainLogger.Debug("Initializing PoW system...")
-	pow.InitPoW()
-
-	// Initialize database
-	mainLogger.Debug("Initializing database connection...")
 	database.Init()
 
-	// Setup routes
-	mainLogger.Debug("Setting up HTTP routes...")
+	// Every goroutine and request context derives from this: a signal cancels them all
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
-	// -- Server Mux Settings
-	mainLogger.Debug("Setting mux for HTTP server...")
-	mux := server.NewMux()
-
-	mainLogger.Info("HTTP routes configured successfully")
-
-	backendPort := config.GetBackendPort()
-	if backendPort == "" {
-		mainLogger.Error("BACKEND_PORT is required")
-		log.Fatal("Configuration error: BACKEND_PORT is required")
-	}
-	mainLogger.Info("Server starting on port %s", backendPort)
-
-	// -- Server custom srv settings
-	mainLogger.Info("Setting Custom server settings for HTTP server...")
-	addr := ":" + backendPort
-	readHeaderTimeout := config.GetServerReadHeaderTimeout()
-	readTimeout := config.GetServerReadTimeout()
-	writeTimeout := config.GetServerWriteTimeout()
-	idleTimeout := config.GetServerIdleTimeout()
-	maxHeaderBytes := config.GetServerMaxHeaderBytes()
+	utils.SafeGoSupervised(ctx, "pow-cleanup", pow.RunCleanup)
+	utils.SafeGoSupervised(ctx, "retention", chat.NewService().RunRetention)
 
 	srv := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-		MaxHeaderBytes:    maxHeaderBytes,
+		Addr:              ":" + config.GetBackendPort(),
+		Handler:           server.NewMux(),
+		ReadHeaderTimeout: config.GetServerReadHeaderTimeout(),
+		ReadTimeout:       config.GetServerReadTimeout(),
+		WriteTimeout:      config.GetServerWriteTimeout(),
+		IdleTimeout:       config.GetServerIdleTimeout(),
+		MaxHeaderBytes:    config.GetServerMaxHeaderBytes(),
+		// Long-lived SSE streams end as soon as shutdown begins
+		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- srv.ListenAndServe()
+	}()
 	mainLogger.Info("Server is ready to accept connections")
-	log.Fatal(srv.ListenAndServe())
+
+	select {
+	case err := <-serveErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			mainLogger.LogError("ListenAndServe", err)
+		}
+	case <-ctx.Done():
+		mainLogger.Info("Shutdown signal received")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		mainLogger.LogError("Shutdown", err)
+	}
+	auth.StopCleanup()
+	encryption.ZeroizeAllKeys()
+	mainLogger.Info("Server stopped; key material zeroized")
 }

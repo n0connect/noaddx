@@ -25,8 +25,6 @@ func ContentTypeMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		contentTypeLogger.Debug("ContentTypeMiddleware: method=%s path=%s content-length=%d", r.Method, r.URL.Path, r.ContentLength)
-
 		if _, ok := emptyBodyAllowed[r.URL.Path]; ok && r.ContentLength == 0 {
 			next(w, r)
 			return
@@ -35,7 +33,7 @@ func ContentTypeMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		// Whitelist: Only allow "application/json" (parameters such as charset are ignored)
 		baseContentType := strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0])
 		if !strings.EqualFold(baseContentType, "application/json") {
-			contentTypeLogger.Warn("ContentTypeMiddleware: unsupported content-type for method=%s path=%s", r.Method, r.URL.Path)
+			contentTypeLogger.Warn("ContentTypeMiddleware: unsupported content-type rejected")
 			http.Error(w, "Unsupported Media Type", http.StatusUnsupportedMediaType)
 			return
 		}

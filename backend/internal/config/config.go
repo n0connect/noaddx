@@ -31,6 +31,8 @@ const (
 	defaultMaxConversationsPerUser = 256
 	defaultMaxMessageBytes         = 8192 // Raw E2E ciphertext (nonce + payload + tag)
 	defaultMessagePageLimit        = 200
+	defaultMessageTTLDays          = 7 // Messages vanish after TTL..TTL+1 days (day-granular)
+	maxMessageTTLDays              = 365
 	// Argon2id parameters follow OWASP recommendations (2023)
 	// Memory: 64MiB (65536 KiB) - recommended for password hashing
 	// Time: 3 iterations - balance between security and performance
@@ -55,9 +57,11 @@ const (
 	defaultServerWriteTimeout      = 15
 	defaultServerIdleTimeout       = 60
 	defaultServerMaxHeaderBytes    = 8192
-	defaultPoWDifficulty           = 20 // Strong security with acceptable browser performance (~20-40 sec)
-	minPoWDifficulty               = 18 // Minimum difficulty (low load)
-	maxPoWDifficulty               = 24 // Maximum difficulty (high load, DoS protection)
+	defaultPoWDifficulty           = 20  // Strong security with acceptable browser performance (~20-40 sec)
+	minPoWDifficulty               = 18  // Minimum difficulty (low load)
+	maxPoWDifficulty               = 24  // Maximum difficulty (high load, DoS protection)
+	defaultPoWChallengeTTLSeconds  = 300 // A challenge must be solved and used within 5 minutes
+	maxPoWChallengeTTLSeconds      = 3600
 )
 
 // ========================================
@@ -181,6 +185,16 @@ func GetMaxMessageBytes() int {
 // GetMessagePageLimit returns the max number of messages returned per request
 func GetMessagePageLimit() int {
 	return getEnvIntDefault("MESSAGE_PAGE_LIMIT", defaultMessagePageLimit)
+}
+
+// GetMessageTTLDays returns how many days ciphertext is kept before deletion
+func GetMessageTTLDays() int {
+	return getEnvIntDefault("MESSAGE_TTL_DAYS", defaultMessageTTLDays)
+}
+
+// MaxMessageTTLDays is the upper bound accepted for MESSAGE_TTL_DAYS
+func MaxMessageTTLDays() int {
+	return maxMessageTTLDays
 }
 
 // ========================================
@@ -459,6 +473,15 @@ func GetServerMaxHeaderBytes() int {
 // GetPoWDifficulty returns the PoW difficulty level
 func GetPoWDifficulty() int {
 	return getEnvIntDefault("POW_DIFFICULTY", defaultPoWDifficulty)
+}
+
+// GetPoWChallengeTTL returns how long an issued PoW challenge stays valid
+func GetPoWChallengeTTL() time.Duration {
+	seconds := getEnvIntDefault("POW_CHALLENGE_TTL_SEC", defaultPoWChallengeTTLSeconds)
+	if seconds <= 0 || seconds > maxPoWChallengeTTLSeconds {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // DefaultPoWDifficulty returns the default PoW difficulty level

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"strings"
 	"testing"
 
 	"noaddress/internal/auth"
@@ -26,7 +25,7 @@ func TestSignPendingRegistrationToken_ContainsPendingID(t *testing.T) {
 	}
 
 	// Store AccountNumber server-side
-	accountNumber := strings.Repeat("A", 43)
+	accountNumber := testutil.NewAccountNumber(t)
 	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
@@ -66,7 +65,7 @@ func TestSignPendingRegistrationToken_NoAccountNumberInToken(t *testing.T) {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
 
-	accountNumber := strings.Repeat("A", 43)
+	accountNumber := testutil.NewAccountNumber(t)
 	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}

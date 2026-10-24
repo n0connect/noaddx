@@ -1,107 +1,52 @@
 package utils
 
 import (
-	"context"
-	"fmt"
-	"sync"
+	"errors"
 	"time"
 )
 
-// SafeMutex wraps sync.Mutex with timeout support (RULES.md §4.1)
+// DefaultLockTimeout bounds every SafeMutex acquisition (RULES.md §4.1).
+const DefaultLockTimeout = 5 * time.Second
+
+// ErrLockTimeout is returned when a SafeMutex cannot be acquired in time.
+var ErrLockTimeout = errors.New("mutex lock timeout")
+
+// SafeMutex is a mutual-exclusion lock whose acquisition can time out.
+// It is a one-slot channel, so a timed-out Lock leaves no goroutine behind that could
+// later grab the lock with nobody to release it.
 type SafeMutex struct {
-	mu      sync.Mutex
+	slot    chan struct{}
 	timeout time.Duration
 }
 
-// NewSafeMutex creates a mutex with default 5s timeout
+// NewSafeMutex creates a mutex with DefaultLockTimeout.
 func NewSafeMutex() *SafeMutex {
-	return &SafeMutex{timeout: 5 * time.Second}
+	return NewSafeMutexWithTimeout(DefaultLockTimeout)
 }
 
-// NewSafeMutexWithTimeout creates a mutex with custom timeout
+// NewSafeMutexWithTimeout creates a mutex with a custom timeout.
 func NewSafeMutexWithTimeout(timeout time.Duration) *SafeMutex {
-	return &SafeMutex{timeout: timeout}
+	return &SafeMutex{slot: make(chan struct{}, 1), timeout: timeout}
 }
 
-// Lock attempts to acquire the lock with timeout, returns error on timeout
-func (sm *SafeMutex) Lock() error {
-	ctx, cancel := context.WithTimeout(context.Background(), sm.timeout)
-	defer cancel()
-
-	locked := make(chan struct{})
-	go func() {
-		sm.mu.Lock()
-		close(locked)
-	}()
-
+// Lock acquires the mutex or returns ErrLockTimeout.
+func (m *SafeMutex) Lock() error {
+	timer := time.NewTimer(m.timeout)
+	defer timer.Stop()
 	select {
-	case <-locked:
+	case m.slot <- struct{}{}:
 		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("mutex lock timeout after %v", sm.timeout)
+	case <-timer.C:
+		return ErrLockTimeout
 	}
 }
 
-// Unlock releases the lock
-func (sm *SafeMutex) Unlock() {
-	sm.mu.Unlock()
-}
-
-// SafeRWMutex wraps sync.RWMutex with timeout support
-type SafeRWMutex struct {
-	mu      sync.RWMutex
-	timeout time.Duration
-}
-
-// NewSafeRWMutex creates an RWMutex with default 5s timeout
-func NewSafeRWMutex() *SafeRWMutex {
-	return &SafeRWMutex{timeout: 5 * time.Second}
-}
-
-// Lock acquires write lock with timeout
-func (sm *SafeRWMutex) Lock() error {
-	ctx, cancel := context.WithTimeout(context.Background(), sm.timeout)
-	defer cancel()
-
-	locked := make(chan struct{})
-	go func() {
-		sm.mu.Lock()
-		close(locked)
-	}()
-
+// Unlock releases the mutex. Unlocking an unlocked mutex is a logic error and aborts
+// (RULES.md §4.1: poisoned lock state must not be tolerated).
+func (m *SafeMutex) Unlock() {
 	select {
-	case <-locked:
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("RWMutex write lock timeout after %v", sm.timeout)
+	case <-m.slot:
+	default:
+		panic("utils: unlock of unlocked SafeMutex")
 	}
-}
-
-// Unlock releases write lock
-func (sm *SafeRWMutex) Unlock() {
-	sm.mu.Unlock()
-}
-
-// RLock acquires read lock with timeout
-func (sm *SafeRWMutex) RLock() error {
-	ctx, cancel := context.WithTimeout(context.Background(), sm.timeout)
-	defer cancel()
-
-	locked := make(chan struct{})
-	go func() {
-		sm.mu.RLock()
-		close(locked)
-	}()
-
-	select {
-	case <-locked:
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("RWMutex read lock timeout after %v", sm.timeout)
-	}
-}
-
-// RUnlock releases read lock
-func (sm *SafeRWMutex) RUnlock() {
-	sm.mu.RUnlock()
 }

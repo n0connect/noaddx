@@ -21,98 +21,45 @@ var (
 	DB *gorm.DB
 )
 
-func Init() {
-	// Configure GORM logger based on environment
-	var gormLogLevel logger.LogLevel
-	if config.IsProductionMode() {
-		gormLogLevel = logger.Error
-	} else {
-		gormLogLevel = logger.Info
+// gormLogLevel keeps SQL (and the pseudonyms/lookups bound into it) out of logs
+// unless LOG_LEVEL=debug is explicitly requested.
+func gormLogLevel() logger.LogLevel {
+	if config.GetLogLevel() == "debug" && !config.IsProductionMode() {
+		return logger.Info
 	}
+	return logger.Silent
+}
 
+func Init() {
 	dbLogger.Info("Initializing database connection...")
-	dbLogger.Info("Initialization does not guarantee your config is securely generated!")
-
-	// Use config functions for consistency
-	dbHost := config.GetDBHost()
-	dbUser := config.GetDBUser()
-	dbPassword := config.GetDBPassword()
-	dbName := config.GetDBName()
-	dbPort := config.GetDBPort()
-	dbSSLMode := config.GetDBSSLMode()
-
-	dbLogger.Debug("Database configuration: host=%s port=%s dbname=%s user=%s sslmode=%s",
-		dbHost, dbPort, dbName, dbUser, dbSSLMode)
 
 	// Be careful special information passed to dns
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=UTC",
-		dbHost, dbUser, dbPassword, dbName, dbPort, dbSSLMode)
+		config.GetDBHost(), config.GetDBUser(), config.GetDBPassword(), config.GetDBName(), config.GetDBPort(), config.GetDBSSLMode())
 
-	dbLogger.Debug("Attempting to connect to PostgreSQL database...")
 	var err error
-	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{ // GORM is go special database lib.
-		Logger:         logger.Default.LogMode(gormLogLevel),
+	DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger:         logger.Default.LogMode(gormLogLevel()),
 		TranslateError: true, // Surfaces unique violations as gorm.ErrDuplicatedKey
 	})
 	if err != nil {
 		dbLogger.LogError("Database connection", err)
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatal("Failed to connect to database")
 	}
-	dbLogger.Info("Successfully connected to PostgreSQL database")
+	dbLogger.Info("Connected to PostgreSQL")
 
 	if err := encryption.InitMasterKeys(); err != nil {
 		dbLogger.LogError("Master key initialization", err)
-		log.Fatal("Failed to initialize master keys:", err)
+		log.Fatal("Failed to initialize master keys")
 	}
 
-	dbLogger.Debug("Running database migrations...")
-
-	// Step 1: Add AccountLookup and AccountHash as nullable first (if they don't exist)
-	// This handles existing records gracefully
-	if !DB.Migrator().HasColumn(&models.User{}, "account_lookup") {
-		dbLogger.Debug("Adding account_lookup column as nullable...")
-		if err := DB.Migrator().AddColumn(&models.User{}, "AccountLookup"); err != nil {
-			dbLogger.LogError("Failed to add account_lookup column", err)
-		}
-	}
-	if !DB.Migrator().HasColumn(&models.User{}, "account_hash") {
-		dbLogger.Debug("Adding account_hash column as nullable...")
-		if err := DB.Migrator().AddColumn(&models.User{}, "AccountHash"); err != nil {
-			dbLogger.LogError("Failed to add account_hash column", err)
-		}
-	}
-	if !DB.Migrator().HasColumn(&models.User{}, "master_key_id") {
-		dbLogger.Debug("Adding master_key_id column as nullable...")
-		if err := DB.Migrator().AddColumn(&models.User{}, "MasterKeyID"); err != nil {
-			dbLogger.LogError("Failed to add master_key_id column", err)
-		}
-	}
-
-	// Step 2: Delete existing users that don't have AccountLookup/AccountHash
-	// (These are old users from the UUID-based system and are incompatible)
-	dbLogger.Debug("Cleaning up incompatible user records...")
-	result := DB.Where("account_lookup IS NULL OR account_hash IS NULL").Delete(&models.User{})
-	if result.Error == nil && result.RowsAffected > 0 {
-		dbLogger.Info("Deleted %d incompatible user records (missing AccountLookup/AccountHash)", result.RowsAffected)
-	}
-
-	// Step 2b: Backfill new crypto columns for existing users
-	activeID := encryption.ActiveMasterKeyID()
-	if err := DB.Model(&models.User{}).
-		Where("master_key_id IS NULL OR master_key_id = ''").
-		Update("master_key_id", activeID).Error; err != nil {
-		dbLogger.LogError("Backfill master_key_id", err)
-	}
-	// Step 3: Now run AutoMigrate to set NOT NULL constraints and indexes
 	// Note: models.Requests is not a database model (only for HTTP request/response DTOs)
 	err = DB.AutoMigrate(&models.User{}, &models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{})
 	if err != nil {
 		dbLogger.LogError("Database migration", err)
-		log.Fatal("Failed to migrate database:", err)
+		log.Fatal("Failed to migrate database")
 	}
-	dbLogger.Info("Database migrations completed successfully!")
-
-	dbLogger.Info("Database initialization completed successfully")
+	dbLogger.Info("Database migrations completed")
 }
 
 // ValidateStartupConfig validates all required configuration at startup
@@ -174,6 +121,12 @@ func ValidateStartupConfig() error {
 	}
 	if config.GetMessagePageLimit() <= 0 || config.GetMessagePageLimit() > 1000 {
 		return fmt.Errorf("MESSAGE_PAGE_LIMIT must be between 1 and 1000")
+	}
+	if config.GetPoWChallengeTTL() <= 0 {
+		return fmt.Errorf("POW_CHALLENGE_TTL_SEC must be between 1 and 3600")
+	}
+	if config.GetMessageTTLDays() <= 0 || config.GetMessageTTLDays() > config.MaxMessageTTLDays() {
+		return fmt.Errorf("MESSAGE_TTL_DAYS must be between 1 and %d", config.MaxMessageTTLDays())
 	}
 	if config.GetInternalIDLength() <= 0 {
 		return fmt.Errorf("INTERNAL_ID_LENGTH is required and must be > 0")

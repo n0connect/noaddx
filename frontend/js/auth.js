@@ -94,7 +94,8 @@ function solvePowChallenge(challenge) {
 // A mismatch means the server (or something in between) swapped the identity key.
 async function enterApp(identity, persist) {
     const check = await apiCall('GET', '/me');
-    if (!check.ok || !check.data || check.data.public_key !== identity.publicKey) {
+    const ttlDays = check.data && Number.isSafeInteger(check.data.message_ttl_days) ? check.data.message_ttl_days : 0;
+    if (!check.ok || !check.data || check.data.public_key !== identity.publicKey || ttlDays < 1 || ttlDays > 365) {
         await Keystore.wipe();
         if (check.ok) {
             showError('identity mismatch — the server returned a different public key');
@@ -106,7 +107,7 @@ async function enterApp(identity, persist) {
     if (persist) {
         await Keystore.save(identity);
     }
-    await Chat.start(identity);
+    await Chat.start(identity, ttlDays);
     return true;
 }
 
@@ -205,18 +206,18 @@ async function login() {
 }
 
 // Global variables for registration state
-let fakeAccountNumberInterval = null;
+let scrambleInterval = null;
 let pendingRegistrationAccountNumber = null;
 let pendingRegistrationToken = null;  // Zero-trust: token from backend
 let pendingRegistrationPoW = null;    // PoW solution from Phase 1
 
-// Fake Account Number generation animation - runs continuously until copy is clicked
-function startFakeAccountNumberGeneration(accountNumberElement, successElement, accountNumberDisplay) {
+// Scramble animation: random characters cycle until the real AccountNumber arrives (visual only)
+function startAccountNumberScramble(accountNumberElement, successElement, accountNumberDisplay) {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     
     // Safety checks
     if (!accountNumberElement || !successElement || !accountNumberDisplay) {
-        console.error('startFakeAccountNumberGeneration: missing required elements');
+        console.error('startAccountNumberScramble: missing required elements');
         return;
     }
     
@@ -229,31 +230,31 @@ function startFakeAccountNumberGeneration(accountNumberElement, successElement, 
     accountNumberElement.classList.add('generating');
     
     // Clear any existing interval
-    if (fakeAccountNumberInterval) {
-        clearInterval(fakeAccountNumberInterval);
+    if (scrambleInterval) {
+        clearInterval(scrambleInterval);
     }
     
-    // Start continuous fake AccountNumber generation (base64url: A-Z, a-z, 0-9, _, -)
+    // Cycle base64url characters (A-Z, a-z, 0-9, _, -) until the real value arrives
     const base64urlChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
-    fakeAccountNumberInterval = setInterval(() => {
-        let fakeAccountNumber = '';
+    scrambleInterval = setInterval(() => {
+        let scrambled = '';
         for (let i = 0; i < ACCOUNT_NUMBER_LEN; i++) {
             // Mix of base64url characters and occasional * for visual interest
             if (Math.random() < 0.08) {
-                fakeAccountNumber += '*';
+                scrambled += '*';
             } else {
-                fakeAccountNumber += base64urlChars.charAt(Math.floor(Math.random() * base64urlChars.length));
+                scrambled += base64urlChars.charAt(Math.floor(Math.random() * base64urlChars.length));
             }
         }
-        accountNumberElement.textContent = fakeAccountNumber;
+        accountNumberElement.textContent = scrambled;
     }, 120); // Fast scramble animation
 }
 
-// Stop the fake Account Number animation
-function stopFakeAccountNumberAnimation() {
-    if (fakeAccountNumberInterval) {
-        clearInterval(fakeAccountNumberInterval);
-        fakeAccountNumberInterval = null;
+// Stop the scramble animation
+function stopAccountNumberScramble() {
+    if (scrambleInterval) {
+        clearInterval(scrambleInterval);
+        scrambleInterval = null;
     }
 }
 
@@ -271,8 +272,8 @@ async function copyAccountNumber() {
         copyBtn.disabled = true;
     }
     
-    // Stop the fake animation
-    stopFakeAccountNumberAnimation();
+    // Stop the scramble animation
+    stopAccountNumberScramble();
     
     // Show masking animation
     accountNumberElement.classList.remove('generating');
@@ -551,6 +552,12 @@ async function continueWithAccountNumber() {
         successElement.textContent = 'deriving your keys…';
         const identity = await NoaddressCrypto.deriveIdentity(pendingRegistrationAccountNumber);
 
+        // The account number was copied for the user to save; do not leave it in the clipboard
+        // (clipboard histories and cross-device sync would keep it). Best effort only.
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText('').catch(() => {});
+        }
+
         // Clear pending state
         pendingRegistrationAccountNumber = null;
         pendingRegistrationToken = null;
@@ -580,8 +587,8 @@ async function logout() {
 
 // Cancel registration - just go back (no account was created yet)
 function cancelRegistration() {
-    // Stop the fake animation
-    stopFakeAccountNumberAnimation();
+    // Stop the scramble animation
+    stopAccountNumberScramble();
     
     // Clear any pending state
     pendingRegistrationAccountNumber = null;

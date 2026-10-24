@@ -11,13 +11,16 @@ import (
 
 var securityLogger = utils.NewLogger("SECURITY_MIDDLEWARE")
 
+// permissionsPolicy denies every powerful browser feature the app never uses
+const permissionsPolicy = "accelerometer=(), autoplay=(), browsing-topics=(), camera=(), display-capture=(), geolocation=(), gyroscope=(), hid=(), interest-cohort=(), magnetometer=(), microphone=(), midi=(), payment=(), serial=(), usb=()"
+
 // SecurityHeadersMiddleware adds security headers not including CSP
 func SecurityHeadersMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		w.Header().Set("Permissions-Policy", permissionsPolicy)
 
 		if config.IsProductionMode() && IsRequestHTTPS(r) {
 			maxAge := config.GetHSTSMaxAge()

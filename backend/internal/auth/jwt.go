@@ -74,7 +74,6 @@ func getJWTBaseConfig() (string, string, string, error) {
 // SignToken creates a JWT token for the given user UUID and session epoch
 // Security: Uses HS256, includes iss/aud/iat/exp/nbf claims
 func SignToken(userUUID string, sessionEpoch int) (string, error) {
-	jwtLogger.Debug("SignToken: starting token generation for userUUID: %s", userUUID)
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
@@ -88,7 +87,6 @@ func SignToken(userUUID string, sessionEpoch int) (string, error) {
 		return "", errors.New("JWT_EXPIRATION_MINUTES not configured")
 	}
 	now := time.Now()
-	jwtLogger.Debug("SignToken: expiration duration: %v, issued at: %v", expiration, now)
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -107,11 +105,9 @@ func SignToken(userUUID string, sessionEpoch int) (string, error) {
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
 		jwtLogger.LogError("SignToken", err)
-		jwtLogger.Error("SignToken: failed to sign token for userUUID: %s", userUUID)
 		return "", err
 	}
 
-	jwtLogger.Debug("SignToken: successfully generated token for userUUID: %s tokenLength=%d", userUUID, len(tokenString))
 	return tokenString, nil
 }
 
@@ -119,7 +115,6 @@ func SignToken(userUUID string, sessionEpoch int) (string, error) {
 // This token contains the pending ID that references server-side stored AccountNumber
 // Security: Short expiration from config, contains is_pending flag
 func SignPendingRegistrationToken(pendingID string) (string, error) {
-	jwtLogger.Debug("SignPendingRegistrationToken: starting for pendingID: %s", pendingID)
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
@@ -154,7 +149,6 @@ func SignPendingRegistrationToken(pendingID string) (string, error) {
 		return "", err
 	}
 
-	jwtLogger.Debug("SignPendingRegistrationToken: successfully generated for pendingID: %s", pendingID)
 	return tokenString, nil
 }
 
@@ -222,7 +216,6 @@ func VerifyPendingRegistrationToken(tokenString string) (string, error) {
 // VerifyToken verifies a JWT token and returns the session it carries
 // Security: Validates signing method, issuer, audience, and expiration
 func VerifyToken(tokenString string) (*Session, error) {
-	jwtLogger.Debug("VerifyToken: starting token verification, tokenLength=%d", len(tokenString))
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
@@ -267,6 +260,5 @@ func VerifyToken(tokenString string) (*Session, error) {
 		return nil, ErrInvalidToken
 	}
 
-	jwtLogger.Debug("VerifyToken: successfully verified token for userUUID: %s", claims.Subject)
 	return &Session{UserUUID: claims.Subject, SessionEpoch: claims.SessionEpoch, IssuedAt: claims.IssuedAt.Time}, nil
 }

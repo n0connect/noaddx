@@ -1,6 +1,7 @@
 package pow
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"sync"
@@ -24,6 +25,14 @@ const (
 	saltBytesLen      = 16
 	// Worker emits a decimal nonce below 10^7; 20 digits bounds any uint64.
 	maxSolutionDigits = 20
+	// Challenge rate limit per client: phase 1 + phase 2 of one registration plus retries
+	challengesPerWindow = 5
+	challengeWindow     = time.Minute
+	// limiterIdleTimeout is how long a client's limiter survives without requests
+	limiterIdleTimeout = time.Hour
+	cleanupInterval    = time.Minute
+	// maxCleanupCycles bounds the cleanup loop (RULES.md §8.1); one per minute outlives any deployment
+	maxCleanupCycles = 1 << 26
 )
 
 type RateLimiter struct {
@@ -75,42 +84,24 @@ var (
 	// Rate limiter for challenge requests per IP
 	challengeRateLimiters = make(map[string]*RateLimiter)
 	rateLimiterMutex      = sync.RWMutex{}
-	// For cleanup control
-	cleanupRunning = false
-	cleanupMutex   = sync.Mutex{}
 )
 
-// truncateForLogging safely returns the first 8 characters of a string for logging
-// Prevents panic from unsafe slice bounds when string is shorter than 8 chars
-func truncateForLogging(s string) string {
-	if len(s) > 8 {
-		return s[:8]
-	}
-	return s
-}
-
 // GenerateChallenge creates a new proof of work challenge
-// ip parameter is used for rate limiting
-func GenerateChallenge(ip string) (*models.PoWChallenge, error) {
-	powLogger.Info("Generating PoW challenge for IP: %s", ip)
+// clientKey is an opaque per-client pseudonym used only for rate limiting
+func GenerateChallenge(clientKey string) (*models.PoWChallenge, error) {
 
 	// Apply rate limiting per IP
 	rateLimiterMutex.Lock()
-	limiter, exists := challengeRateLimiters[ip]
+	limiter, exists := challengeRateLimiters[clientKey]
 	if !exists {
-		// Create new rate limiter: 5 challenges per minute
-		// Allows legitimate user retries while preventing DoS abuse
-		// Normal registration: 2 requests (phase1 + phase2), 3 remaining for retries
-		limiter = NewRateLimiter(5, 1*time.Minute)
-		challengeRateLimiters[ip] = limiter
-		powLogger.Debug("Created new rate limiter for IP: %s", ip)
+		limiter = NewRateLimiter(challengesPerWindow, challengeWindow)
+		challengeRateLimiters[clientKey] = limiter
 	}
 	rateLimiterMutex.Unlock()
 
 	if !limiter.Allow() {
-		powLogger.Warn("Rate limit exceeded for IP: %s", ip)
-		RecordRateLimitHit()
-		return nil, fmt.Errorf("rate limit exceeded for IP %s", ip)
+		powLogger.Warn("Challenge rate limit exceeded")
+		return nil, fmt.Errorf("rate limit exceeded")
 	}
 
 	challengeBytes, err := cryptoengine.RandomBytes(challengeBytesLen)
@@ -126,13 +117,13 @@ func GenerateChallenge(ip string) (*models.PoWChallenge, error) {
 	}
 
 	difficulty := getAdaptiveDifficulty()
-	powLogger.Debug("Generated PoW challenge with difficulty: %d for IP: %s", difficulty, ip)
+	powLogger.Debug("Generated PoW challenge with difficulty: %d", difficulty)
 
 	challengeStr := hex.EncodeToString(challengeBytes)
 	saltStr := hex.EncodeToString(saltBytes)
 
 	now := time.Now()
-	ttl := int64(300) // 5 minutes
+	ttl := int64(config.GetPoWChallengeTTL() / time.Second)
 
 	// Create challenge object
 	challengeObj := &models.PoWChallenge{
@@ -154,75 +145,56 @@ func GenerateChallenge(ip string) (*models.PoWChallenge, error) {
 	}
 	challengeMutex.Unlock()
 
-	powLogger.Info("Stored PoW challenge for IP: %s, challenge: %s, expires: %s",
-		ip, truncateForLogging(challengeStr), now.Add(time.Duration(ttl)*time.Second).Format(time.RFC3339))
-
-	RecordChallengeIssued()
 	return challengeObj, nil
 }
 
-// InitPoW initializes the PoW system and starts cleanup goroutines
-func InitPoW() {
-	cleanupMutex.Lock()
-	defer cleanupMutex.Unlock()
-
-	if cleanupRunning {
-		return
-	}
-
-	cleanupRunning = true
-	powLogger.Info("Starting PoW cleanup goroutine")
-
-	// Challenge cleanup goroutine
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			cleanupExpiredChallenges()
-			cleanupInactiveRateLimiters()
+// RunCleanup evicts expired challenges and idle per-client limiters every minute until ctx ends.
+// Run it under utils.SafeGoSupervised.
+func RunCleanup(ctx context.Context) {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+	for cycle := 0; cycle < maxCleanupCycles; cycle++ {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-ticker.C:
+			cleanupExpiredChallenges(now)
+			cleanupInactiveRateLimiters(now)
 		}
-	}()
+	}
 }
 
-// cleanupExpiredChallenges removes expired challenges from the registry
-func cleanupExpiredChallenges() {
+// cleanupExpiredChallenges removes challenges that expired before now
+func cleanupExpiredChallenges(now time.Time) {
 	challengeMutex.Lock()
 	defer challengeMutex.Unlock()
 
-	now := time.Now()
 	cleaned := 0
-
 	for key, entry := range issuedChallenges {
 		if now.After(entry.ExpiresAt) {
 			delete(issuedChallenges, key)
 			cleaned++
 		}
 	}
-
 	if cleaned > 0 {
 		powLogger.Debug("Cleaned %d expired challenges, remaining: %d", cleaned, len(issuedChallenges))
 	}
 }
 
-// cleanupInactiveRateLimiters removes inactive rate limiters
-func cleanupInactiveRateLimiters() {
+// cleanupInactiveRateLimiters removes limiters idle for longer than limiterIdleTimeout at now
+func cleanupInactiveRateLimiters(now time.Time) {
 	rateLimiterMutex.Lock()
 	defer rateLimiterMutex.Unlock()
 
-	now := time.Now()
 	cleaned := 0
-
-	for ip, limiter := range challengeRateLimiters {
+	for key, limiter := range challengeRateLimiters {
 		limiter.mutex.Lock()
-		// Remove if inactive for more than 1 hour
-		if now.Sub(limiter.lastAccess) > 1*time.Hour {
-			delete(challengeRateLimiters, ip)
+		if now.Sub(limiter.lastAccess) > limiterIdleTimeout {
+			delete(challengeRateLimiters, key)
 			cleaned++
 		}
 		limiter.mutex.Unlock()
 	}
-
 	if cleaned > 0 {
 		powLogger.Debug("Cleaned %d inactive rate limiters, remaining: %d", cleaned, len(challengeRateLimiters))
 	}
@@ -232,16 +204,14 @@ func cleanupInactiveRateLimiters() {
 func ValidateSolution(solution *models.PoWSolution) bool {
 	if solution == nil {
 		powLogger.Warn("Nil PoW solution provided")
-		RecordValidation(false)
 		return false
 	}
 
-	powLogger.Debug("Validating PoW solution for challenge: %s", truncateForLogging(solution.Challenge))
+	powLogger.Debug("Validating PoW solution")
 
 	// Whitelist the shape of every client-supplied field before touching shared state
 	if !isHexOfLen(solution.Challenge, challengeBytesLen) || !isHexOfLen(solution.Salt, saltBytesLen) || !isDecimal(solution.Solution, maxSolutionDigits) {
 		powLogger.Warn("Malformed PoW solution rejected")
-		RecordValidation(false)
 		return false
 	}
 
@@ -254,26 +224,20 @@ func ValidateSolution(solution *models.PoWSolution) bool {
 	// Check if challenge exists
 	entry, exists := issuedChallenges[challengeKey]
 	if !exists {
-		powLogger.Warn("Unknown PoW challenge provided: %s", truncateForLogging(solution.Challenge))
-		RecordValidation(false)
+		powLogger.Warn("Unknown PoW challenge provided")
 		return false
 	}
 
 	// Check if already used (replay attack)
 	if entry.Used {
-		powLogger.Warn("PoW challenge already used (replay attack): %s", truncateForLogging(solution.Challenge))
-		RecordReplayAttempt()
-		RecordValidation(false)
+		powLogger.Warn("PoW challenge already used (replay attack)")
 		return false
 	}
 
 	// Check expiration
 	if time.Now().After(entry.ExpiresAt) {
-		powLogger.Warn("PoW solution expired for challenge: %s (expired at: %s)",
-			truncateForLogging(solution.Challenge), entry.ExpiresAt.Format(time.RFC3339))
+		powLogger.Warn("PoW solution expired")
 		delete(issuedChallenges, challengeKey) // Cleanup expired
-		RecordExpired()
-		RecordValidation(false)
 		return false
 	}
 
@@ -282,7 +246,6 @@ func ValidateSolution(solution *models.PoWSolution) bool {
 	hash, err := cryptoengine.SHA256(input)
 	if err != nil {
 		powLogger.Error("SHA256 hash computation failed: %v", err)
-		RecordValidation(false)
 		return false
 	}
 
@@ -291,13 +254,11 @@ func ValidateSolution(solution *models.PoWSolution) bool {
 	if result {
 		// Mark as used BEFORE releasing lock
 		entry.Used = true
-		powLogger.Info("Valid PoW solution accepted for challenge: %s", truncateForLogging(solution.Challenge))
+		powLogger.Debug("Valid PoW solution accepted")
 	} else {
-		powLogger.Warn("Invalid PoW solution for challenge: %s (did not meet difficulty requirement: %d)",
-			truncateForLogging(solution.Challenge), entry.Difficulty)
+		powLogger.Warn("PoW solution below the issued difficulty")
 	}
 
-	RecordValidation(result)
 	return result
 }
 

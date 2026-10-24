@@ -72,9 +72,10 @@ func TestDecodeJSONRequest_ExceedsMaxDepth(t *testing.T) {
 func TestDecodeJSONRequest_ValidShallowDepth(t *testing.T) {
 	setupJSONTestEnv(t)
 
-	// Test with shallow depth (depth 1 - LoginRequest)
+	// Test with shallow depth (depth 1 - LoginRequest) carrying a real derived auth key
+	authKey := testutil.NewAuthKey(t)
 	jsonBody := `{
-		"auth_key": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg"
+		"auth_key": "` + authKey + `"
 	}`
 
 	req := httptest.NewRequest("POST", "/api/v2/login", bytes.NewBufferString(jsonBody))
@@ -86,8 +87,8 @@ func TestDecodeJSONRequest_ValidShallowDepth(t *testing.T) {
 		t.Fatalf("DecodeJSONRequest() failed with shallow depth: %v", err)
 	}
 
-	if loginReq.AuthKey != "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg" {
-		t.Errorf("Expected auth_key, got '%s'", loginReq.AuthKey)
+	if loginReq.AuthKey != authKey {
+		t.Errorf("Expected auth_key %q, got %q", authKey, loginReq.AuthKey)
 	}
 }
 
@@ -118,7 +119,7 @@ func TestDecodeJSONRequest_UnknownFields(t *testing.T) {
 
 	// Test that unknown fields are rejected
 	jsonBody := `{
-		"auth_key": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg",
+		"auth_key": "` + testutil.NewAuthKey(t) + `",
 		"malicious_field": "attack"
 	}`
 

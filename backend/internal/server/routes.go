@@ -7,7 +7,6 @@ import (
 
 	"noaddress/internal/handlers"
 	"noaddress/internal/middleware"
-	"noaddress/internal/pow"
 	"noaddress/internal/utils"
 )
 
@@ -41,7 +40,6 @@ func NewMux() *http.ServeMux {
 		{"/api/v2/conversations", protected(handlers.ConversationsHandler)},
 		{"/api/v2/conversations/", protected(handlers.ConversationsHandler)},
 		{"/api/v2/events", protected(handlers.EventsHandler)},
-		{"/api/v2/pow/metrics", public(pow.GetMetricsHandler)},
 	}
 	for _, route := range routes {
 		serverLogger.Debug("Registering route: %s", route.pattern)
@@ -51,7 +49,7 @@ func NewMux() *http.ServeMux {
 	// Request Path Whitelist: Handle unknown paths with 404
 	// Only registered paths are allowed, all others return 404
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		serverLogger.Warn("Path not found: %s %s", r.Method, r.URL.Path)
+		serverLogger.Debug("Unknown path requested")
 		http.Error(w, "Not Found", http.StatusNotFound)
 	})
 

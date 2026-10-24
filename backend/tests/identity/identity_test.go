@@ -1,13 +1,14 @@
 package identity
 
 import (
-	"encoding/base64"
 	"encoding/hex"
 	"testing"
 
 	"noaddress/internal/cryptoengine"
 	"noaddress/internal/identity"
 	"noaddress/tests/testutil"
+
+	"github.com/google/uuid"
 )
 
 // Fixed vector shared with frontend/tests/crypto.test.mjs (cross-implementation check).
@@ -86,28 +87,51 @@ func TestDerivations_RejectMalformedAccountNumber(t *testing.T) {
 	}
 }
 
-func TestMemberTag_PepperKeyedAndStable(t *testing.T) {
+func TestTags_PepperKeyedStableAndContextSeparated(t *testing.T) {
 	testutil.SetupTestEnv(t)
 	defer testutil.TeardownTestEnv(t)
 
-	uuid := "abcdefghijklmnopqrstuvwx"
-	tag1, err := identity.MemberTag(uuid)
+	user, other := testutil.NewInternalID(t), testutil.NewInternalID(t)
+	conv1, conv2 := testutil.NewRecordID(t), testutil.NewRecordID(t)
+
+	stream1, err := identity.StreamTag(user)
 	if err != nil {
-		t.Fatalf("MemberTag: %v", err)
+		t.Fatalf("StreamTag: %v", err)
 	}
-	tag2, _ := identity.MemberTag(uuid)
-	other, _ := identity.MemberTag("bbcdefghijklmnopqrstuvwx")
-	if tag1 != tag2 || tag1 == other || len(tag1) != 64 {
-		t.Fatalf("unexpected tags: %s %s %s", tag1, tag2, other)
+	stream2, _ := identity.StreamTag(user)
+	streamOther, _ := identity.StreamTag(other)
+	inviteTag, _ := identity.InviteCreatorTag(user)
+	convTag1, _ := identity.ConversationTag(user, conv1)
+	convTag1Again, _ := identity.ConversationTag(user, conv1)
+	convTag2, _ := identity.ConversationTag(user, conv2)
+	otherConvTag1, _ := identity.ConversationTag(other, conv1)
+
+	if stream1 != stream2 || convTag1 != convTag1Again {
+		t.Fatal("tags are not deterministic")
 	}
-	if _, err := identity.MemberTag("not-a-valid-uuid"); err == nil {
-		t.Fatal("MemberTag accepted malformed UUID")
+	// Every pair below must differ: no tag can be joined with another context
+	all := map[string]string{"stream": stream1, "streamOther": streamOther, "invite": inviteTag,
+		"conv1": convTag1, "conv2": convTag2, "otherConv1": otherConvTag1}
+	seen := map[string]string{}
+	for name, tag := range all {
+		if len(tag) != 64 {
+			t.Fatalf("%s tag has length %d", name, len(tag))
+		}
+		if prev, dup := seen[tag]; dup {
+			t.Fatalf("%s and %s share a tag", name, prev)
+		}
+		seen[tag] = name
 	}
 
-	token := make([]byte, 16)
-	lookup, err := identity.InviteLookup(token)
-	if err != nil || len(lookup) != 64 || lookup == tag1 {
+	if _, err := identity.StreamTag("not-a-valid-uuid"); err == nil {
+		t.Fatal("StreamTag accepted malformed UUID")
+	}
+	if _, err := identity.ConversationTag(user, uuid.Nil); err == nil {
+		t.Fatal("ConversationTag accepted the nil conversation id")
+	}
+
+	lookup, err := identity.InviteLookup(make([]byte, 16))
+	if err != nil || len(lookup) != 64 || lookup == inviteTag {
 		t.Fatalf("InviteLookup unexpected: %s err=%v", lookup, err)
 	}
-	_ = base64.RawURLEncoding
 }

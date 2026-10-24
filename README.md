@@ -5,433 +5,181 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=flat&logo=postgresql)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker)
 ![Nginx](https://img.shields.io/badge/Nginx-Alpine-009639?style=flat&logo=nginx)
-![License](https://img.shields.io/badge/License-GPL%203.0-blue?style=flat)
+![License](https://img.shields.io/badge/License-AGPL%203.0-blue?style=flat)
 
-No email. No phone number. No password. No username. One random account number, Mullvad-style —
-and a server that only ever relays ciphertext.
+No email. No phone number. No password. No username. One random account number, Mullvad-style — and a server that only ever relays ciphertext.
+
+---
+
+## Complete Modular Documentation
+
+Detailed, production-grade documentation is organized under the [`docs/`](docs/README.md) directory:
+
+- [**Quick Start Guide**](docs/getting-started/quickstart.md) - 3-minute setup, testing, and first chat.
+- [**Installation & Cross-Platform Guide**](docs/getting-started/installation-and-platforms.md) - macOS (LibreSSL fix), Linux (Ubuntu/Debian/Arch), Windows (WSL2), arm64 vs. amd64.
+- [**System Architecture**](docs/architecture/system-overview.md) - Component layout, identity derivation, graph isolation, and retention daemon.
+- [**Threat Model & Security**](docs/security/threat-model.md) - Adversary analysis, database snapshot resilience, AAD v2, and memory zeroization.
+- [**Cryptography Specification**](docs/security/cryptography.md) - WebCrypto, X25519, HKDF-SHA256, AES-256-GCM, 256-byte bucket padding, and PoW hashcash.
+- [**REST API Reference**](docs/api/rest-api.md) - Complete endpoint reference, strict JSON validation, and error masking.
+- [**Configuration & Tuning**](docs/operations/configuration-and-tuning.md) - Environment variables, master key rotation runbook, and Argon2id memory tuning.
+- [**Troubleshooting Guide**](docs/troubleshooting/troubleshooting-guide.md) - Instant fixes for WebCrypto Secure Context, port collisions, and Docker DB connections.
+- [**Testing & Development**](docs/development/testing-and-contributing.md) - Unit tests, WebCrypto verification, lock hierarchy, and security rules.
 
 ---
 
 ## Overview
 
-noaddress. is a messenger with no address book, no handles and no recoverable identity. An
-identity is a 256-bit CSPRNG AccountNumber (HMAC lookup + Argon2id server side, two-phase
-registration behind proof of work); everything you say is end-to-end encrypted in the browser and
-the server only relays ciphertext.
+**noaddress.** is an anonymous messenger with no address book, no handles, and no recoverable identity.
+- An identity is a 256-bit CSPRNG `AccountNumber` (HMAC lookup + Argon2id server side, two-phase registration behind proof of work).
+- Everything you say is end-to-end encrypted in the browser (WebCrypto X25519 + AES-256-GCM); the server only relays opaque ciphertext.
+- Social graph isolation: **every user receives a unique, isolated HMAC member tag per conversation**. Storing or dumping the database does not link a user's presence across different rooms.
+- Sequence numbers (`seq`) are calculated **per conversation**, preventing cross-room activity correlation.
+- Ciphertexts expire automatically via a day-granular retention daemon (`MESSAGE_TTL_DAYS`, default 7 days). Bilateral "Burn" allows complete instant deletion at any time.
 
-**Flow in one breath:** create an identity → copy your account number → `+ invite` → send the
-`noaddress:…` code over any channel you trust → your peer pastes it under `join` → talk.
+**Flow in one breath:** create an identity -> copy your account number -> `+ invite` -> send the `noaddress:...` code over any channel you trust -> your peer pastes it under `join` -> talk.
 
-### Key Features
+---
 
-**Privacy**
-- AccountNumber-only identity; the AccountNumber never leaves the browser after signup
-- End-to-end encryption in the browser (WebCrypto only — no third-party crypto code)
-- Pairing by single-use, expiring invite codes — no directory, no handles, no search
-- Server stores no plaintext, no message timestamps, and no readable social graph
-- Padded ciphertext (256-byte buckets) hides message length
-- Key-derived "aura" (name + 5×5 pixel glyph) for recognising peers without any identifier
-- Safety numbers for out-of-band key verification; invite codes self-verify the creator's key
-- Burn: delete a conversation and every ciphertext for both sides
+## Quick Start
 
-**Security**
-- Whitelist validation for every client field (canonical UUIDv4, exact base64url, size bounds)
-- Proof of work on registration (server-issued difficulty, single source of validation)
-- Logout revokes every session of the identity (session epoch) and closes live streams
-- HttpOnly + SameSite=Strict session cookie (`__Host-` prefixed in production)
-- Strict CSP with Trusted Types (one policy, one whitelisted script URL)
-- Rate limits per IP and per identity; bounded realtime subscribers
+### 1. Configure Secrets & Environment
+```bash
+chmod +x setup.sh run.sh
+./setup.sh
+```
 
-**Technical**
-- Frontend: vanilla JavaScript, no framework, no build step
-- Backend: Go `net/http`, GORM/PostgreSQL, Server-Sent Events (stdlib only)
-- Reverse proxy: Nginx · Containerization: Docker Compose
+> [!IMPORTANT]
+> **macOS Users:** macOS ships with LibreSSL by default. `setup.sh` requires OpenSSL >= 3.2.0.
+> Run `brew install openssl@3 && export PATH="$(brew --prefix openssl@3)/bin:$PATH"` before `./setup.sh`.
+> See [Installation & Platforms](docs/getting-started/installation-and-platforms.md) for details.
+
+### 2. Build & Launch Services
+```bash
+./run.sh
+```
+
+### 3. Open Browser
+Navigate to **[http://localhost](http://localhost)**.
+
+> [!CAUTION]
+> **WebCrypto Secure Context:** Always access via `http://localhost` or `http://127.0.0.1`. Modern browsers disable `window.crypto.subtle` on unencrypted remote IP addresses (e.g. `http://192.168.x.x`), which will cause cryptographic operations to fail. For remote servers, terminate TLS/HTTPS.
 
 ---
 
 ## How It Works
 
-### Identity derivation
+### 1. Identity Derivation
 
-```
-AccountNumber (256-bit CSPRNG, base64url, 43 chars) — generated by the server at signup, shown once
-   │
-   ├─ HKDF-SHA256(salt "noaddress.v1", info "noaddress/auth") ───────────▶ auth key        (sent at login)
-   │                                                                 server keeps HMAC + Argon2id only
-   └─ HKDF-SHA256(salt "noaddress.v1", info "noaddress/identity/x25519") ─▶ X25519 identity (stays in browser)
-                                                                     server keeps the public key only
-```
-
-Both derivations exist in Go (`backend/internal/identity`) and JavaScript (`frontend/js/crypto.js`)
-and are tested byte-for-byte against each other (`frontend/tests/crypto.test.mjs`,
-`backend/tests/identity`).
-
-In the browser the private key is imported as a **non-extractable** `CryptoKey` and persisted in
-IndexedDB so a reload does not ask for the account number again; script on the page can use the
-key but cannot read its bytes. Logout deletes it.
-
-### Pairing
-
-```
-Alice                                   server                                   Bob
-  │ POST /invites ─────────────────────▶ │ stores HMAC(token) + AES-GCM(creator)   │
-  │ ◀──────────────────────────── token  │                                          │
-  │ code = "noaddress:" + b64url(token ‖ SHA-256("noaddress/invite-fp" ‖ token ‖ alicePub)[0:16])
-  │ ─────────────── out of band (Signal, paper, in person) ──────────────────────▶ │
-  │                                      │ ◀──────────────── POST /invites/redeem {token}
-  │                                      │ atomically deletes invite, creates conversation
-  │ ◀── SSE "conv"                       │ ───────────────────────────────▶ alicePub │
-  │                                      │       Bob checks alicePub against the code's
-  │                                      │       fingerprint; mismatch ⇒ auto-burn
+```text
+AccountNumber (256-bit CSPRNG, base64url, 43 chars) - generated at signup, shown ONCE
+   |
+   +-- HKDF-SHA256(salt: "noaddress.v1", info: "noaddress/auth") -----------> auth key (sent at login)
+   |                                                                          server keeps HMAC + Argon2id only
+   `-- HKDF-SHA256(salt: "noaddress.v1", info: "noaddress/identity/x25519") -> X25519 identity (stays in browser)
+                                                                             server keeps the public key only
 ```
 
-The fingerprint never reaches the server, and because it is bound to the token, two invites from
-the same person share no bytes.
+Both derivations exist in Go (`backend/internal/identity`) and JavaScript (`frontend/js/crypto.js`) and are tested byte-for-byte against each other (`node --test frontend/tests/`, `backend/tests/identity`).
 
-### Messages
+In the browser, the private key is imported as a **non-extractable** `CryptoKey` into IndexedDB so a reload does not ask for the account number again. Script running on the page can use the key to decrypt, but cannot extract its raw bytes. Logout deletes the database.
 
+### 2. Pairing & Out-of-Band Fingerprinting
+
+```text
+Alice                                   Server                                   Bob
+  | POST /api/v2/invites --------------> | stores HMAC(token) +                   |
+  |                                      | AES-GCM(creator_uuid, master_key)      |
+  |<---------------------------- token   |                                        |
+  | code = "noaddress:" + b64url(token || SHA-256("noaddress/invite-fp" || token || alicePub)[0:16])
+  | ---------------- out of band (Signal, paper, in person) --------------------->|
+  |                                      | <----------------- POST /api/v2/invites/redeem {token}
+  |                                      | atomically deletes invite, creates conversation
+  |<--- SSE "conv"                       | --------------------------------------> alicePub
+  |                                      |       Bob checks alicePub against the code's
+  |                                      |       fingerprint; mismatch ---> auto-burn!
 ```
-conversation key = HKDF-SHA256(X25519(myPriv, peerPub), salt = conversation id, info "noaddress/conv/v1")
-plaintext        = len(2) ‖ {"t": text, "ts": sentAt} ‖ zero padding to a multiple of 256 bytes
-AAD              = "NADM" ‖ 0x01 ‖ conversation id(16) ‖ message id(16) ‖ SHA-256(sender pub)(32)
-wire             = base64url(nonce(12) ‖ AES-256-GCM(plaintext, AAD) ‖ tag(16))
+
+The fingerprint never touches the server. Because it binds to the single-use token, two invites created by the same person share no bytes.
+
+### 3. Messages & Wire Format
+
+```text
+conversation key = HKDF-SHA256(X25519(myPriv, peerPub), salt: conversation_id, info: "noaddress/conv/v1")
+plaintext        = len(2) || {"t": text, "ts": sentAt} || zero padding to a multiple of 256 bytes
+AAD              = "NADM" || 0x01 || conversation_id(16) || message_id(16) || SHA-256(sender_pub)(32)
+wire             = base64url(nonce(12) || AES-256-GCM(plaintext, AAD) || tag(16))
 ```
 
-The message id is a client-generated UUIDv4 bound into the AAD, so a ciphertext cannot be moved to
-another conversation, renamed, reflected back as the other sender, or replayed (ids are unique).
+The message ID is a client-generated UUIDv4 bound into the AAD. A ciphertext cannot be moved to another room, replayed under a different message ID, or reflected back as originating from the other participant.
 
-### Realtime
+### 4. Realtime Server-Sent Events (SSE)
 
-`GET /api/v2/events` is a Server-Sent Events stream of content-free pokes (`msg` with a
-conversation id, `conv` for list changes). Clients refetch through the normal authorized endpoints,
-so exactly one code path decides who may read what. Streams are re-authenticated at least every
-10 minutes and are closed immediately on logout.
+`GET /api/v2/events` is an unbuffered Server-Sent Events stream of content-free pokes (`msg` with a conversation ID, `conv` for membership changes). Clients refetch through authorized REST endpoints. Open streams are immediately terminated on logout or server shutdown.
 
 ---
 
 ## Security Model
 
-### What the server stores
+### What the Server Stores
 
-| Table | Columns | Readable without the master key / pepper? |
-|-------|---------|-------------------------------------------|
-| `users` | uuid, HMAC(auth key), Argon2id(auth key), X25519 public key, session epoch, wrapped per-user key | Public key only |
-| `invites` | HMAC(token), creator member tag, AES-GCM(creator uuid), expiry | Expiry only |
-| `conversations` | id | — |
-| `conversation_members` | conversation id, member tag = HMAC(uuid), AES-GCM(peer public key), read marker | No link to `users` |
-| `messages` | seq, message id, conversation id, sender member tag, E2E ciphertext | Nothing about content |
+| Table | Columns | Readable Without Master Key / Pepper? |
+|---|---|---|
+| `users` | `uuid`, `account_lookup`, `account_hash`, `public_key`, `session_epoch`, `encrypted_key`, `master_key_id`, `conv_index_enc` | **Public key only**. Account number cannot be derived. No creation/update timestamps. |
+| `invites` | `lookup` (HMAC), `creator_ref_enc` (AES-GCM), `master_key_id`, `expires_at` | **Expiry timestamp only**. Token and creator are unreadable. |
+| `conversations` | `id` (UUIDv4) | Room ID exists; participants are hidden. |
+| `conversation_members` | `conversation_id`, `member_tag` (HMAC per room), `member_ref_enc` (AES-GCM), `master_key_id`, `peer_key_enc` (AES-GCM), `read_seq` | **Read sequence only**. Member tag is isolated to this conversation. |
+| `messages` | `conversation_id`, `seq` (per-room atomic counter), `id` (UUIDv4), `sender_tag`, `ciphertext`, `expires_on` (UTC day) | **Nothing about content**. Sequence numbers are scoped per room. |
 
-Member tags and invite lookups are HMACs keyed with HKDF subkeys of `ACCOUNT_LOOKUP_PEPPER`; peer
-public keys are encrypted with the member's own server key (wrapped by the master key) under an AAD
-bound to the member tag and conversation id. A database dump on its own reveals no message content
-and cannot tie a conversation to a `users` row or a public key. It **does** reveal pseudonymous
-structure: a user's member tag is the same in all of their conversations, and `messages.seq` is a
-global counter, so the shape of the graph and the relative ordering of activity are visible.
+### Stored-Record AAD (Server-Side)
 
-### Threat model
+Server-side database encryption uses authenticated metadata (`backend/internal/encryption/aad.go`):
+`MAGIC "PXAD"(4) || VER 0x02(1) || SHA-256(subject)(32) || RECORD_ID(16) || FIELD(1) || PURPOSE(1)` (55 bytes)
+- `FIELD 0x01`: Peer public key (`conversation_members.peer_key_enc`)
+- `FIELD 0x02`: Invite creator (`invites.creator_ref_enc`)
+- `FIELD 0x03`: Member reference (`conversation_members.member_ref_enc`)
+- `FIELD 0x04`: User conversation index (`users.conv_index_enc`)
 
-| Adversary | Protected | Not protected |
-|-----------|-----------|---------------|
-| Network observer | Content, identities (TLS + E2E) | Timing and volume of traffic to the server |
-| Database leak / backup theft | Content, account numbers, link between users and conversations | Pseudonymous graph shape (one tag per user), cross-conversation ordering, counts |
-| Curious operator with DB + env | Message content (E2E) | Social graph, activity timing |
-| Malicious server at runtime | Content of messages already sent to verified peers | Key substitution is detectable (invite fingerprint, safety number), but a server that serves modified JavaScript can defeat any web E2E client |
-| Stolen session cookie | Expires; logout revokes all sessions | Access until revocation/expiry |
-| Lost account number | — | The identity and its conversations are unrecoverable by design |
+### Graceful Shutdown & Zeroization
 
-### Security assumptions
-
-- The AccountNumber is shown to the server once, at signup (it generates it). After that only
-  the derived auth key is sent.
-- v1 uses static X25519 keys per conversation: no forward secrecy. Burn is the mitigation.
-- One backend instance: the realtime hub is in memory.
-- Browsers must offer WebCrypto X25519 in a secure context (current Chrome, Firefox and Safari do).
-
-### Proof of Work (PoW) Protection
-
-Registration is protected by a SHA-256 hashcash challenge (`GET /api/v2/pow/challenge`), solved in
-a Web Worker. Challenges are single-use, expire after 5 minutes, are rate limited per IP, and are
-validated in exactly one place (the register handler) against the **server-issued** difficulty
-(`POW_DIFFICULTY`, clamped 18–24). Request bodies must contain exactly one JSON value.
-
-### Stored-record AAD (server side)
-
-`MAGIC "PXAD"(4) ‖ VER 0x02(1) ‖ SHA-256(subject)(32) ‖ RECORD_ID(16) ‖ FIELD(1) ‖ PURPOSE(1)` —
-FIELD `0x01` = peer public key (subject: member tag, record: conversation),
-FIELD `0x02` = invite creator (subject: invite lookup, record: invite id).
-
----
-
-## System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ BROWSER (vanilla JS, WebCrypto)                             │
-│  crypto.js  keystore.js (IndexedDB)  chat.js  ui.js  auth.js│
-│  AccountNumber → auth key / X25519 identity; E2E AES-GCM    │
-└──────────────────────┬──────────────────────────────────────┘
-                       │ HTTPS, same-origin (cookie session)
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│ NGINX: static SPA, CSP + Trusted Types, /api proxy,         │
-│        /api/v2/events unbuffered (SSE)                      │
-└──────────────────────┬──────────────────────────────────────┘
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│ BACKEND (Go net/http)                                       │
-│  SecurityHeaders → CORS → ContentType → [RateLimit|JWT]     │
-│  handlers: auth · chat · events      server: route table    │
-│  chat.Service  identity  realtime.Hub  encryption  pow      │
-└──────────────────────┬──────────────────────────────────────┘
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│ POSTGRESQL: users · invites · conversations ·               │
-│             conversation_members · messages                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Installation
-
-### Requirements
-
-- Docker & Docker Compose
-- Go 1.21+ (for development; builds with `CGO_ENABLED=0`, pure Go crypto)
-- OpenSSL (only for `setup.sh` secret generation)
-- Node.js 20+ (only to run the frontend crypto tests)
-
-### Quick Start
-
-```bash
-# Configure .env values, generate secrets, then build/test
-./setup.sh
-./run.sh --clean
-```
-
-Then open `http://localhost`. Postgres and the backend listen on `127.0.0.1` only.
-
-### Environment Variables
-
-`setup.sh` generates secrets and applies secure defaults for non-secret values (override in `.env`).
-
-| Variable | Description | Default | Notes |
-|----------|-------------|---------|-------|
-| `JWT_SECRET` | JWT signing key | Generated | 32+ chars (OpenSSL rand recommended) |
-| `JWT_SECRET_MIN_LEN` | Minimum JWT secret length | `32` | Integer |
-| `JWT_ISSUER` | JWT issuer | `noaddress-backend` | Override for your environment |
-| `JWT_AUDIENCE` | JWT audience | `noaddress-web` | Override for your environment |
-| `JWT_EXPIRATION_MINUTES` | Session lifetime; active sessions slide (re-issued past half-life) | `15` | Integer |
-| `MASTER_KEY_ACTIVE_ID` | Active master key ID | Generated | Required |
-| `MASTER_KEY_ACTIVE` | Active master key | Generated | 32 bytes hex or raw |
-| `MASTER_KEY_OLD` | Optional old keys | Empty | `kid:hex` comma-separated |
-| `ACCOUNT_LOOKUP_PEPPER` | HMAC pepper for account lookup | Generated | >=32 bytes (hex/base64/raw) |
-| `ALLOWED_ORIGINS` | CORS allowed origins | `http://localhost` | Comma-separated; no `*` in prod |
-| `TRUSTED_PROXIES` | Trusted proxy IPs/CIDRs | Empty | Optional |
-| `DB_HOST` | PostgreSQL host | `localhost` | Override in production |
-| `DB_PORT` | PostgreSQL port | `5432` | Override in production |
-| `DB_USER` | PostgreSQL user | `postgres` | Override in production |
-| `DB_PASSWORD` | PostgreSQL password | `postgres` | Override in production |
-| `DB_NAME` | PostgreSQL database name | `noaddress` | Override in production |
-| `DB_SSL_MODE` | SSL mode | `disable` | Must not be `disable` in prod |
-| `BACKEND_PORT` | Backend server port | `8080` | Required |
-| `MAX_REQUEST_BODY_BYTES` | HTTP request body size limit | `1048576` | Integer |
-| `MAX_JSON_DEPTH` | Max JSON nesting depth | `2` | Integer |
-| `INVITE_TTL_SEC` | Lifetime of an unredeemed invite | `86400` | Integer |
-| `MAX_ACTIVE_INVITES` | Unredeemed invites per identity | `5` | Integer |
-| `MAX_CONVERSATIONS_PER_USER` | Conversations per identity | `256` | Integer |
-| `MAX_MESSAGE_BYTES` | Max raw E2E ciphertext per message | `8192` | Must fit (base64) in `MAX_REQUEST_BODY_BYTES` |
-| `MESSAGE_PAGE_LIMIT` | Messages returned per request | `200` | 1–1000 |
-| `POW_DIFFICULTY` | Registration PoW leading zero bits | `20` | Clamped to 18–24 |
-| `ARGON2_MEMORY_KIB` | Argon2 memory cost (KiB) | `65536` | Integer |
-| `ARGON2_TIME` | Argon2 time cost | `3` | Integer |
-| `ARGON2_PARALLELISM` | Argon2 parallelism | `4` | Integer |
-| `ARGON2_SALT_LENGTH` | Argon2 salt length (bytes) | `16` | Integer |
-| `ARGON2_HASH_LENGTH` | Argon2 hash length (bytes) | `32` | Integer |
-| `PENDING_TOKEN_TTL_SEC` | Pending token TTL (seconds) | `300` | Integer |
-| `PENDING_CLEANUP_INTERVAL_SEC` | Pending store cleanup interval | `60` | Integer |
-| `PENDING_ID_BYTES` | Pending ID size (bytes) | `16` | Integer |
-| `INTERNAL_ID_LENGTH` | Internal user ID length | `24` | Integer |
-| `RATE_LIMIT_MAX_TOKENS` | Rate limit bucket size | `20` | Integer |
-| `RATE_LIMIT_REFILL_INTERVAL_SEC` | Rate limit refill interval | `3` | Integer |
-| `RATE_LIMIT_CLEANUP_INTERVAL_SEC` | Rate limit cleanup interval | `300` | Integer |
-| `RATE_LIMIT_MAX_BUCKETS` | Rate limit bucket cap | `10000` | Integer |
-| `SERVER_READ_HEADER_TIMEOUT_SEC` | Server read header timeout | `5` | Integer |
-| `SERVER_READ_TIMEOUT_SEC` | Server read timeout | `15` | Integer |
-| `SERVER_WRITE_TIMEOUT_SEC` | Server write timeout | `15` | Integer |
-| `SERVER_IDLE_TIMEOUT_SEC` | Server idle timeout | `60` | Integer |
-| `SERVER_MAX_HEADER_BYTES` | Server max header bytes | `8192` | Integer |
-| `HSTS_MAX_AGE` | HSTS max-age (seconds) | `0` | Optional |
-| `HSTS_INCLUDE_SUBDOMAINS` | HSTS includeSubDomains | `false` | Optional |
-| `HSTS_PRELOAD` | HSTS preload | `false` | Optional |
-| `SEC_HEADER_COOP` | Cross-Origin-Opener-Policy | Empty | Optional |
-| `SEC_HEADER_CORP` | Cross-Origin-Resource-Policy | Empty | Optional |
-| `SEC_HEADER_COEP` | Cross-Origin-Embedder-Policy | Empty | Optional |
-| `APP_ENV` | Environment mode | `development` | `development` or `production` |
-| `LOG_LEVEL` | Log level | `info` | `debug`, `info`, `warn`, `error` |
-
-
-### Master Key Rotation Procedure
-
-Master key rotation allows you to change the encryption key without losing access to existing encrypted data. This is critical for security compliance and incident response.
-
-**Pre-requisites:**
-- Generate new master key: `openssl rand -hex 32`
-- Plan maintenance window (rotation requires application restart)
-- Backup database before rotation
-
-**Rotation Steps:**
-
-1. **Add Old Key to Configuration**
-   ```bash
-   # Current active key
-   MASTER_KEY_ACTIVE_ID=key-2024-01
-   MASTER_KEY_ACTIVE=<current-key-hex>
-
-   # No old keys yet
-   MASTER_KEY_OLD=
-   ```
-
-2. **Generate New Key and Update Configuration**
-   ```bash
-   # Generate new key
-   openssl rand -hex 32
-
-   # Update .env - move active to old, set new as active
-   MASTER_KEY_ACTIVE_ID=key-2025-01
-   MASTER_KEY_ACTIVE=<new-key-hex>
-   MASTER_KEY_OLD=key-2024-01:<old-key-hex>
-   ```
-
-3. **Restart Application**
-   - Application will use new key for encryption
-   - Old key will be used for decryption (automatic fallback)
-   - No data migration required immediately
-
-4. **Re-wrap Existing Keys (Optional but Recommended)**
-   Automatic re-wrapping is not implemented. Per-user server keys stay wrapped with the old master key (their `master_key_id` says which) until a migration re-wraps them. Pending invites expire on their own within `INVITE_TTL_SEC`.
-
-5. **Remove Old Key (After Verification)**
-   Only remove old key after confirming all data is re-encrypted:
-   ```bash
-   MASTER_KEY_ACTIVE_ID=key-2025-01
-   MASTER_KEY_ACTIVE=<new-key-hex>
-   MASTER_KEY_OLD=  # Empty after migration complete
-   ```
-
-**Multiple Old Keys:**
-You can keep multiple old keys for gradual migration:
-```bash
-MASTER_KEY_OLD=key-2024-01:<key1-hex>,key-2023-12:<key2-hex>,key-2023-11:<key3-hex>
-```
-
-**Security Notes:**
-- Old keys should have limited lifetime (recommend max 90 days)
-- Monitor decryption with old keys (indicates pending migration)
-- Never remove old keys before data migration verification
-- Store old keys securely even after removal (disaster recovery)
-
-### Production Performance Tuning
-
-#### Argon2id Parameters
-
-Default Argon2id parameters are tuned for production with 100-200 concurrent users following OWASP 2023 recommendations:
-
-- `ARGON2_MEMORY_KIB=65536` (64MB) - recommended minimum for security
-- `ARGON2_TIME=3` - balance between security and performance
-- `ARGON2_PARALLELISM=4` - utilize multi-core CPUs
-
-**Memory Impact:**
-Each login/registration hashes the derived auth key and consumes 64MB × parallelism = 256MB RAM during hash computation. For 100 concurrent login attempts: ~25GB RAM burst.
-
-**Tuning for High Traffic (1000+ concurrent users):**
-
-Option 1: Reduce parameters (trade security for performance)
-```bash
-ARGON2_MEMORY_KIB=32768  # 32MB (still secure but faster)
-ARGON2_TIME=2
-ARGON2_PARALLELISM=2
-```
-
-Option 2: Implement request queueing (recommended)
-- Add rate limiting queue for login/register endpoints
-- Process Argon2id operations with worker pool
-- Maintain security without reducing parameters
-
-**Monitoring:**
-- Track Argon2id operation latency (should be 100-500ms)
-- Monitor memory usage during peak traffic
-- Alert if latency exceeds 1000ms (indicates resource contention)
-
-## API Reference
-
-All endpoints live under `/api/v2`. Request bodies are strict JSON (unknown fields, extra values
-and deep nesting are rejected). Authenticated endpoints accept the HttpOnly session cookie (or
-`Authorization: Bearer` for API clients). Errors are generic by design.
-
-### Identity
-
-| Method | Path | Auth | Body → Response |
-|--------|------|------|-----------------|
-| GET | `/pow/challenge` | — | → `{challenge, salt, difficulty, timestamp, ttl}` |
-| POST | `/register` | — | `{confirm:false, pow}` → `{account_number, pending_token}`; `{confirm:true, pending_token, pow}` → 201 + cookie |
-| POST | `/login` | — | `{auth_key}` → 200 + cookie |
-| POST | `/logout` | cookie | → revokes every session of the identity |
-| GET | `/me` | ✓ | → `{public_key}` (client compares with its own derivation) |
-
-### Pairing & messaging
-
-| Method | Path | Body → Response |
-|--------|------|-----------------|
-| POST | `/invites` | → 201 `{token, expires_at}` · 429 when `MAX_ACTIVE_INVITES` reached |
-| POST | `/invites/redeem` | `{token}` → 201 `{conversation:{id, peer_public_key, last_seq, read_seq}}` · 404 used/expired/own |
-| GET | `/conversations` | → `{conversations:[…]}` most recent first |
-| DELETE | `/conversations/{id}` | → 204 (burn for both sides) |
-| GET | `/conversations/{id}/messages[?after=seq]` | → `{messages:[{id, seq, mine, ciphertext}]}` (latest page without `after`) |
-| POST | `/conversations/{id}/messages` | `{id: uuidv4, ciphertext}` → 201 `{seq}` · 409 duplicate id |
-| POST | `/conversations/{id}/read` | `{seq}` → 204 |
-| GET | `/events` | SSE: `event: msg` `data: {"c": id}` · `event: conv` |
-
-Non-members get 404 for every conversation-scoped call.
+When `SIGINT` or `SIGTERM` is received, the server stops accepting new connections, gives in-flight requests 10 seconds to finish, closes all live SSE streams, and executes `encryption.ZeroizeAllKeys()` to overwrite active and old master keys in memory with zeros.
 
 ---
 
 ## Testing
 
 ```bash
+# 1. Containerized full test suite (disposable Postgres instance)
+./run.sh --test
+
+# 2. Local Go unit tests (fast, no database needed)
 cd backend
-go test -tags=test ./...                    # unit tests; integration skips without PostgreSQL
-DB_HOST=127.0.0.1 DB_PORT=5432 go test -race -tags=test ./...   # everything, with a local PostgreSQL
-cd .. && node --test frontend/tests/        # browser crypto vs Go derivations
-./run.sh --test                             # containerised unit suite
+go test -tags=test ./internal/pow/... ./internal/handlers/... ./tests/identity/... ./tests/encryption/... ./tests/utils/...
+
+# 3. Local Go database & integration tests (requires local Postgres on 5432)
+DB_HOST=127.0.0.1 DB_PORT=5432 go test -tags=test ./tests/database -v
+DB_HOST=127.0.0.1 DB_PORT=5432 go test -p 1 -race -tags=test ./...
+
+# 4. Frontend WebCrypto derivation verification (requires Node.js 20+)
+cd ..
+node --test frontend/tests/
 ```
 
 ---
 
-## References
+## References & Specifications
 
-- **X25519**: RFC 7748 — Elliptic Curves for Security
-- **HKDF**: RFC 5869 — HMAC-based Extract-and-Expand Key Derivation Function
+- **X25519**: RFC 7748 - Elliptic Curves for Security
+- **HKDF**: RFC 5869 - HMAC-based Extract-and-Expand Key Derivation Function
 - **AES-256-GCM**: NIST SP 800-38D - Galois/Counter Mode (GCM) for Block Ciphers
-- **Argon2id**: RFC 9106 - Argon2 Memory-Hard Function for Password Hashing and Key Derivation
-- **HMAC-SHA256**: RFC 2104 - HMAC: Keyed-Hashing for Message Authentication
-- **PKCS#8 for X25519**: RFC 8410
-- **JWT**: RFC 7519 - JSON Web Token (JWT)
-- **Base64URL**: RFC 4648 Section 5 - Base 64 Encoding with URL and Filename Safe Alphabet
-- **Server-Sent Events**: WHATWG HTML Living Standard
-- **Trusted Types**: W3C Trusted Types
-- **Web Cryptography API**: W3C (Secure Curves)
-- **Token Bucket Algorithm**: Rate limiting algorithm for traffic shaping
-- **Zero-Trust Architecture**: NIST SP 800-207 - Zero Trust Architecture
-- **Mullvad VPN**: AccountNumber-only authentication model
-- **OWASP**: Security best practices
-- **Go**: https://go.dev/ · **PostgreSQL**: https://www.postgresql.org/ · **Nginx**: https://nginx.org/ · **GORM**: https://gorm.io/
-- **github.com/golang-jwt/jwt/v5**, **github.com/google/uuid**, **golang.org/x/crypto** (argon2, hkdf)
+- **Argon2id**: RFC 9106 - Argon2 Memory-Hard Function for Password Hashing
+- **PKCS#8 for X25519**: RFC 8410 - Asymmetric Key Packages (OID 1.3.101.110)
+- **Base64URL**: RFC 4648 Section 5 - Base 64 with URL and Filename Safe Alphabet
+- **Trusted Types**: W3C Trusted Types API Specification
+- **Web Cryptography API**: W3C Recommendation (Secure Contexts)
+- **Zero-Trust Architecture**: NIST SP 800-207
+- **Mullvad VPN**: AccountNumber-only authentication inspiration
 
 ---
 
----
-
-**Last Updated**: October 2026
-**Version**: 1.0-dev
-**Status**: Development. Telemetry/log hardening is scheduled for the polish phase.
+**Version**: 1.0-dev  
+**License**: GNU Affero General Public License v3.0 (`LICENSE`)

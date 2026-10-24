@@ -205,3 +205,24 @@ func X25519PublicKey(privateKey []byte) ([]byte, error) {
 	}
 	return priv.PublicKey().Bytes(), nil
 }
+
+// X25519SharedSecret computes the X25519 shared secret of a 32-byte private scalar and a
+// peer public key. The all-zero output (low-order peer point) is rejected, as WebCrypto does.
+func X25519SharedSecret(privateKey, peerPublicKey []byte) ([]byte, error) {
+	if len(privateKey) != X25519KeySize || len(peerPublicKey) != X25519KeySize {
+		return nil, fmt.Errorf("invalid key length")
+	}
+	priv, err := ecdh.X25519().NewPrivateKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("x25519 key failed: %w", err)
+	}
+	peer, err := ecdh.X25519().NewPublicKey(peerPublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("x25519 peer key failed: %w", err)
+	}
+	shared, err := priv.ECDH(peer)
+	if err != nil {
+		return nil, fmt.Errorf("x25519 failed: %w", err)
+	}
+	return shared, nil
+}

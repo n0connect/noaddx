@@ -1,134 +1,138 @@
-# 🧪 Test Suite
+# Test Suite
 
-## 📁 Dizin Yapısı
+> **Yalnizca gercek sistem.** Hicbir seyin yerine gecen kod, veri ya da akis yoktur. Testler gercek
+> HTTP rotalarini, gercek PostgreSQL'i, gercek kriptoyu (gercek ciphertext) ve her calistirmada
+> CSPRNG'den uretilen secret'lari kullanir. Gecersiz girdiler, gercek bir ciktinin bozulmasiyla
+> elde edilir. Sabit girdiler yalnizca yayinlanmis RFC vektorleri ve Go-JS uyum vektorleridir.
+
+## Dizin Yapisi
 
 ```
 backend/tests/
-├── auth/                      # Authentication tests (15 test)
-├── database/                   # Migration tests (7 test)
-├── encryption/                 # Encryption tests (9 test)
-├── handlers/                   # Handler tests (2 test)
-├── identity/                   # HKDF / X25519 RFC vectors + derivations (5 test)
-├── integration/                # noaddress end-to-end flows (10 test)
-├── middleware/                 # Middleware tests (17 test)
-├── testutil/                   # Test utilities
-│   ├── db.go                  # Database setup helpers
-│   ├── db_helper.go           # Database env setup
-│   └── env.go                 # Environment setup
-└── utils/                      # Utils tests (16 test)
+|-- auth/                      # Authentication tests (15 test)
+|-- database/                  # Migration tests (7 test)
+|-- encryption/                # Encryption tests (9 test)
+|-- identity/                  # HKDF / X25519 RFC vectors + derivations + tag separation (5 test)
+|-- integration/               # noaddress end-to-end flows, real E2E ciphertext (15 test)
+|-- middleware/                # Middleware tests (16 test)
+|-- testutil/                  # Test utilities
+|   |-- db.go                  # Database setup helpers
+|   |-- db_helper.go           # Database env setup
+|   |-- env.go                 # Environment setup (secrets drawn from the CSPRNG per run)
+|   `-- values.go              # Real generators: AccountNumber, auth key, ids
+`-- utils/                     # Utils, SafeMutex, supervised goroutines, logger (20 test)
 ```
 
-Paket içi testler: `internal/pow` (20), `internal/realtime` (3, SSE hub), `internal/handlers` (2, rota/sorgu beyaz listesi).
-Frontend kripto testleri: `frontend/tests/crypto.test.mjs` (8, Go türetmesiyle bayt-bayt eşleşme) → `node --test frontend/tests/`
+Paket ici testler: `internal/pow` (11, gercek cozum/gercek sure dolumu), `internal/realtime` (3, SSE hub), `internal/handlers` (2, rota/sorgu beyaz listesi), `internal/e2e` (4, Go istemci protokolu + tarayici ciphertext'i).
+Frontend kripto testleri: `frontend/tests/crypto.test.mjs` (9, Go turemesiyle bayt-bayt eslesme + Go ciphertext'ini acma) -> `node --test frontend/tests/`
 
-## 🚀 Test Çalıştırma Sırası
+## Test Calistirma Sirasi
 
-### ⭐ ÖNEMLİ: Migration Testleri Önce Çalıştırılmalı
+### ONEMLI: Migration Testleri Once Calistirilmalidir
 
-Migration testleri **backend ayağa kalkmadan önce** çalıştırılmalıdır:
+Migration testleri **backend ayaga kalkmadan once** calistirilmalidir:
 
 ```bash
-# 1. Migration testleri (database hazırlığı)
+# 1. Migration testleri (database hazirligi)
 cd backend
-go test ./tests/database -v
+go test -tags=test ./tests/database -v
 
-# 2. Testler başarılıysa backend'i başlat
+# 2. Testler basariliysa backend'i baslat
 go run ./cmd/server
 ```
 
-### Tüm Testler
+### Tum Testler
 
 ```bash
-# Migration testleri (öncelikli)
-go test ./tests/database -v
+# Migration testleri (oncelikli)
+go test -tags=test ./tests/database -v
 
-# Diğer testler
-go test ./tests/... -v
+# Diger testler
+go test -p 1 -tags=test ./tests/... -v
 ```
 
-### Kategori Bazlı
+### Kategori Bazli
 
 ```bash
-# Migration tests (database hazırlığı)
-go test ./tests/database -v
+# Migration tests (database hazirligi)
+go test -tags=test ./tests/database -v
 
 # Authentication tests
-go test ./tests/auth -v
+go test -tags=test ./tests/auth -v
 
 # Encryption tests
-go test ./tests/encryption -v
+go test -tags=test ./tests/encryption -v
 
 # Middleware tests
-go test ./tests/middleware -v
+go test -tags=test ./tests/middleware -v
 
 # Integration tests
-go test ./tests/integration -v
+go test -tags=test ./tests/integration -v
 
 # Identity derivation tests (no DB)
 go test -tags=test ./tests/identity -v
 
 # Utils tests
-go test ./tests/utils -v
+go test -tags=test ./tests/utils -v
 ```
 
-## 📊 Test İstatistikleri
+## Test Istatistikleri
 
-| Kategori | Test Sayısı | Durum |
-|----------|-------------|-------|
-| **Database Migration** | **7** | ⭐ YENİ |
-| Authentication | 15 | ✅ |
-| Encryption | 9 | ✅ |
-| Middleware | 17 | ✅ |
-| Identity | 5 | ✅ |
-| Integration (noaddress flows) | 10 | ✅ |
-| Handlers | 2 | ✅ |
-| Utils | 16 | ✅ |
-| **TOPLAM (tests/)** | **81** | ✅ |
+| Kategori | Test Sayisi | Durum |
+|---|---|---|
+| **Database Migration** | **7** | Tamamlandi |
+| Authentication | 15 | Gecti |
+| Encryption | 9 | Gecti |
+| Middleware | 16 | Gecti |
+| Identity | 5 | Gecti |
+| Integration (noaddress flows) | 15 | Gecti |
+| Utils | 20 | Gecti |
+| **TOPLAM (tests/)** | **87** | Gecti |
 
-## 🗄️ Migration Testleri
+## Migration Testleri
 
-### Amaç
+### Amac
 
-Migration testleri backend başlamadan önce:
-1. ✅ Database bağlantısını test eder
-2. ✅ Migration'ların başarıyla çalıştığını doğrular
-3. ✅ Database schema'sının doğru oluşturulduğunu test eder
-4. ✅ Index'lerin ve constraint'lerin doğru ayarlandığını doğrular
-5. ✅ **Database'in backend başlamadan önce hazır olduğunu garantiler**
+Migration testleri backend baslamadan once:
+1. [x] Database baglantisini test eder
+2. [x] Migration'larin basariyla calistigini dogrular
+3. [x] Database schema'sinin dogru olusturuldugunu test eder
+4. [x] Index'lerin ve constraint'lerin dogru ayarlandigini dogrular
+5. [x] **Database'in backend baslamadan once hazir oldugunu garantiler**
 
 ### Testler
 
-- `TestDatabaseMigration`: Migration'ların çalıştığını test eder
-- `TestUserTableSchema`: User tablosu schema'sını test eder
-- `TestChatTableSchema`: Mesajlaşma tablolarını ve yasak kolonları (user_uuid, created_at) test eder
+- `TestDatabaseMigration`: Migration'larin calistigini test eder
+- `TestUserTableSchema`: User tablosu schema'sini test eder
+- `TestChatTableSchema`: Mesajlasma tablolarini ve yasak kolonlari (user_uuid, created_at) test eder
 - `TestUserTableIndexes`: Index'leri test eder
 - `TestDatabaseConstraints`: Constraint'leri test eder
-- `TestDatabaseConnection`: Bağlantıyı test eder
+- `TestDatabaseConnection`: Baglantiyi test eder
 - `TestDatabaseMasterKey`: Master key'i test eder
 
-### Detaylı Bilgi
+### Detayli Bilgi
 
 Bkz: `tests/database/README.md` ve `tests/MIGRATION_TEST_GUIDE.md`
 
-## 📝 Test Kategorileri
+## Test Kategorileri
 
 ### 1. Unit Tests
 
 **Lokasyon:** `tests/auth/`, `tests/encryption/`, `tests/utils/`, `tests/identity/`
 
-**Özellikler:**
-- Hızlı çalışır
-- Database gerektirmez (çoğu)
-- İzole edilmiş testler
+**Ozellikler:**
+- Hizli calisir
+- Database gerektirmez (cogu)
+- Izole edilmis testler
 
-### 2. Migration Tests ⭐ YENİ
+### 2. Migration Tests
 
 **Lokasyon:** `tests/database/`
 
-**Özellikler:**
+**Ozellikler:**
 - Database gerektirir
-- Backend başlamadan önce çalıştırılmalı
-- Database'in hazır olduğunu garantiler
+- Backend baslamadan once calistirilmalidir
+- Database'in hazir oldugunu garantiler
 
 ### 3. Middleware Tests
 
@@ -144,18 +148,19 @@ Bkz: `tests/database/README.md` ve `tests/MIGRATION_TEST_GUIDE.md`
 
 **Lokasyon:** `tests/integration/`
 
-**Testler:** gerçek route tablosu (`internal/server`) üzerinden
-- Kayıt (PoW dahil) → türetilmiş anahtarla giriş; ham AccountNumber kabul edilmez
-- PoW atlatma regresyonları (difficulty=0, trailing JSON)
-- Davet → eşleşme → mesaj; tek kullanımlık davet, kendi davetini kullanamama
-- Üye olmayan erişimi (IDOR), girdi beyaz listesi, burn, oturum iptali, davet limiti
-- SSE: mesajda dürtme, logout'ta akışın kapanması
-- DB'de sosyal graf sızmaması
+**Testler:** gercek route tablosu (`internal/server`) uzerinden
+- Kayit (PoW dahil) -> turetilmis anahtarla giris; ham AccountNumber kabul edilmez
+- PoW atlatma regresyonlari (difficulty=0, trailing JSON)
+- Davet -> eslesme -> mesaj; tek kullanimlik davet, kendi davetini kullanamama
+- Uye olmayan erisimi (IDOR), girdi beyaz listesi, burn, oturum iptali, davet limiti
+- SSE: mesajda durtme, logout'ta akisin kapanmasi
+- DB'de sosyal graf ve sekli sizmamasi (konusma basina takma ad, padding'li sifreli liste, konusma basina seq)
+- Saklama suresi (gun hassasiyetli silinme, purge), dolu kullanicida davetin geri alinmasi, burn sonrasi liste temizligi
 
-**Not:** PostgreSQL erişilemezse paket tamamen SKIP edilir (TestMain). Lokal örnek:
-`DB_HOST=127.0.0.1 DB_PORT=5432 go test -tags=test ./tests/integration -v`
+**Not:** PostgreSQL erisilemezse paket FAIL verir (TestMain) - hicbir test calismadan "gecti" denmez. Lokal ornek:
+`DB_HOST=127.0.0.1 DB_PORT=5432 go test -p 1 -tags=test ./tests/... -v` (`-p 1`: DB paketleri ayni veritabanini paylasir)
 
-## 🔧 Test Infrastructure
+## Test Infrastructure
 
 ### Test Environment Setup
 
@@ -166,26 +171,23 @@ Bkz: `tests/database/README.md` ve `tests/MIGRATION_TEST_GUIDE.md`
 ### Database Setup
 
 `tests/testutil/db.go`:
-- `SetupTestDB()`: Test database connection
-- `TeardownTestDB()`: Database cleanup
-- `CleanTestDatabase()`: Clean database state
 - `InitializeTestDatabase()`: Global database init
 
-`tests/testutil/db_helper.go` ⭐ YENİ:
+`tests/testutil/db_helper.go`:
 - `SetupTestDatabaseEnv()`: Database environment variables
 
-## ⚠️ Notlar
+## Notlar
 
-### Database Bağımlılığı
+### Database Bagimliligi
 
-Bazı testler database bağlantısı gerektirir:
-- Migration tests: ✅ Database gerektirir
-- Integration tests: ⚠️ Bazıları database gerektirir (skip edilir)
-- JWT middleware test: ⚠️ Database gerektirir (skip edilir)
+Bazi testler database baglantisi gerektirir:
+- Migration tests: Database gerektirir
+- Integration tests: Database gerektirir
+- JWT middleware test: Database gerektirir
 
 ### Environment Variables
 
-Testler için gerekli environment variables:
+Testler icin gerekli environment variables:
 - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL_MODE`
 - `JWT_SECRET`, `JWT_SECRET_MIN_LEN`, `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_EXPIRATION_MINUTES`
 - `MASTER_KEY_ACTIVE`, `MASTER_KEY_ACTIVE_ID`, `MASTER_KEY_OLD`, `ACCOUNT_LOOKUP_PEPPER`
@@ -197,15 +199,12 @@ Testler için gerekli environment variables:
 - `RATE_LIMIT_MAX_TOKENS`, `RATE_LIMIT_REFILL_INTERVAL_SEC`, `RATE_LIMIT_CLEANUP_INTERVAL_SEC`, `RATE_LIMIT_MAX_BUCKETS`
 - `SERVER_READ_HEADER_TIMEOUT_SEC`, `SERVER_READ_TIMEOUT_SEC`, `SERVER_WRITE_TIMEOUT_SEC`, `SERVER_IDLE_TIMEOUT_SEC`, `SERVER_MAX_HEADER_BYTES`
 
-## 📚 Dokümantasyon
+## Dokumantasyon
 
 - `tests/README.md`: Bu dosya
-- `tests/database/README.md`: Migration testleri detayları
-- `tests/MIGRATION_TEST_GUIDE.md`: Migration test kılavuzu
-- `tests/TEST_ANALYSIS.md`: Test analizi ve kapsam raporu
-- `tests/TEST_IMPLEMENTATION_SUMMARY.md`: Test implementation özeti
-- `tests/FINAL_TEST_REPORT.md`: Final test raporu
+- `tests/database/README.md`: Migration testleri detaylari
+- `tests/MIGRATION_TEST_GUIDE.md`: Migration test kilavuzu
 
 ---
 
-**Son Güncelleme:** Ekim 2026
+**Son Guncelleme:** Ekim 2026

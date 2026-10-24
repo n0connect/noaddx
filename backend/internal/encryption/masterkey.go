@@ -55,7 +55,7 @@ func InitMasterKeys() error {
 				}
 				parts := strings.SplitN(entry, ":", 2)
 				if len(parts) != 2 {
-					masterKeyLogger.Warn("MASTER_KEY_OLD entry ignored (missing kid): %s", entry)
+					masterKeyLogger.Warn("MASTER_KEY_OLD entry ignored (missing kid)")
 					continue
 				}
 				kid := strings.TrimSpace(parts[0])
@@ -66,7 +66,7 @@ func InitMasterKeys() error {
 				}
 				key, err := decodeKeyMaterial(keyRaw)
 				if err != nil {
-					masterKeyLogger.Warn("MASTER_KEY_OLD entry ignored (invalid key) kid=%s", kid)
+					masterKeyLogger.Warn("MASTER_KEY_OLD entry ignored (invalid key)")
 					continue
 				}
 				oldKeys[kid] = key
@@ -113,13 +113,6 @@ func HasOldMasterKeys() bool {
 		return false
 	}
 	return len(masterKeys.old) > 0
-}
-
-func GetOldMasterKeys() map[string][]byte {
-	if err := InitMasterKeys(); err != nil {
-		return nil
-	}
-	return masterKeys.old
 }
 
 func decodeKeyMaterial(keyRaw string) ([]byte, error) {

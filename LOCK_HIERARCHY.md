@@ -8,7 +8,7 @@ Locks MUST be acquired in the following order (lowest to highest priority) to pr
 - `globalRateLimiter.mu` (RWMutex) - Rate limiting buckets map
 - `challengeRateLimiters mutex` - PoW challenge rate limiters map
 - `issuedChallenges mutex` - PoW issued challenges map
-- `realtime.Hub.mu` - SSE subscriber map (leaf lock: channel sends under it are non-blocking, nothing else is acquired while held)
+- `realtime.Hub.mu` (`utils.SafeMutex`, 5 s timeout) - SSE subscriber map; leaf lock, channel sends under it never block
 - `pendingStore.mu` - Pending registration map (leaf lock)
 
 ### Priority Level 2 - Per-Resource Locks
@@ -17,6 +17,10 @@ Locks MUST be acquired in the following order (lowest to highest priority) to pr
 
 ### Priority Level 3 (Highest) - Database/Critical Resources
 - Database transaction locks (implicit via GORM)
+- `users` row locks (`SELECT … FOR UPDATE`, `ChatRepository.LockUsers`): always taken in ascending
+  `uuid` order inside one transaction (redeem, burn, index prune) — a global order rules out deadlocks
+- `conversations` row lock (`ChatRepository.NextSeq`, `UPDATE … RETURNING`): serialises senders of
+  one conversation until the transaction ends; never held while acquiring a `users` row lock
 - Master key initialization lock (`masterKeyOnce`)
 
 ## Acquisition Rules
@@ -24,11 +28,12 @@ Locks MUST be acquired in the following order (lowest to highest priority) to pr
 1. **Always acquire locks from lowest to highest priority**
 2. **Never acquire a lower-priority lock while holding a higher-priority lock**
 3. **Release locks in LIFO order (stack discipline)**
-4. **All locks must have timeout protection (use SafeMutex/SafeRWMutex)**
+4. **New in-process locks use `utils.SafeMutex` (timeout-bounded); database locks are bounded by
+   their transaction**
 
 ## Examples
 
-### ✅ CORRECT - Acquire low-priority first
+### CORRECT - Acquire low-priority first
 ```go
 // Acquire global map lock first (Priority 1)
 rl.mu.RLock()
@@ -43,7 +48,7 @@ if exists {
 }
 ```
 
-### ❌ INCORRECT - Would cause deadlock
+### INCORRECT - Would cause deadlock
 ```go
 // Holding bucket lock (Priority 2)
 bucket.mu.Lock()

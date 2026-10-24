@@ -14,6 +14,15 @@ const ACCOUNT = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
 const GO_AUTH_KEY = 'qvqPgCb252PauFLpbejEzf8oEzhHi7tfYLM9Vcu0TTA';
 const GO_PUBLIC_KEY = 'Y7KAl2oV4VL5Ox6nNgvQIcD4jXZK4scXV2k7WwsA2ms';
 const CONV = '3b241101-e2bb-4255-8caf-4136c566a962';
+const B_ACCOUNT = 'HxwdHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA';
+// Produced by backend/internal/e2e (Go, A → B); the browser implementation must open it.
+const GO_VECTOR = {
+    message: 'a3f1c2d4-5b6e-4f70-8a91-b2c3d4e5f607',
+    ciphertext: 'sTEmxZZ-1ilWXZ7YeJDJZbubUknabL-WBAoiVoadVtM9qJXWIMACPrr6CxEHNW47CFTzO-97T0DWqk9arqDQriyHb-N9LDUhI7uisLeVm3mH5VEcRnNvRMSaPKRe2F_KdTzqoLt8UQf7Ab-CRXEGLgEEu6Jt9S48wGebDwLtdyNczsJG-8eQV6Kbuvu1tChTg9CeDN_InLP9IGUu02tIOWQA757wEMDM7vPe45qynO_iZEUAMk70njN2hzgAv9pLYDZn0ForliH8tcI5TdQT_YqQEJ8QZ--NNsf333YlCPvNtd76AN-4m1Y2-FiEDBWr3_0txNsPCRzjQHQYM9DhshxbeUJRvjA7mjG_qNflQRKN4pZjhDjkzvvWP6g',
+    text: 'noaddress. interop ✓ <b>&',
+    sentAt: 1729700000000,
+    counter: 3
+};
 
 test('auth key matches Go derivation', async () => {
     assert.equal(await C.deriveAuthKey(ACCOUNT), GO_AUTH_KEY);
@@ -33,8 +42,7 @@ test('strict base64url rejects malformed account numbers', async () => {
 
 async function peers() {
     const a = await C.deriveIdentity(ACCOUNT);
-    const bAccount = 'HxwdHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA';
-    const b = await C.deriveIdentity(bAccount);
+    const b = await C.deriveIdentity(B_ACCOUNT);
     const ab = await C.conversationKey(a.privateKey, b.publicKey, CONV);
     const ba = await C.conversationKey(b.privateKey, a.publicKey, CONV);
     return { a, b, ab, ba };
@@ -43,17 +51,23 @@ async function peers() {
 test('both peers derive the same conversation key and round-trip a message', async () => {
     const { a, ab, ba } = await peers();
     const msg = C.newMessageId();
-    const ct = await C.encryptMessage(ab, CONV, msg, a.publicKey, 'merhaba 👋 <b>', 1729700000000);
+    const ct = await C.encryptMessage(ab, CONV, msg, a.publicKey, 'merhaba 👋 <b>', 1729700000000, 7);
     const out = await C.decryptMessage(ba, CONV, msg, a.publicKey, ct);
-    assert.deepEqual({ ...out }, { text: 'merhaba 👋 <b>', sentAt: 1729700000000 });
+    assert.deepEqual({ ...out }, { text: 'merhaba 👋 <b>', sentAt: 1729700000000, counter: 7 });
     // Length hiding: ciphertext size is a padded bucket, not the text length
     assert.equal(C.b64urlDecode(ct).length, 12 + 256 + 16);
+});
+
+test('opens a message encrypted by the Go implementation (interop)', async () => {
+    const { a, ba } = await peers();
+    const out = await C.decryptMessage(ba, CONV, GO_VECTOR.message, a.publicKey, GO_VECTOR.ciphertext);
+    assert.deepEqual({ ...out }, { text: GO_VECTOR.text, sentAt: GO_VECTOR.sentAt, counter: GO_VECTOR.counter });
 });
 
 test('AAD binding: wrong message id, sender, conversation, or tampered bytes fail', async () => {
     const { a, b, ab, ba } = await peers();
     const msg = C.newMessageId();
-    const ct = await C.encryptMessage(ab, CONV, msg, a.publicKey, 'secret', 1);
+    const ct = await C.encryptMessage(ab, CONV, msg, a.publicKey, 'secret', 1, 1);
     await assert.rejects(C.decryptMessage(ba, CONV, C.newMessageId(), a.publicKey, ct));
     await assert.rejects(C.decryptMessage(ba, CONV, msg, b.publicKey, ct)); // reflected as if sent by b
     const otherConv = await C.conversationKey(b.privateKey, a.publicKey, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee');
@@ -94,5 +108,6 @@ test('payload limit is enforced before encryption', async () => {
     const { a, ab } = await peers();
     assert.equal(C.payloadFits('x'.repeat(5900)), true);
     assert.equal(C.payloadFits('x'.repeat(6000)), false);
-    await assert.rejects(C.encryptMessage(ab, CONV, C.newMessageId(), a.publicKey, 'x'.repeat(7000), 1));
+    await assert.rejects(C.encryptMessage(ab, CONV, C.newMessageId(), a.publicKey, 'x'.repeat(7000), 1, 1));
+    await assert.rejects(C.encryptMessage(ab, CONV, C.newMessageId(), a.publicKey, 'hi', 1, 0)); // counter must be >= 1
 });

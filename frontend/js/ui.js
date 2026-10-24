@@ -51,8 +51,8 @@ function showRegisterForm() {
     }
     if (accountNumberBox) accountNumberBox.classList.add('show');
 
-    // Start fake Account Number animation immediately
-    startFakeAccountNumberGeneration(
+    // Start the scramble animation immediately
+    startAccountNumberScramble(
         accountNumberElement,
         document.getElementById('registerSuccess'),
         document.getElementById('accountNumberDisplay')
@@ -131,7 +131,7 @@ function renderInvite(code, expiresAtSeconds) {
     document.getElementById('invitePanel').style.display = 'block';
 }
 
-// items: [{ id, aura, unread }] in display order
+// items: [{ id, aura, unread, verified }] in display order
 function renderConversationList(items, onOpen) {
     const list = document.getElementById('conversationList');
     clearChildren(list);
@@ -165,6 +165,13 @@ function renderConversationList(items, onOpen) {
         row.appendChild(createGlyph(item.aura.grid));
         row.appendChild(name);
         row.appendChild(code);
+        if (item.verified) {
+            const verified = document.createElement('span');
+            verified.className = 'verified-mark';
+            verified.title = 'safety number verified on this device';
+            verified.textContent = '✓';
+            row.appendChild(verified);
+        }
         row.appendChild(marker);
         row.addEventListener('click', () => onOpen(item.id));
         row.addEventListener('keydown', (e) => {
@@ -187,6 +194,13 @@ function showChatView(aura) {
     document.getElementById('chatView').style.display = 'block';
 }
 
+function setVerifiedState(verified) {
+    document.getElementById('peerVerified').style.display = verified ? 'inline' : 'none';
+    const button = document.getElementById('markVerifiedBtn');
+    button.textContent = verified ? '✓ verified — unmark' : 'mark as verified';
+    button.classList.toggle('active', verified);
+}
+
 function renderSafetyNumber(groups) {
     const box = document.getElementById('safetyNumber');
     clearChildren(box);
@@ -195,6 +209,17 @@ function renderSafetyNumber(groups) {
         cell.textContent = group;
         box.appendChild(cell);
     });
+}
+
+// A gap in the peer's counter: the server withheld, delayed or deleted their messages
+function createGapElement(missing) {
+    const item = document.createElement('li');
+    item.className = 'msg-gap';
+    // The count comes from the peer's own counter; cap what we repeat back
+    item.textContent = missing === 1
+        ? '⚠ 1 message from them never arrived'
+        : missing <= 999 ? `⚠ ${missing} messages from them never arrived` : '⚠ messages from them never arrived';
+    return item;
 }
 
 function createMessageElement(message) {
@@ -224,20 +249,26 @@ function appendMessages(messages) {
     if (empty && messages.length > 0) {
         empty.remove();
     }
-    messages.forEach(message => list.appendChild(createMessageElement(message)));
+    messages.forEach(message => list.appendChild(
+        message.gap ? createGapElement(message.gap) : createMessageElement(message)));
     if (pinned || messages.some(m => m.mine)) {
         list.scrollTop = list.scrollHeight;
     }
 }
 
-function renderEmptyConversation() {
+function renderEmptyConversation(ttlDays) {
     const list = document.getElementById('messageList');
     if (list.children.length === 0) {
         const empty = document.createElement('li');
         empty.className = 'empty-message';
-        empty.textContent = 'end-to-end encrypted. say hello.';
+        empty.textContent = `end-to-end encrypted. messages vanish after ${ttlDays} days. say hello.`;
         list.appendChild(empty);
     }
+}
+
+function setComposerHint(ttlDays) {
+    document.getElementById('composerHint').textContent =
+        `vanishes after ${ttlDays} days · enter to send · shift+enter for a new line`;
 }
 
 function updateComposerMeta() {

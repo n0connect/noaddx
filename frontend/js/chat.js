@@ -2,8 +2,9 @@
 // CHAT (state, sync, realtime)
 // ========================================
 // The server is treated as an untrusted relay: every response is shape-checked,
-// every message is authenticated by AES-GCM + AAD, and peer keys from invites are
-// verified against the fingerprint embedded in the invite code.
+// every message is authenticated by AES-GCM + AAD, peer keys from invites are
+// verified against the fingerprint embedded in the invite code, and gaps in the
+// peer's encrypted message counter expose messages the server withheld.
 
 const Chat = (() => {
     'use strict';
@@ -13,9 +14,10 @@ const Chat = (() => {
     const RECONNECT_MAX_MS = 30000;
     const MAX_CIPHERTEXT_CHARS = 11000;
 
-    let me = null;                    // { privateKey, publicKey, aura }
+    let me = null;                    // { privateKey, publicKey, aura, ttlDays }
     const conversations = new Map();  // id -> conversation state
-    let order = [];                   // conversation ids, most recent activity first
+    let order = [];                   // server order: newest conversation first
+    let recent = [];                  // ids with activity this session, most recent first (memory only)
     let activeId = null;
     let events = null;
     let reconnectAttempts = 0;
@@ -69,24 +71,37 @@ const Chat = (() => {
         document.title = unread > 0 ? `(${unread}) noaddress.` : 'noaddress.';
     }
 
+    // The server keeps no cross-conversation recency, so ordering is decided here:
+    // unread first, then activity seen during this session, then newest conversation
     function renderList() {
+        const rank = id => {
+            const r = recent.indexOf(id);
+            return r === -1 ? recent.length + order.indexOf(id) : r;
+        };
         const items = order.filter(id => conversations.has(id)).map(id => {
             const conv = conversations.get(id);
-            return { id: conv.id, aura: conv.aura, unread: conv.lastSeq > conv.readSeq };
+            return { id: conv.id, aura: conv.aura, unread: conv.lastSeq > conv.readSeq, verified: conv.verified };
         });
+        items.sort((a, b) => (b.unread - a.unread) || (rank(a.id) - rank(b.id)));
         renderConversationList(items, open);
         updateTitle();
     }
 
+    function bump(id) {
+        recent = [id].concat(recent.filter(other => other !== id));
+    }
+
     // ---------- lifecycle ----------
 
-    async function start(identity) {
+    async function start(identity, ttlDays) {
         me = {
             privateKey: identity.privateKey,
             publicKey: identity.publicKey,
-            aura: await NoaddressCrypto.aura(identity.publicKey)
+            aura: await NoaddressCrypto.aura(identity.publicKey),
+            ttlDays: ttlDays
         };
         renderMe(me.aura);
+        setComposerHint(ttlDays);
         showHome();
         showApp();
         await refreshConversations();
@@ -98,6 +113,7 @@ const Chat = (() => {
         clearTimeout(refreshTimer);
         conversations.clear();
         order = [];
+        recent = [];
         activeId = null;
         listLoaded = false;
         me = null;
@@ -145,6 +161,9 @@ const Chat = (() => {
                     id: item.id,
                     peerPublicKey: item.peer_public_key,
                     aura: await NoaddressCrypto.aura(item.peer_public_key),
+                    verified: await Keystore.isVerified(item.id, item.peer_public_key),
+                    myMaxN: 0,
+                    peerLastN: 0,
                     lastSeq: item.last_seq,
                     readSeq: item.read_seq,
                     maxSeq: 0,
@@ -191,10 +210,13 @@ const Chat = (() => {
         conv.seqs = new Set();
         conv.ids = new Set();
         conv.maxSeq = 0;
+        conv.myMaxN = 0;
+        conv.peerLastN = 0;
         conv.loaded = false;
+        setVerifiedState(conv.verified);
         await sync(conv);
         if (activeId === id) {
-            renderEmptyConversation();
+            renderEmptyConversation(me.ttlDays);
             document.getElementById('messageInput').focus();
         }
     }
@@ -244,6 +266,15 @@ const Chat = (() => {
             try {
                 const plain = await NoaddressCrypto.decryptMessage(key, conv.id, raw.id, sender, raw.ciphertext);
                 message = { seq: raw.seq, mine: raw.mine, text: plain.text, sentAt: plain.sentAt };
+                if (raw.mine) {
+                    conv.myMaxN = Math.max(conv.myMaxN, plain.counter);
+                } else {
+                    // The first visible peer message is the baseline (older ones may have expired)
+                    if (conv.peerLastN > 0 && plain.counter > conv.peerLastN + 1) {
+                        fresh.push({ gap: plain.counter - conv.peerLastN - 1 });
+                    }
+                    conv.peerLastN = Math.max(conv.peerLastN, plain.counter);
+                }
             } catch (e) {
                 message = { seq: raw.seq, mine: raw.mine, broken: true };
             }
@@ -284,12 +315,13 @@ const Chat = (() => {
             const id = NoaddressCrypto.newMessageId();
             const sentAt = Date.now();
             const key = await conversationKey(conv);
-            const ciphertext = await NoaddressCrypto.encryptMessage(key, conv.id, id, me.publicKey, validation.sanitized, sentAt);
+            const ciphertext = await NoaddressCrypto.encryptMessage(key, conv.id, id, me.publicKey, validation.sanitized, sentAt, conv.myMaxN + 1);
             const result = await api('POST', `/conversations/${conv.id}/messages`, { id: id, ciphertext: ciphertext });
 
             if (result.ok && result.data && isSeq(result.data.seq) && result.data.seq > 0) {
                 input.value = '';
                 updateComposerMeta();
+                bump(conv.id);
                 await sync(conv);
             } else if (result.status === 429) {
                 showWarning('slow down — too many messages');
@@ -378,6 +410,19 @@ const Chat = (() => {
 
     // ---------- conversation actions ----------
 
+    async function toggleVerified() {
+        const conv = conversations.get(activeId);
+        if (!conv) return;
+        const next = !conv.verified;
+        if (!(await Keystore.setVerified(conv.id, conv.peerPublicKey, next))) {
+            showWarning('could not save verification on this device');
+            return;
+        }
+        conv.verified = next;
+        setVerifiedState(next);
+        if (next) showSuccess('marked as verified on this device');
+    }
+
     async function showSafety() {
         const conv = conversations.get(activeId);
         const panel = document.getElementById('safetyPanel');
@@ -429,25 +474,35 @@ const Chat = (() => {
         });
         events.addEventListener('msg', onMessageEvent);
         events.addEventListener('conv', scheduleRefresh);
+        // Never rely on the browser's built-in retry (fixed interval, unlimited attempts):
+        // every drop goes through our bounded exponential backoff (RULES.md §17.1)
         events.onerror = () => {
-            // CONNECTING = browser retries by itself; CLOSED = server refused the stream
-            if (events && events.readyState === EventSource.CLOSED) {
-                scheduleReconnect();
-            }
+            scheduleReconnect();
         };
     }
 
-    async function scheduleReconnect() {
+    function scheduleReconnect() {
         closeEvents();
-        const check = await api('GET', '/me');
-        if (!me || check.status === 401) return;
+        if (!me) return;
+        const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** reconnectAttempts);
         if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
             showWarning('live updates paused — reload to resume');
             return;
         }
-        const delay = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** reconnectAttempts);
         reconnectAttempts++;
-        reconnectTimer = setTimeout(connectEvents, delay);
+        reconnectTimer = setTimeout(reconnect, delay);
+    }
+
+    // Only reconnect while the session is still valid (a 401 ends the session instead)
+    async function reconnect() {
+        if (!me) return;
+        const check = await api('GET', '/me');
+        if (!me || check.status === 401) return;
+        if (!check.ok) {
+            scheduleReconnect();
+            return;
+        }
+        connectEvents();
     }
 
     function onMessageEvent(event) {
@@ -463,6 +518,7 @@ const Chat = (() => {
             scheduleRefresh();
             return;
         }
+        bump(conv.id);
         if (activeId === conv.id && document.visibilityState === 'visible') {
             sync(conv);
         } else {
@@ -489,7 +545,7 @@ const Chat = (() => {
 
     return Object.freeze({
         start, stop, open, backToList, send, createInvite, join,
-        showSafety, askBurn, burn, onVisible,
+        showSafety, toggleVerified, askBurn, burn, onVisible,
         isActive: () => me !== null
     });
 })();

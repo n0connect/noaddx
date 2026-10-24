@@ -21,7 +21,7 @@ var (
 )
 
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	authLogger.LogRequest(r.Method, r.URL.Path, "N/A")
+	authLogger.LogRequest(r.Method)
 	authLogger.Debug("Starting RegisterHandler")
 
 	// Handle HEAD requests (used by browsers/tools for link previews, health checks, etc.)
@@ -124,7 +124,6 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		authLogger.Debug("Generated preview AccountNumber: %s with pending token", utils.MaskAccountNumber(accountNumber))
 		responseData := models.RegisterResponse{
 			Success:       true,
 			Message:       "Account number generated - click continue to create account",
@@ -156,13 +155,12 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// SECURITY: Generic error message to prevent information leakage
 		// Don't distinguish between expired and invalid tokens
-		authLogger.Warn("Invalid or expired pending registration token: %v", err)
+		authLogger.Warn("Invalid or expired pending registration token")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	// ZERO-TRUST: AccountNumber comes from verified token, NOT from user input
-	authLogger.Debug("Phase 2: Creating account with verified AccountNumber: %s", utils.MaskAccountNumber(pendingAccountNumber))
 
 	// ZERO-KNOWLEDGE LOGIN: the server keys the account by a derived auth key, so after this
 	// request it never needs (or sees) the AccountNumber that also seeds the E2E identity
@@ -197,7 +195,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	if exists {
 		// SECURITY: Generic error message to prevent enumeration
 		// Don't reveal that account exists - use same message as invalid token
-		authLogger.Warn("Account already exists (possible replay): %s", utils.MaskAccountNumber(pendingAccountNumber))
+		authLogger.Warn("Account already exists (possible replay)")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -219,7 +217,6 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate encryption key for user
-	authLogger.Debug("Generating user AES key for AccountNumber: %s", utils.MaskAccountNumber(pendingAccountNumber))
 	userAESKey, err := encryption.GenerateUserAESKey()
 	if err != nil {
 		authLogger.LogError("GenerateUserAESKey", err)
@@ -252,7 +249,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	authLogger.Info("Successfully registered new user: AccountNumber=%s", utils.MaskAccountNumber(pendingAccountNumber))
+	authLogger.Debug("New identity registered")
 
 	// Generate JWT token for immediate login (using internal UUID as subject)
 	token, err := auth.SignToken(internalUUID, user.SessionEpoch)
@@ -272,7 +269,6 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	// SECURITY: Set HttpOnly cookie (primary auth method for browsers - XSS protection)
 	// Token also returned in response for API client compatibility
 	auth.SetAuthCookie(w, token)
-	authLogger.Debug("Set HttpOnly authentication cookie for newly registered user UUID: %s", internalUUID)
 
 	// SECURITY: Don't return AccountNumber in response (already shown to user in Phase 1)
 	// Prevents network sniffing and reduces information leakage
@@ -287,7 +283,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func PoWChallengeHandler(w http.ResponseWriter, r *http.Request) {
-	authLogger.LogRequest(r.Method, r.URL.Path, "N/A")
+	authLogger.LogRequest(r.Method)
 	authLogger.Debug("Starting PoWChallengeHandler")
 
 	// Handle HEAD requests
@@ -306,11 +302,8 @@ func PoWChallengeHandler(w http.ResponseWriter, r *http.Request) {
 	// Prevent caching of sensitive responses
 	w.Header().Set("Cache-Control", "no-store")
 
-	// Get client IP for rate limiting (forwarded headers trusted only from TRUSTED_PROXIES)
-	clientIP := middleware.ClientIP(r)
-
-	// Generate a new PoW challenge
-	challenge, err := pow.GenerateChallenge(clientIP)
+	// Rate-limit key: HMAC(client IP) with a per-boot secret (forwarded headers trusted only from TRUSTED_PROXIES)
+	challenge, err := pow.GenerateChallenge(middleware.ClientKey(r))
 	if err != nil {
 		authLogger.LogError("GenerateChallenge", err)
 		if strings.Contains(err.Error(), "rate limit exceeded") {
@@ -334,7 +327,7 @@ func PoWChallengeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
-	authLogger.LogRequest(r.Method, r.URL.Path, "N/A")
+	authLogger.LogRequest(r.Method)
 	authLogger.Debug("Starting LoginHandler")
 
 	// Handle HEAD requests (used by browsers/tools for link previews, health checks, etc.)
@@ -389,11 +382,11 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		authLogger.LogError("UserRepository.FindByAccountLookup", err)
 		authLogger.Warn("Login failed: user not found")
-		// SECURITY: Perform dummy hash verification to prevent timing attack
+		// SECURITY: Spend a full Argon2id verification anyway to prevent a timing attack
 		// This ensures user existence cannot be determined by response time
 		// Even though OpenSSL Argon2id is constant-time within verification,
 		// the absence of verification creates a timing side-channel
-		auth.PerformDummyHashVerification(req.AuthKey)
+		auth.EqualizeVerificationTiming(req.AuthKey)
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
 		return
 	}
@@ -412,23 +405,19 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authLogger.Info("Successful login for user UUID: %s", user.UUID)
+	authLogger.Debug("Successful login")
 
 	// Generate JWT token (using internal UUID as subject)
-	authLogger.Debug("Generating JWT token for user UUID: %s", user.UUID)
 	token, err := auth.SignToken(user.UUID, user.SessionEpoch)
 	if err != nil {
 		authLogger.LogError("SignToken", err)
-		authLogger.Error("Failed to generate JWT token for user UUID: %s", user.UUID)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	authLogger.Debug("Successfully generated JWT token for user UUID: %s", user.UUID)
 
 	// SECURITY: Set HttpOnly cookie (primary auth method for browsers - XSS protection)
 	// Token also returned in response for API client compatibility
 	auth.SetAuthCookie(w, token)
-	authLogger.Debug("Set HttpOnly authentication cookie for user UUID: %s", user.UUID)
 
 	responseData := models.LoginResponse{
 		Success: true,

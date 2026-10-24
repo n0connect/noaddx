@@ -67,7 +67,6 @@ func CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		loadAllowedOrigins()
 		origin := r.Header.Get("Origin")
-		corsLogger.Debug("CORSMiddleware: method=%s path=%s origin=%s", r.Method, r.URL.Path, origin)
 
 		if origin != "" {
 			if isOriginAllowed(origin) {
@@ -75,15 +74,15 @@ func CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 
-				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
+				// Whitelist: exactly the methods and headers the API uses
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-				w.Header().Set("Access-Control-Expose-Headers", "Authorization")
 				w.Header().Set("Access-Control-Max-Age", "3600")
 			} else {
 				// If Preflight then return error
 				// SECURITY: Generic error message to prevent information leakage
 				if r.Method == http.MethodOptions {
-					corsLogger.Warn("CORS origin not allowed: %s", origin)
+					corsLogger.Warn("CORS preflight from a non-whitelisted origin rejected")
 					http.Error(w, "Forbidden", http.StatusForbidden)
 					return
 				}

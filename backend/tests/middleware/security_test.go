@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"noaddress/internal/middleware"
@@ -67,8 +68,10 @@ func TestSecurityHeadersMiddleware_PermissionsPolicy(t *testing.T) {
 		t.Error("Permissions-Policy header should be set")
 	}
 
-	// Should contain geolocation=(), microphone=(), camera=()
-	if permissionsPolicy != "geolocation=(), microphone=(), camera=()" {
-		t.Errorf("Permissions-Policy = %q, want %q", permissionsPolicy, "geolocation=(), microphone=(), camera=()")
+	// Whitelist: every powerful feature must be denied
+	for _, feature := range []string{"camera=()", "microphone=()", "geolocation=()", "payment=()", "usb=()", "browsing-topics=()", "interest-cohort=()"} {
+		if !strings.Contains(permissionsPolicy, feature) {
+			t.Errorf("Permissions-Policy %q does not deny %s", permissionsPolicy, feature)
+		}
 	}
 }

@@ -1,6 +1,9 @@
 package database
 
 import (
+	"encoding/hex"
+	"noaddress/internal/auth"
+	"noaddress/internal/identity"
 	"testing"
 
 	"noaddress/internal/database"
@@ -67,7 +70,7 @@ func TestUserTableSchema(t *testing.T) {
 		t.Error("users table should have 'account_hash' column")
 	}
 
-	for _, column := range []string{"public_key", "session_epoch"} {
+	for _, column := range []string{"public_key", "session_epoch", "conv_index_enc"} {
 		if !database.DB.Migrator().HasColumn(&models.User{}, column) {
 			t.Errorf("users table should have '%s' column", column)
 		}
@@ -83,14 +86,11 @@ func TestUserTableSchema(t *testing.T) {
 		t.Error("users table should have 'master_key_id' column")
 	}
 
-	hasCreatedAt := database.DB.Migrator().HasColumn(&models.User{}, "created_at")
-	if !hasCreatedAt {
-		t.Error("users table should have 'created_at' column")
-	}
-
-	hasUpdatedAt := database.DB.Migrator().HasColumn(&models.User{}, "updated_at")
-	if !hasUpdatedAt {
-		t.Error("users table should have 'updated_at' column")
+	// Zero-identifier schema: when an identity was created or touched is never stored
+	for _, forbidden := range []string{"created_at", "updated_at"} {
+		if database.DB.Migrator().HasColumn(&models.User{}, forbidden) {
+			t.Errorf("users table must not have '%s' column", forbidden)
+		}
 	}
 }
 
@@ -105,10 +105,10 @@ func TestChatTableSchema(t *testing.T) {
 	database.Init()
 
 	expected := map[interface{}][]string{
-		&models.Invite{}:             {"id", "lookup", "creator_tag", "creator_enc", "master_key_id", "expires_at"},
-		&models.Conversation{}:       {"id"},
-		&models.ConversationMember{}: {"conversation_id", "member_tag", "peer_key_enc", "read_seq"},
-		&models.Message{}:            {"seq", "id", "conversation_id", "sender_tag", "ciphertext"},
+		&models.Invite{}:             {"id", "lookup", "creator_tag", "creator_ref_enc", "master_key_id", "expires_at"},
+		&models.Conversation{}:       {"id", "last_seq"},
+		&models.ConversationMember{}: {"conversation_id", "member_tag", "member_ref_enc", "master_key_id", "peer_key_enc", "read_seq"},
+		&models.Message{}:            {"conversation_id", "seq", "id", "sender_tag", "ciphertext", "expires_on"},
 	}
 	for model, columns := range expected {
 		for _, column := range columns {
@@ -146,8 +146,8 @@ func TestUserTableIndexes(t *testing.T) {
 		t.Error("users table should have unique index 'idx_users_account_lookup' on 'account_lookup'")
 	}
 
-	if !database.DB.Migrator().HasIndex(&models.Message{}, "idx_messages_conversation_seq") {
-		t.Error("messages table should have composite index 'idx_messages_conversation_seq'")
+	if !database.DB.Migrator().HasIndex(&models.Message{}, "idx_messages_expires_on") {
+		t.Error("messages table should index 'expires_on' for retention purges")
 	}
 	if !database.DB.Migrator().HasIndex(&models.Invite{}, "idx_invites_lookup") {
 		t.Error("invites table should have unique index 'idx_invites_lookup'")
@@ -184,36 +184,57 @@ func TestDatabaseConstraints(t *testing.T) {
 
 	database.Init()
 
-	// Test NOT NULL constraint on account_lookup
-	accountLookupUUID := "test-uuid-123456789012"
-	err := database.DB.Model(&models.User{}).Create(map[string]interface{}{
-		"uuid":           accountLookupUUID,
-		"account_lookup": nil,
-		"account_hash":   "test-hash",
-		"encrypted_key":  "test-key",
-		"master_key_id":  "test-key-id",
-	}).Error
-	if err == nil {
-		t.Error("Creating user with NULL account_lookup should fail (NOT NULL constraint)")
-		database.DB.Where("uuid = ?", accountLookupUUID).Delete(&models.User{})
-	} else {
-		t.Logf("Expected error when creating user with NULL account_lookup: %v", err)
+	// A complete row built by the real registration primitives, then each required
+	// column nulled in turn: only the NOT NULL constraint can reject it
+	realRow := func() map[string]interface{} {
+		account := testutil.NewAccountNumber(t)
+		authKey, err := identity.DeriveAuthKey(account)
+		if err != nil {
+			t.Fatalf("DeriveAuthKey: %v", err)
+		}
+		publicKey, err := identity.DerivePublicKey(account)
+		if err != nil {
+			t.Fatalf("DerivePublicKey: %v", err)
+		}
+		lookup, err := auth.ComputeAccountLookup(authKey)
+		if err != nil {
+			t.Fatalf("ComputeAccountLookup: %v", err)
+		}
+		hash, err := auth.HashAccountNumber(authKey)
+		if err != nil {
+			t.Fatalf("HashAccountNumber: %v", err)
+		}
+		userKey, err := encryption.GenerateUserAESKey()
+		if err != nil {
+			t.Fatalf("GenerateUserAESKey: %v", err)
+		}
+		wrapped, err := encryption.EncryptWithMasterKey(hex.EncodeToString(userKey))
+		if err != nil {
+			t.Fatalf("EncryptWithMasterKey: %v", err)
+		}
+		return map[string]interface{}{
+			"uuid":           testutil.NewInternalID(t),
+			"account_lookup": lookup,
+			"account_hash":   hash,
+			"public_key":     publicKey,
+			"encrypted_key":  wrapped,
+			"master_key_id":  encryption.ActiveMasterKeyID(),
+		}
 	}
 
-	// Test NOT NULL constraint on account_hash
-	accountHashUUID := "test-uuid-987654321098"
-	err = database.DB.Model(&models.User{}).Create(map[string]interface{}{
-		"uuid":           accountHashUUID,
-		"account_lookup": "test-lookup",
-		"account_hash":   nil,
-		"encrypted_key":  "test-key",
-		"master_key_id":  "test-key-id",
-	}).Error
-	if err == nil {
-		t.Error("Creating user with NULL account_hash should fail (NOT NULL constraint)")
-		database.DB.Where("uuid = ?", accountHashUUID).Delete(&models.User{})
-	} else {
-		t.Logf("Expected error when creating user with NULL account_hash: %v", err)
+	complete := realRow()
+	if err := database.DB.Model(&models.User{}).Create(complete).Error; err != nil {
+		t.Fatalf("a complete real row was rejected: %v", err)
+	}
+	database.DB.Where("uuid = ?", complete["uuid"]).Delete(&models.User{})
+
+	for _, column := range []string{"uuid", "account_lookup", "account_hash", "encrypted_key"} {
+		row := realRow()
+		row[column] = nil
+		if err := database.DB.Model(&models.User{}).Create(row).Error; err == nil {
+			t.Errorf("a row with NULL %s was accepted (NOT NULL constraint missing)", column)
+			database.DB.Where("account_lookup = ?", row["account_lookup"]).Delete(&models.User{})
+		}
 	}
 }
 

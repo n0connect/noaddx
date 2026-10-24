@@ -1,7 +1,6 @@
 package encryption
 
 import (
-	"encoding/hex"
 	"fmt"
 
 	"noaddress/internal/cryptoengine"
@@ -16,8 +15,10 @@ var aadLogger = utils.NewLogger("AAD")
 type Field uint8
 
 const (
-	FieldPeerPublicKey Field = 0x01 // conversation_members.peer_key_enc
-	FieldInviteCreator Field = 0x02 // invites.creator_enc
+	FieldPeerPublicKey     Field = 0x01 // conversation_members.peer_key_enc (subject: member tag)
+	FieldInviteCreator     Field = 0x02 // invites.creator_ref_enc (subject: invite lookup)
+	FieldMemberRef         Field = 0x03 // conversation_members.member_ref_enc (subject: member tag)
+	FieldConversationIndex Field = 0x04 // users.conv_index_enc (subject: user UUID, record: uuid.Nil)
 )
 
 // Purpose represents the encryption purpose/context
@@ -42,7 +43,6 @@ const (
 // SUBJECT_TAG = SHA-256(subject): the owner the record is bound to (member tag, invite lookup).
 // NOTE: caller must ensure subject and recordID are server-derived (JWT/DB), not client input.
 func BuildAAD(subject string, recordID uuid.UUID, field Field, purpose Purpose) []byte {
-	aadLogger.Debug("BuildAAD: building AAD for recordID=%s field=%d purpose=%d", recordID.String(), field, purpose)
 	aad := make([]byte, 0, AADLength)
 	aad = append(aad, aadMagic[:]...)
 	aad = append(aad, byte(AADVersion))
@@ -55,14 +55,13 @@ func BuildAAD(subject string, recordID uuid.UUID, field Field, purpose Purpose) 
 	aad = append(aad, recordID[:]...)
 	aad = append(aad, byte(field))
 	aad = append(aad, byte(purpose))
-	aadLogger.Debug("BuildAAD: AAD built successfully: length=%d hex=%s", len(aad), hex.EncodeToString(aad))
 	return aad
 }
 
 // ValidateField validates that a field code is valid
 func ValidateField(field Field) error {
 	switch field {
-	case FieldPeerPublicKey, FieldInviteCreator:
+	case FieldPeerPublicKey, FieldInviteCreator, FieldMemberRef, FieldConversationIndex:
 		return nil
 	default:
 		return fmt.Errorf("invalid field code: %d", field)

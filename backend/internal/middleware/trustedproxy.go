@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"encoding/hex"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 
 	"noaddress/internal/config"
+	"noaddress/internal/cryptoengine"
 	"noaddress/internal/utils"
 )
 
@@ -129,4 +131,32 @@ func IsRequestHTTPS(r *http.Request) bool {
 	}
 	proto := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
 	return strings.EqualFold(proto, "https")
+}
+
+// clientKeySecret is generated per process and never persisted, so rate-limit buckets
+// hold HMAC(ip) values that cannot be reversed even from a memory dump.
+var (
+	clientKeyOnce   sync.Once
+	clientKeySecret []byte
+)
+
+// ClientKey returns an opaque, per-boot pseudonym for the client address. Rate limiters
+// key on this instead of the raw IP. Panics if the CSPRNG fails (RULES.md §1.3).
+func ClientKey(r *http.Request) string {
+	clientKeyOnce.Do(func() {
+		secret, err := cryptoengine.RandomBytes(32)
+		if err != nil {
+			panic("CSPRNG unavailable: " + err.Error())
+		}
+		clientKeySecret = secret
+	})
+	ip := ClientIP(r)
+	if ip == "" {
+		ip = "unknown"
+	}
+	mac, err := cryptoengine.HMACSHA256(clientKeySecret, []byte(ip))
+	if err != nil {
+		panic("HMAC unavailable: " + err.Error())
+	}
+	return hex.EncodeToString(mac[:16])
 }

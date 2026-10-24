@@ -5,7 +5,6 @@ package realtime
 
 import (
 	"errors"
-	"sync"
 
 	"noaddress/internal/utils"
 )
@@ -36,25 +35,28 @@ type Event struct {
 	ConversationID string
 }
 
-// Hub maps member tags to live subscriber channels.
-// Lock order: Hub.mu is a leaf lock (Priority Level 1); nothing is acquired while holding it.
+// Hub maps stream tags to live subscriber channels.
+// Lock order: Hub.mu is a leaf lock (Priority Level 1); nothing is acquired while holding it,
+// and every acquisition is bounded by utils.DefaultLockTimeout.
 type Hub struct {
-	mu    sync.Mutex
+	mu    *utils.SafeMutex
 	subs  map[string]map[chan Event]struct{}
 	total int
 }
 
 // NewHub creates an empty hub.
 func NewHub() *Hub {
-	return &Hub{subs: make(map[string]map[chan Event]struct{})}
+	return &Hub{mu: utils.NewSafeMutex(), subs: make(map[string]map[chan Event]struct{})}
 }
 
 // Default is the process-wide hub used by handlers.
 var Default = NewHub()
 
-// Subscribe registers a channel for memberTag. The returned cancel func is idempotent.
+// Subscribe registers a channel for a stream tag. The returned cancel func is idempotent.
 func (h *Hub) Subscribe(memberTag string) (<-chan Event, func(), error) {
-	h.mu.Lock()
+	if err := h.mu.Lock(); err != nil {
+		return nil, nil, err
+	}
 	defer h.mu.Unlock()
 
 	if h.total >= MaxSubscribersTotal || len(h.subs[memberTag]) >= MaxSubscribersPerMember {
@@ -68,7 +70,10 @@ func (h *Hub) Subscribe(memberTag string) (<-chan Event, func(), error) {
 	h.total++
 
 	cancel := func() {
-		h.mu.Lock()
+		if err := h.mu.Lock(); err != nil {
+			hubLogger.Error("Subscribe cancel: %v", err)
+			return
+		}
 		defer h.mu.Unlock()
 		h.removeLocked(memberTag, ch)
 	}
@@ -95,7 +100,10 @@ func (h *Hub) removeLocked(memberTag string, ch chan Event) {
 // Publish delivers ev to every subscriber of each tag without blocking.
 // Sends happen under h.mu, so a channel can never be closed mid-send.
 func (h *Hub) Publish(memberTags []string, ev Event) {
-	h.mu.Lock()
+	if err := h.mu.Lock(); err != nil {
+		hubLogger.Error("Publish: %v", err)
+		return
+	}
 	defer h.mu.Unlock()
 
 	dropped := 0
@@ -115,7 +123,10 @@ func (h *Hub) Publish(memberTags []string, ev Event) {
 
 // Kick closes every stream of memberTag (used when sessions are revoked).
 func (h *Hub) Kick(memberTag string) {
-	h.mu.Lock()
+	if err := h.mu.Lock(); err != nil {
+		hubLogger.Error("Kick: %v", err)
+		return
+	}
 	defer h.mu.Unlock()
 
 	for ch := range h.subs[memberTag] {

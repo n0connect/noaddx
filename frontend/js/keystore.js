@@ -5,12 +5,16 @@
 // does not require re-entering the account number. Raw key bytes cannot be read back
 // out of a non-extractable CryptoKey, not even by script running on this page.
 // The AccountNumber itself is never stored anywhere.
+// It also remembers which conversations the user verified (safety number compared),
+// bound to the peer key that was verified. None of this ever reaches the server.
 
 const Keystore = (() => {
     'use strict';
 
     const DB_NAME = 'noaddress';
+    const DB_VERSION = 2;
     const STORE = 'keys';
+    const VERIFIED_STORE = 'verified';
     const RECORD = 'identity';
 
     function open() {
@@ -19,19 +23,26 @@ const Keystore = (() => {
                 reject(new Error('indexeddb unavailable'));
                 return;
             }
-            const request = indexedDB.open(DB_NAME, 1);
-            request.onupgradeneeded = () => request.result.createObjectStore(STORE);
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = () => {
+                const db = request.result;
+                for (const name of [STORE, VERIFIED_STORE]) {
+                    if (!db.objectStoreNames.contains(name)) {
+                        db.createObjectStore(name);
+                    }
+                }
+            };
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
     }
 
-    async function transact(mode, action) {
+    async function transact(mode, action, storeName = STORE) {
         const db = await open();
         try {
             return await new Promise((resolve, reject) => {
-                const tx = db.transaction(STORE, mode);
-                const request = action(tx.objectStore(STORE));
+                const tx = db.transaction(storeName, mode);
+                const request = action(tx.objectStore(storeName));
                 tx.oncomplete = () => resolve(request ? request.result : undefined);
                 tx.onerror = () => reject(tx.error);
                 tx.onabort = () => reject(tx.error);
@@ -68,6 +79,26 @@ const Keystore = (() => {
         }
     }
 
+    // Verification is bound to the exact peer key that was compared
+    async function setVerified(conversationId, peerPublicKey, verified) {
+        try {
+            await transact('readwrite', store => verified
+                ? store.put(peerPublicKey, conversationId)
+                : store.delete(conversationId), VERIFIED_STORE);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async function isVerified(conversationId, peerPublicKey) {
+        try {
+            return (await transact('readonly', store => store.get(conversationId), VERIFIED_STORE)) === peerPublicKey;
+        } catch (e) {
+            return false;
+        }
+    }
+
     function wipe() {
         return new Promise(resolve => {
             if (!window.indexedDB) {
@@ -79,5 +110,5 @@ const Keystore = (() => {
         });
     }
 
-    return Object.freeze({ save, load, wipe });
+    return Object.freeze({ save, load, wipe, setVerified, isVerified });
 })();

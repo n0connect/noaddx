@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"noaddress/internal/config"
 	"noaddress/internal/cryptoengine"
@@ -117,15 +116,6 @@ func ValidateAccountNumber(accountNumber string) bool {
 		return false
 	}
 	return accountNumberPattern.MatchString(accountNumber)
-}
-
-// MaskAccountNumber masks account number for logging (shows only last 4 characters)
-// Example: "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" -> "****************************567"
-func MaskAccountNumber(accountNumber string) string {
-	if len(accountNumber) <= 4 {
-		return "****"
-	}
-	return strings.Repeat("*", len(accountNumber)-4) + accountNumber[len(accountNumber)-4:]
 }
 
 // ParseCanonicalUUIDv4 accepts only lowercase, hyphenated, version-4 UUIDs.

@@ -93,7 +93,6 @@ func StorePendingRegistration(pendingID, accountNumber string) error {
 		ExpiresAt:     time.Now().Add(ttl),
 	}
 
-	pendingStoreLogger.Debug("Stored pending registration: pendingID=%s (masked)", maskPendingID(pendingID))
 	return nil
 }
 
@@ -112,24 +111,13 @@ func GetPendingRegistration(pendingID string) (string, error) {
 	if time.Now().After(pending.ExpiresAt) {
 		// Expired - remove it
 		delete(pendingStore.store, pendingID)
-		pendingStoreLogger.Debug("Deleted expired pending registration: pendingID=%s (masked)", maskPendingID(pendingID))
 		return "", ErrExpiredToken
 	}
 
 	// One-time use: delete immediately after retrieval
 	accountNumber := pending.AccountNumber
 	delete(pendingStore.store, pendingID)
-	pendingStoreLogger.Debug("Retrieved and deleted pending registration: pendingID=%s (masked)", maskPendingID(pendingID))
 	return accountNumber, nil
-}
-
-// DeletePendingRegistration removes pending registration
-func DeletePendingRegistration(pendingID string) {
-	pendingStore.mu.Lock()
-	defer pendingStore.mu.Unlock()
-
-	delete(pendingStore.store, pendingID)
-	pendingStoreLogger.Debug("Deleted pending registration: pendingID=%s (masked)", maskPendingID(pendingID))
 }
 
 // cleanupExpiredPending removes expired entries (runs in background)
@@ -152,11 +140,4 @@ func StopCleanup() {
 		cleanupTicker.Stop()
 		pendingStoreLogger.Debug("Stopped background cleanup goroutine")
 	}
-}
-
-func maskPendingID(pendingID string) string {
-	if len(pendingID) <= 8 {
-		return "****"
-	}
-	return pendingID[:4] + "..." + pendingID[len(pendingID)-4:]
 }

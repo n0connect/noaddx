@@ -205,14 +205,10 @@ func RateLimitMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		ip := ClientIP(r)
-		if ip == "" {
-			ip = "unknown"
-		}
-		bucket := globalRateLimiter.getBucket(ip)
+		bucket := globalRateLimiter.getBucket("ip:" + ClientKey(r))
 
 		if !bucket.Allow() {
-			rateLimitLogger.Warn("Rate limit exceeded for IP: %s", ip)
+			rateLimitLogger.Warn("Rate limit exceeded")
 			http.Error(w, "Too many requests", http.StatusTooManyRequests)
 			return
 		}

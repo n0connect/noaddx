@@ -1,8 +1,9 @@
 package auth
 
 import (
-	"strings"
+	"errors"
 	"testing"
+	"time"
 
 	"noaddress/internal/auth"
 	"noaddress/internal/config"
@@ -62,7 +63,7 @@ func TestGeneratePendingID(t *testing.T) {
 func TestStoreAndGetPendingRegistration(t *testing.T) {
 	setupPendingStoreEnv(t)
 
-	accountNumber := strings.Repeat("A", 43)
+	accountNumber := testutil.NewAccountNumber(t)
 
 	// Generate pending ID
 	pendingID, err := auth.GeneratePendingID()
@@ -100,10 +101,10 @@ func TestGetPendingRegistration_NotFound(t *testing.T) {
 	}
 }
 
-func TestDeletePendingRegistration(t *testing.T) {
+func TestPendingRegistration_ConsumedOnRead(t *testing.T) {
 	setupPendingStoreEnv(t)
 
-	accountNumber := strings.Repeat("A", 43)
+	accountNumber := testutil.NewAccountNumber(t)
 
 	// Generate and store
 	pendingID, err := auth.GeneratePendingID()
@@ -121,10 +122,7 @@ func TestDeletePendingRegistration(t *testing.T) {
 		t.Fatalf("GetPendingRegistration() failed before delete: %v", err)
 	}
 
-	// Delete it
-	auth.DeletePendingRegistration(pendingID)
-
-	// Verify it's gone
+	// Verify it's gone: retrieval is one-time use
 	_, err = auth.GetPendingRegistration(pendingID)
 	if err == nil {
 		t.Error("GetPendingRegistration() after delete should have failed")
@@ -133,37 +131,29 @@ func TestDeletePendingRegistration(t *testing.T) {
 
 func TestPendingRegistration_Expiration(t *testing.T) {
 	setupPendingStoreEnv(t)
-
-	accountNumber := strings.Repeat("A", 43)
-
-	// This test is tricky because we can't easily manipulate time in the store
-	// But we can test that expired entries are cleaned up
-	// Note: The actual expiration is handled by GetPendingRegistration checking ExpiresAt
-	// For a proper test, we'd need to inject a time provider, but for now we test the basic flow
+	t.Setenv("PENDING_TOKEN_TTL_SEC", "1")
 
 	pendingID, err := auth.GeneratePendingID()
 	if err != nil {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
-
-	if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+	if err := auth.StorePendingRegistration(pendingID, testutil.NewAccountNumber(t)); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
-	// Immediately retrieve should work
-	_, err = auth.GetPendingRegistration(pendingID)
-	if err != nil {
-		t.Errorf("GetPendingRegistration() immediately after store failed: %v", err)
+	time.Sleep(1100 * time.Millisecond)
+	if _, err := auth.GetPendingRegistration(pendingID); !errors.Is(err, auth.ErrExpiredToken) {
+		t.Fatalf("GetPendingRegistration() after the TTL = %v, want ErrExpiredToken", err)
 	}
-
-	// Note: Testing actual expiration would require waiting for configured TTL or mocking time
-	// This is a limitation of the current implementation
+	if _, err := auth.GetPendingRegistration(pendingID); !errors.Is(err, auth.ErrInvalidToken) {
+		t.Fatalf("expired entry was not removed: second read = %v", err)
+	}
 }
 
 func TestPendingRegistration_OneTimeUse(t *testing.T) {
 	setupPendingStoreEnv(t)
 
-	accountNumber := strings.Repeat("A", 43)
+	accountNumber := testutil.NewAccountNumber(t)
 
 	pendingID, err := auth.GeneratePendingID()
 	if err != nil {
@@ -183,9 +173,7 @@ func TestPendingRegistration_OneTimeUse(t *testing.T) {
 		t.Errorf("GetPendingRegistration() = %q, want %q", retrieved1, accountNumber)
 	}
 
-	// After deletion, second retrieval should fail
-	auth.DeletePendingRegistration(pendingID)
-
+	// Second retrieval must fail (one-time use)
 	_, err = auth.GetPendingRegistration(pendingID)
 	if err == nil {
 		t.Error("GetPendingRegistration() after delete should have failed (one-time use)")

@@ -2,10 +2,10 @@ package utils
 
 import (
 	"regexp"
-	"strings"
 	"testing"
 
 	"noaddress/internal/utils"
+	"noaddress/tests/testutil"
 )
 
 func TestGenerateAccountNumber_LengthAndCharset(t *testing.T) {
@@ -32,135 +32,34 @@ func TestGenerateAccountNumber_LengthAndCharset(t *testing.T) {
 }
 
 func TestValidateAccountNumber(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		want    bool
-		comment string
-	}{
-		{
-			name:    "valid base64url 43 chars",
-			input:   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg",
-			want:    true,
-			comment: "Valid 43-char base64url string",
-		},
-		{
-			name:    "valid with numbers",
-			input:   strings.Repeat("1", 43),
-			want:    true,
-			comment: "Valid with numbers",
-		},
-		{
-			name:    "valid with underscore",
-			input:   strings.Repeat("A", 42) + "_",
-			want:    true,
-			comment: "Valid with underscore",
-		},
-		{
-			name:    "valid with dash",
-			input:   strings.Repeat("B", 42) + "-",
-			want:    true,
-			comment: "Valid with dash",
-		},
-		{
-			name:    "valid mixed case",
-			input:   strings.Repeat("aB", 21) + "c",
-			want:    true,
-			comment: "Valid mixed case",
-		},
-		{
-			name:    "too short",
-			input:   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef",
-			want:    false,
-			comment: "Too short",
-		},
-		{
-			name:    "too long",
-			input:   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij",
-			want:    false,
-			comment: "Too long",
-		},
-		{
-			name:    "invalid char plus",
-			input:   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abc+defg",
-			want:    false,
-			comment: "Contains '+' (invalid for base64url)",
-		},
-		{
-			name:    "invalid char slash",
-			input:   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abc/defg",
-			want:    false,
-			comment: "Contains '/' (invalid for base64url)",
-		},
-		{
-			name:    "invalid char equals",
-			input:   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abc=defg",
-			want:    false,
-			comment: "Contains '=' (invalid for base64url)",
-		},
-		{
-			name:    "invalid char space",
-			input:   "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abc defg",
-			want:    false,
-			comment: "Contains space (invalid)",
-		},
-		{
-			name:    "empty string",
-			input:   "",
-			want:    false,
-			comment: "Empty string",
-		},
+	testutil.SetupTestEnv(t)
+	defer testutil.TeardownTestEnv(t)
+
+	// Every generated AccountNumber is valid
+	for i := 0; i < 64; i++ {
+		if account := testutil.NewAccountNumber(t); !utils.ValidateAccountNumber(account) {
+			t.Fatalf("generated AccountNumber %q rejected", account)
+		}
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := utils.ValidateAccountNumber(tt.input)
-			if got != tt.want {
-				t.Errorf("ValidateAccountNumber(%q) = %v, want %v (%s)", tt.input, got, tt.want, tt.comment)
-			}
-		})
+	// Every corruption of a real one is rejected
+	real := testutil.NewAccountNumber(t)
+	at := len(real) / 2
+	corrupted := map[string]string{
+		"too short":       real[:len(real)-1],
+		"too long":        real + real[:1],
+		"contains '+'":    real[:at] + "+" + real[at+1:],
+		"contains '/'":    real[:at] + "/" + real[at+1:],
+		"contains '='":    real[:at] + "=" + real[at+1:],
+		"contains space":  real[:at] + " " + real[at+1:],
+		"non-ASCII rune":  real[:at] + "é" + real[at+2:],
+		"empty":           "",
+		"padded base64":   real + "=",
+		"leading newline": "\n" + real[1:],
 	}
-}
-
-func TestMaskAccountNumber(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "normal 43 char",
-			input:    "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefg",
-			expected: "***************************************defg",
-		},
-		{
-			name:     "short string",
-			input:    "ABC",
-			expected: "****",
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			expected: "****",
-		},
-		{
-			name:     "exactly 4 chars",
-			input:    "ABCD",
-			expected: "****",
-		},
-		{
-			name:     "5 chars",
-			input:    "ABCDE",
-			expected: "*BCDE",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := utils.MaskAccountNumber(tt.input)
-			if got != tt.expected {
-				t.Errorf("MaskAccountNumber(%q) = %q, want %q", tt.input, got, tt.expected)
-			}
-		})
+	for name, input := range corrupted {
+		if utils.ValidateAccountNumber(input) {
+			t.Errorf("%s: %q accepted", name, input)
+		}
 	}
 }

@@ -12,8 +12,6 @@
 </head>
 <body>
     <div class="container">
-        <!-- Yavuzlar Logo - Outside main-menu to prevent centering issues -->
-        <img src="images/teamYavuzlar.svg" alt="Yavuzlar" class="yavuzlar-logo" id="yavuzlarLogo">
         <!-- MAIN MENU -->
         <div class="main-menu" id="mainMenu">
             <div class="brand">
@@ -75,7 +73,7 @@
                         <code id="generatedAccountNumber"></code>
                         <button id="copyBtn" class="copy-btn">copy</button>
                     </div>
-                    <p class="account-number-warning">⚠️ this is your only key. no email, no recovery — lose it and your identity and conversations are gone. never share it.</p>
+                    <p class="account-number-warning">⚠️ this is your only key. no email, no recovery — lose it and your identity and conversations are gone. never share it. save it in a password manager; the clipboard is cleared when you continue.</p>
                     <button id="continueBtn" class="primary-btn" disabled>continue →</button>
                 </div>
                 <button id="cancelRegistration" class="text-btn cancel-reg-btn">✕ cancel</button>
@@ -133,6 +131,7 @@
                     <canvas class="aura-glyph" id="peerGlyph" width="5" height="5"></canvas>
                     <span class="aura-name" id="peerName"></span>
                     <span id="peerCode" class="aura-code"></span>
+                    <span id="peerVerified" class="verified-mark" title="safety number verified on this device" style="display: none;">✓</span>
                     <button id="verifyBtn" class="action-btn" title="Verify safety number">verify</button>
                     <button id="burnBtn" class="action-btn burn-btn" title="Burn conversation">burn</button>
                 </div>
@@ -141,6 +140,7 @@
                     <p class="account-number-label">safety number</p>
                     <div id="safetyNumber" class="safety-number"></div>
                     <p class="pair-hint">compare these digits with your peer on a different channel. a mismatch means someone is in the middle.</p>
+                    <button id="markVerifiedBtn" class="menu-opt verify-opt">mark as verified</button>
                 </div>
 
                 <div id="burnConfirm" class="burn-confirm" style="display: none;">
@@ -157,7 +157,7 @@
                 </div>
                 <div class="composer-meta">
                     <span id="charCount">0/2000</span>
-                    <span>enter to send · shift+enter for a new line</span>
+                    <span id="composerHint">enter to send · shift+enter for a new line</span>
                 </div>
             </section>
         </div>
