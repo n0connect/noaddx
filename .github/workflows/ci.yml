@@ -72,12 +72,12 @@ jobs:
           fuzz ./tests/utils FuzzValidateInviteToken
           fuzz ./tests/utils FuzzValidateCiphertext
           fuzz ./tests/utils FuzzDecodeJSONRequest
-      - name: Production build
+      - name: Production build (same flags as the Dockerfile)
         run: |
           if [ "${{ matrix.engine }}" = openssl ]; then
-            CGO_ENABLED=1 go build -tags openssl -trimpath -ldflags="-s -w" -o /tmp/noaddx ./cmd/server
+            CGO_ENABLED=1 go build -tags openssl -trimpath -buildvcs=false -ldflags="-s -w" -o /tmp/noaddx ./cmd/server
           else
-            CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /tmp/noaddx ./cmd/server
+            CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w" -o /tmp/noaddx ./cmd/server
           fi
 
   equivalence:
