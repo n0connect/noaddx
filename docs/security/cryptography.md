@@ -145,7 +145,7 @@ Wire Format = base64url( Nonce [12 bytes] || Ciphertext [N bytes] || GCM Tag [16
 
 ## Proof of Work (PoW) Hashcash
 
-To prevent registration floods and Denial-of-Service attacks against server-side Argon2id hashing, registration requires solving a SHA-256 hashcash puzzle in a client Web Worker (`frontend/js/pow-worker.js`).
+To prevent registration floods and Denial-of-Service attacks against server-side Argon2id hashing, registration requires solving a SHA-256 hashcash puzzle in a client Web Worker (`frontend/js/pow-worker.js`). Creating an invite costs one fresh puzzle as well, so mass-producing pairing tokens stays expensive even for a logged-in client.
 
 ### Challenge Structure
 - **Challenge:** 16 random bytes (hex-encoded string, 32 chars).
@@ -155,7 +155,7 @@ To prevent registration floods and Denial-of-Service attacks against server-side
 
 ### Solution Verification
 The client increments an integer `nonce` starting at `0`:
-`hash = SHA-256(challenge || salt || str(nonce))`
+`hash = SHA-256(challenge || str(nonce) || salt)`
 The solution is valid if and only if `hash` contains at least `Difficulty` leading zero bits.
 
 ### Two-Phase Registration Security Flow

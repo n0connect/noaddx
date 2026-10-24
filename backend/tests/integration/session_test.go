@@ -84,17 +84,20 @@ func TestCSRF_CrossOriginWritesAreRejected(t *testing.T) {
 		{"Origin": "http://localhost:3000.evil.example"},
 		{"Origin": "null"},
 	}
+	// The body is otherwise acceptable, so only the origin check can refuse it; the refused
+	// requests never reach the handler, so the same proof of work is still unspent below
+	paid := models.CreateInviteRequest{PoW: alice.freshPoW()}
 	for _, headers := range rejected {
-		rr := alice.doWithHeaders("POST", "/api/v2/invites", nil, headers)
+		rr := alice.doWithHeaders("POST", "/api/v2/invites", paid, headers)
 		expectStatus(t, rr, http.StatusForbidden, "cross-origin write "+headerString(headers))
 	}
 	expectStatus(t, alice.doWithHeaders("DELETE", "/api/v2/conversations/3b241101-e2bb-4255-8caf-4136c566a962", nil,
 		map[string]string{"Sec-Fetch-Site": "cross-site"}), http.StatusForbidden, "cross-site delete")
 
 	// What a real same-origin browser request and a non-browser client look like
-	expectStatus(t, alice.doWithHeaders("POST", "/api/v2/invites", nil,
+	expectStatus(t, alice.doWithHeaders("POST", "/api/v2/invites", paid,
 		map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": "http://localhost:3000"}), http.StatusCreated, "same-origin write")
-	expectStatus(t, alice.do("POST", "/api/v2/invites", nil), http.StatusCreated, "client without browser metadata")
+	expectStatus(t, alice.createInvite(), http.StatusCreated, "client without browser metadata")
 	// Reads are not state-changing: CORS (no credentials) already keeps their bodies same-origin
 	expectStatus(t, alice.doWithHeaders("GET", "/api/v2/me", nil,
 		map[string]string{"Sec-Fetch-Site": "cross-site"}), http.StatusOK, "cross-site read")

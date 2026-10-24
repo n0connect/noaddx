@@ -96,7 +96,6 @@ function setupEventListeners() {
         togglePairPanel('joinPanel');
         document.getElementById('inviteInput').focus();
     });
-    document.getElementById('closeInviteBtn').addEventListener('click', () => togglePairPanel(null));
     document.getElementById('closeJoinBtn').addEventListener('click', () => togglePairPanel(null));
     document.getElementById('copyInviteBtn').addEventListener('click', async () => {
         const code = document.getElementById('inviteCode').textContent;

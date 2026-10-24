@@ -102,6 +102,7 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreateInviteHandler issues a single-use pairing token (POST /api/v2/invites).
+// Each invite costs a fresh proof of work, like each registration phase.
 func CreateInviteHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -109,6 +110,15 @@ func CreateInviteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	me, ok := resolveMe(w, r)
 	if !ok || rejectQuery(w, r) || !allowOrTooMany(w, "invite", me) {
+		return
+	}
+	var req models.CreateInviteRequest
+	if err := utils.DecodeJSONRequest(r, &req); err != nil {
+		chatLogger.LogError("DecodeJSONRequest", err)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if !requireProofOfWork(w, req.PoW, "invite") {
 		return
 	}
 	token, expiresAt, err := chatService.CreateInvite(me)

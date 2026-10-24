@@ -61,6 +61,10 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   (`make test-equivalence`), and the server runs a known-answer self-test before it starts.
 - Release tags per engine (`noaddx-openssl-vX.Y.Z`, `noaddx-native-vX.Y.Z`), moving dev tags
   (`noaddx-openssl-dev`, `noaddx-native-dev`) and `make build-ref REF=<tag>` to rebuild any of them.
+- **Invites cost a proof of work.** `POST /api/v2/invites` now takes `{"pow": …}` with a fresh,
+  single-use solution, like each registration phase: missing → 412, invalid or replayed → 403,
+  empty body → 415. While the browser solves it, the invite code scrambles, masks and reveals
+  exactly like a new account number; the invite panel's "done" button is gone.
 - Fuzz tests for every parser that faces the network (stored hash format, E2E ciphertext and its
   AAD bindings, UUID/invite/ciphertext whitelists, PoW solutions, JSON bodies).
 - GitHub Actions: both engines with the race detector and fuzzers, the equivalence suite,

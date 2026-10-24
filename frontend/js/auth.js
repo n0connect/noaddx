@@ -201,14 +201,12 @@ async function login() {
 }
 
 // Global variables for registration state
-let scrambleInterval = null;
+let stopScramble = null;
 let pendingRegistrationAccountNumber = null;
 let pendingRegistrationToken = null;  // Zero-trust: token from backend
 
 // Scramble animation: random characters cycle until the real AccountNumber arrives (visual only)
 function startAccountNumberScramble(accountNumberElement, successElement, accountNumberDisplay) {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    
     // Safety checks
     if (!accountNumberElement || !successElement || !accountNumberDisplay) {
         console.error('startAccountNumberScramble: missing required elements');
@@ -222,33 +220,16 @@ function startAccountNumberScramble(accountNumberElement, successElement, accoun
     
     successElement.textContent = 'Generating your special Account Number';
     accountNumberElement.classList.add('generating');
-    
-    // Clear any existing interval
-    if (scrambleInterval) {
-        clearInterval(scrambleInterval);
-    }
-    
-    // Cycle base64url characters (A-Z, a-z, 0-9, _, -) until the real value arrives
-    const base64urlChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
-    scrambleInterval = setInterval(() => {
-        let scrambled = '';
-        for (let i = 0; i < ACCOUNT_NUMBER_LEN; i++) {
-            // Mix of base64url characters and occasional * for visual interest
-            if (Math.random() < 0.08) {
-                scrambled += '*';
-            } else {
-                scrambled += base64urlChars.charAt(Math.floor(Math.random() * base64urlChars.length));
-            }
-        }
-        accountNumberElement.textContent = scrambled;
-    }, 120); // Fast scramble animation
+
+    stopAccountNumberScramble();
+    stopScramble = startScramble(accountNumberElement, ACCOUNT_NUMBER_LEN);
 }
 
 // Stop the scramble animation
 function stopAccountNumberScramble() {
-    if (scrambleInterval) {
-        clearInterval(scrambleInterval);
-        scrambleInterval = null;
+    if (stopScramble) {
+        stopScramble();
+        stopScramble = null;
     }
 }
 
@@ -346,7 +327,7 @@ async function copyAccountNumber() {
         pendingRegistrationToken = pendingToken;
         
         // Reveal the real AccountNumber with animation
-        await revealRealAccountNumber(accountNumberElement, realAccountNumber);
+        await revealText(accountNumberElement, realAccountNumber);
         
         accountNumberElement.classList.remove('masking');
         accountNumberElement.classList.add('revealed');
@@ -375,35 +356,6 @@ async function copyAccountNumber() {
     }
 }
 
-// Animate AccountNumber to all asterisks (for display elements)
-function animateToMask(accountNumberElement) {
-    return new Promise((resolve) => {
-        const currentText = accountNumberElement.textContent;
-        const maskLength = currentText.length || ACCOUNT_NUMBER_LEN;
-        let masked = currentText.split('');
-        let step = 0;
-        
-        const maskInterval = setInterval(() => {
-            // Mask 2-3 random characters per step
-            for (let i = 0; i < 3; i++) {
-                const randomIndex = Math.floor(Math.random() * maskLength);
-                if (masked[randomIndex] !== undefined) {
-                    masked[randomIndex] = '*';
-                }
-            }
-            accountNumberElement.textContent = masked.join('');
-            step++;
-            
-            // Check if all masked
-            if (masked.every(c => c === '*') || step > 20) {
-                clearInterval(maskInterval);
-                accountNumberElement.textContent = '*'.repeat(maskLength);
-                resolve();
-            }
-        }, 50);
-    });
-}
-
 // Animate input field to all asterisks (for input elements)
 function animateInputToMask(inputElement, originalValue) {
     return new Promise((resolve) => {
@@ -430,41 +382,6 @@ function animateInputToMask(inputElement, originalValue) {
                 resolve();
             }
         }, 50);
-    });
-}
-
-// Reveal the real AccountNumber character by character
-function revealRealAccountNumber(accountNumberElement, realAccountNumber) {
-    return new Promise((resolve) => {
-        const totalLength = realAccountNumber.length;
-        let revealed = '*'.repeat(totalLength).split('');
-        let revealOrder = [];
-        
-        // Create random reveal order
-        for (let i = 0; i < totalLength; i++) {
-            revealOrder.push(i);
-        }
-        // Shuffle
-        for (let i = revealOrder.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [revealOrder[i], revealOrder[j]] = [revealOrder[j], revealOrder[i]];
-        }
-        
-        let step = 0;
-        const revealInterval = setInterval(() => {
-            // Reveal 2-3 characters per step
-            for (let i = 0; i < 3 && step < totalLength; i++, step++) {
-                const idx = revealOrder[step];
-                revealed[idx] = realAccountNumber[idx];
-            }
-            accountNumberElement.textContent = revealed.join('');
-            
-            if (step >= totalLength) {
-                clearInterval(revealInterval);
-                accountNumberElement.textContent = realAccountNumber;
-                resolve();
-            }
-        }, 40);
     });
 }
 

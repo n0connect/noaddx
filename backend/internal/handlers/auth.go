@@ -50,14 +50,11 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 	// SECURITY: PoW is validated here and only here, for both phases, on the exact struct
 	// the handler acts on (no second parser that could disagree about the body)
-	if req.PoW == nil {
-		authLogger.Warn("PoW solution missing for registration (confirm=%v)", req.Confirm)
-		http.Error(w, "Proof of work required", http.StatusPreconditionFailed)
-		return
+	phase := "registration phase 1"
+	if req.Confirm {
+		phase = "registration phase 2"
 	}
-	if !pow.ValidateSolution(req.PoW) {
-		authLogger.Warn("Invalid PoW solution for registration (confirm=%v)", req.Confirm)
-		http.Error(w, "Invalid proof of work", http.StatusForbidden)
+	if !requireProofOfWork(w, req.PoW, phase) {
 		return
 	}
 
@@ -272,6 +269,22 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		Confirmed: true,
 	}, http.StatusCreated)
 	authLogger.LogResponse(http.StatusCreated, "Account created successfully")
+}
+
+// requireProofOfWork admits a request only with an issued, unused, unexpired solution at the
+// issued difficulty (consuming it), and otherwise writes 412 (missing) or 403 (invalid).
+func requireProofOfWork(w http.ResponseWriter, solution *models.PoWSolution, action string) bool {
+	if solution == nil {
+		authLogger.Warn("PoW solution missing for %s", action)
+		http.Error(w, "Proof of work required", http.StatusPreconditionFailed)
+		return false
+	}
+	if !pow.ValidateSolution(solution) {
+		authLogger.Warn("Invalid PoW solution for %s", action)
+		http.Error(w, "Invalid proof of work", http.StatusForbidden)
+		return false
+	}
+	return true
 }
 
 func PoWChallengeHandler(w http.ResponseWriter, r *http.Request) {

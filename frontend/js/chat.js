@@ -24,6 +24,7 @@ const Chat = (() => {
     let reconnectTimer = null;
     let refreshTimer = null;
     let listLoaded = false;           // distinguishes the first load from live additions
+    let inviteRun = null;             // { stopScramble } while an invite is paid for and revealed
 
     // ---------- plumbing ----------
 
@@ -119,7 +120,12 @@ const Chat = (() => {
         me = null;
         clearChildren(document.getElementById('conversationList'));
         clearChildren(document.getElementById('messageList'));
-        document.getElementById('inviteCode').textContent = '';
+        if (inviteRun) {
+            inviteRun.stopScramble();
+            inviteRun = null;
+        }
+        resetInvitePanel();
+        document.getElementById('joinPanel').style.display = 'none';
         document.getElementById('inviteInput').value = '';
         document.getElementById('messageInput').value = '';
         document.title = 'noaddx.';
@@ -191,7 +197,8 @@ const Chat = (() => {
         renderList();
 
         // Someone redeemed an invite: the code on screen is spent, so put it away
-        if (joined && document.getElementById('invitePanel').style.display !== 'none') {
+        // (unless a new one is being made, which nobody can have redeemed yet)
+        if (joined && !inviteRun && document.getElementById('invitePanel').style.display !== 'none') {
             togglePairPanel(null);
             showSuccess('someone joined with your invite');
         }
@@ -340,26 +347,70 @@ const Chat = (() => {
 
     // ---------- pairing ----------
 
-    async function createInvite() {
-        const result = await api('POST', '/invites');
+    // Pays for an invite with a proof of work (as registration does) and builds its code.
+    // Returns { code, expiresAt }, or null once the reason has been shown.
+    async function requestInvite(owner) {
+        const issued = await api('GET', '/pow/challenge');
+        if (me !== owner) return null;
+        if (!issued.ok || !issued.data || !issued.data.challenge) {
+            if (issued.status === 429) showWarning('too many attempts — wait a minute');
+            else if (issued.status !== 401) showError('could not create invite');
+            return null;
+        }
+        const pow = await solvePowChallenge(issued.data.challenge);
+        if (me !== owner) return null;
+
+        const result = await api('POST', '/invites', { pow: pow });
+        if (me !== owner) return null;
         if (result.status === 429) {
             showWarning('invite limit reached — wait for one to be used or expire');
-            return;
+            return null;
         }
         if (!result.ok || !result.data || typeof result.data.token !== 'string' || !Number.isSafeInteger(result.data.expires_at)) {
             if (result.status !== 401) showError('could not create invite');
-            return;
+            return null;
         }
-        let code;
         try {
-            code = await NoaddxCrypto.buildInviteCode(result.data.token, me.publicKey);
+            return {
+                code: await NoaddxCrypto.buildInviteCode(result.data.token, owner.publicKey),
+                expiresAt: result.data.expires_at
+            };
         } catch (e) {
             showError('server returned a malformed invite');
+            return null;
+        }
+    }
+
+    async function createInvite() {
+        if (inviteRun || !me) return;  // one proof of work at a time
+        const owner = me;
+        const run = { stopScramble: showInviteGenerating() };
+        inviteRun = run;
+
+        let invite = null;
+        try {
+            invite = await requestInvite(owner);
+        } catch (e) {
+            // The worker refused the challenge or found no solution within its budget
+            if (me === owner) showError('could not create invite');
+        }
+        if (me !== owner) return;  // stop() ended this run and put the panel away
+        run.stopScramble();
+        if (!invite) {
+            inviteRun = null;
+            resetInvitePanel();
             return;
         }
-        renderInvite(code, result.data.expires_at);
+
+        await revealInvite(invite.code, invite.expiresAt);
+        if (me !== owner) {
+            // Logged out mid-reveal: the last animation frame wrote the code back
+            document.getElementById('inviteCode').textContent = '';
+            return;
+        }
+        inviteRun = null;
         try {
-            await copyToClipboard(code);
+            await copyToClipboard(invite.code);
             showSuccess('invite copied');
         } catch (e) {
             showWarning('copy it manually');

@@ -14,7 +14,6 @@ var contentTypeLogger = utils.NewLogger("CONTENT_TYPE")
 var emptyBodyAllowed = map[string]struct{}{
 	"/api/v2/register": {}, // Phase 1 preview (still rejected later without PoW)
 	"/api/v2/logout":   {},
-	"/api/v2/invites":  {},
 }
 
 // ContentTypeMiddleware validates Content-Type header for body-carrying methods.

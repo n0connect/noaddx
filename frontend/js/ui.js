@@ -75,6 +75,74 @@ function clearChildren(element) {
     }
 }
 
+// ---------- scramble ----------
+// Visual only: the noise is Math.random and never key material, and the real value is
+// written only after it has arrived. A fixed prefix (the invite's "noaddx:") stays readable.
+
+const SCRAMBLE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+
+// Cycles random base64url characters (and an occasional '*') until the returned function is called
+function startScramble(element, length, prefix = '') {
+    const draw = () => {
+        let scrambled = prefix;
+        for (let i = 0; i < length; i++) {
+            scrambled += Math.random() < 0.08 ? '*' : SCRAMBLE_CHARS.charAt(Math.floor(Math.random() * SCRAMBLE_CHARS.length));
+        }
+        element.textContent = scrambled;
+    };
+    draw();
+    const timer = setInterval(draw, 120);
+    return () => clearInterval(timer);
+}
+
+// Turns the characters after the prefix into '*', a few per step
+function animateToMask(element, prefix = '') {
+    return new Promise((resolve) => {
+        const masked = element.textContent.slice(prefix.length).split('');
+        let step = 0;
+        const timer = setInterval(() => {
+            for (let i = 0; i < 3; i++) {
+                const index = Math.floor(Math.random() * masked.length);
+                if (masked[index] !== undefined) {
+                    masked[index] = '*';
+                }
+            }
+            element.textContent = prefix + masked.join('');
+            step++;
+            if (masked.every(c => c === '*') || step > 20) {
+                clearInterval(timer);
+                element.textContent = prefix + '*'.repeat(masked.length);
+                resolve();
+            }
+        }, 50);
+    });
+}
+
+// Replaces the mask with the real value in a random order, a few characters per step
+function revealText(element, value, prefix = '') {
+    return new Promise((resolve) => {
+        const body = value.slice(prefix.length);
+        const shown = '*'.repeat(body.length).split('');
+        const order = Array.from(shown.keys());
+        for (let i = order.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [order[i], order[j]] = [order[j], order[i]];
+        }
+        let step = 0;
+        const timer = setInterval(() => {
+            for (let i = 0; i < 3 && step < order.length; i++, step++) {
+                shown[order[step]] = body[order[step]];
+            }
+            element.textContent = prefix + shown.join('');
+            if (step >= order.length) {
+                clearInterval(timer);
+                element.textContent = value;
+                resolve();
+            }
+        }, 40);
+    });
+}
+
 // ---------- aura ----------
 
 // Draws a mirrored 5x5 pixel glyph; CSS scales it up with image-rendering: pixelated
@@ -121,20 +189,48 @@ function togglePairPanel(panelId) {
     });
 }
 
-function renderInvite(code, expiresAtSeconds) {
-    const box = document.getElementById('inviteBox');
+// While the proof of work runs, the invite scrambles exactly like a new account number does.
+// Returns the function that stops the scramble.
+function showInviteGenerating() {
     const codeElement = document.getElementById('inviteCode');
-    box.classList.remove('show');
-    codeElement.classList.remove('revealed');
-    codeElement.textContent = code;
-    // Restart the same reveal transition the account number uses
-    requestAnimationFrame(() => {
-        box.classList.add('show');
-        codeElement.classList.add('revealed');
-    });
-    document.getElementById('inviteExpiry').textContent = formatExpiry(expiresAtSeconds);
+    codeElement.classList.remove('masking', 'revealed');
+    codeElement.classList.add('generating');
+    document.getElementById('inviteBox').classList.add('show');
+    document.getElementById('newInviteBtn').disabled = true;
+    document.getElementById('copyInviteBtn').disabled = true;
+    document.getElementById('inviteHint').style.display = 'none';
+    document.getElementById('inviteStatus').style.display = 'block';
     document.getElementById('joinPanel').style.display = 'none';
     document.getElementById('invitePanel').style.display = 'block';
+    return startScramble(codeElement, NoaddxCrypto.INVITE_BODY_CHARS, NoaddxCrypto.INVITE_PREFIX);
+}
+
+// Masks the noise, then reveals the real code (the account number's sequence)
+async function revealInvite(code, expiresAtSeconds) {
+    const codeElement = document.getElementById('inviteCode');
+    codeElement.classList.remove('generating');
+    codeElement.classList.add('masking');
+    await animateToMask(codeElement, NoaddxCrypto.INVITE_PREFIX);
+    await revealText(codeElement, code, NoaddxCrypto.INVITE_PREFIX);
+    codeElement.classList.remove('masking');
+    codeElement.classList.add('revealed');
+    document.getElementById('inviteExpiry').textContent = formatExpiry(expiresAtSeconds);
+    document.getElementById('inviteStatus').style.display = 'none';
+    document.getElementById('inviteHint').style.display = 'block';
+    document.getElementById('copyInviteBtn').disabled = false;
+    document.getElementById('newInviteBtn').disabled = false;
+}
+
+// Puts the invite panel away and forgets the code it showed
+function resetInvitePanel() {
+    const codeElement = document.getElementById('inviteCode');
+    codeElement.classList.remove('generating', 'masking', 'revealed');
+    codeElement.textContent = '';
+    document.getElementById('invitePanel').style.display = 'none';
+    document.getElementById('inviteStatus').style.display = 'none';
+    document.getElementById('inviteHint').style.display = 'block';
+    document.getElementById('copyInviteBtn').disabled = false;
+    document.getElementById('newInviteBtn').disabled = false;
 }
 
 // items: [{ id, aura, unread, verified }] in display order

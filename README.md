@@ -102,7 +102,7 @@ In the browser, the private key is imported into IndexedDB as a **non-extractabl
 
 ```text
 Alice (Creator)                         Server                                   Bob (Redeemer)
-  | POST /api/v2/invites --------------> | stores HMAC(token) +                   |
+  | POST /api/v2/invites {pow} --------> | stores HMAC(token) +                   |
   |                                      | AES-GCM(creator_uuid, master_key)      |
   |<---------------------------- token   |                                        |
   | code = "noaddx:" + b64url(token || SHA-256("noaddx/invite-fp" || token || alicePub)[0:16])

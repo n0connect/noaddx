@@ -163,6 +163,20 @@ func (c *client) solvePoW() *models.PoWSolution {
 	return nil
 }
 
+// freshPoW solves a challenge fetched by a separate client (its own IP). Challenges are not
+// bound to the client that fetched them, so tests that create many invites stay within the
+// per-IP challenge budget (tested in internal/pow) instead of depending on it.
+func (c *client) freshPoW() *models.PoWSolution {
+	c.t.Helper()
+	return newClient(c.t, c.mux).solvePoW()
+}
+
+// createInvite asks for a new invite, paid for with a fresh proof of work.
+func (c *client) createInvite() *httptest.ResponseRecorder {
+	c.t.Helper()
+	return c.do("POST", "/api/v2/invites", models.CreateInviteRequest{PoW: c.freshPoW()})
+}
+
 // user is a registered identity plus a logged-in client. Its private key is derived from the
 // real AccountNumber exactly as the browser does, so its messages are genuine E2E ciphertext.
 type user struct {
@@ -206,7 +220,7 @@ func register(t *testing.T, mux http.Handler) *user {
 // pair makes `a` invite and `b` redeem; returns the conversation ID.
 func pair(t *testing.T, a, b *user) string {
 	t.Helper()
-	rr := a.do("POST", "/api/v2/invites", nil)
+	rr := a.createInvite()
 	expectStatus(t, rr, http.StatusCreated, "create invite")
 	var invite models.InviteResponse
 	decode(t, rr, &invite)

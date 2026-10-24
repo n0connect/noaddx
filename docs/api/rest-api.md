@@ -23,12 +23,12 @@ Requests are subject to strict JSON validation:
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v2/pow/challenge` | Public | Request SHA-256 hashcash registration puzzle |
+| `GET` | `/api/v2/pow/challenge` | Public | Request SHA-256 hashcash puzzle (registration and invites) |
 | `POST` | `/api/v2/register` | Public | Phase 1 (generate account number) & Phase 2 (confirm account) |
 | `POST` | `/api/v2/login` | Public | Authenticate with derived `auth_key` |
 | `POST` | `/api/v2/logout` | Session | Revoke all active sessions and wipe cookies |
 | `GET` | `/api/v2/me` | Session | Fetch user public key and server retention policy |
-| `POST` | `/api/v2/invites` | Session | Generate single-use pairing token |
+| `POST` | `/api/v2/invites` | Session | Generate single-use pairing token (requires PoW) |
 | `POST` | `/api/v2/invites/redeem` | Session | Redeem pairing token and start conversation |
 | `GET` | `/api/v2/conversations` | Session | List active conversations |
 | `DELETE` | `/api/v2/conversations/{id}` | Session | Burn conversation and erase all messages bilaterally |
@@ -167,9 +167,23 @@ Retrieves caller's public key and server retention policy.
 ## 2. Pairing & Invites
 
 ### `POST /api/v2/invites`
-Creates a single-use pairing token.
+Creates a single-use pairing token. Every invite costs a fresh, single-use PoW challenge, exactly like each registration phase.
 
-- **Rate Limit:** Bounded by `MAX_ACTIVE_INVITES` (default: 5 concurrent unredeemed invites). Returns `429 Too Many Requests` when limit is exceeded.
+- **Request Body:**
+```json
+{
+  "pow": {
+    "challenge": "a4f89b1c2d3e4f5a6b7c8d9e0f1a2b3c",
+    "salt": "f1e2d3c4b5a697887766554433221100",
+    "solution": "1048576",
+    "difficulty": 20,
+    "timestamp": 1729731200,
+    "ttl": 300
+  }
+}
+```
+- **Errors:** `415` without a JSON body, `412` without `pow`, `403` for a solution that is unknown, expired, already used or below the issued difficulty.
+- **Rate Limit:** Bounded by `MAX_ACTIVE_INVITES` (default: 5 concurrent unredeemed invites). Returns `429 Too Many Requests` when limit is exceeded. Challenges themselves are limited to 5 per minute per client key, shared with registration.
 - **Response (201 Created):**
 ```json
 {

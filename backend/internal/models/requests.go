@@ -59,6 +59,10 @@ type MeResponse struct {
 	MessageTTLDays int    `json:"message_ttl_days"` // ciphertext is deleted after this many days
 }
 
+type CreateInviteRequest struct {
+	PoW *PoWSolution `json:"pow"` // Proof of work solution, required for every invite
+}
+
 type InviteResponse struct {
 	Token     string `json:"token"`      // 16 random bytes, base64url; shown to the user once
 	ExpiresAt int64  `json:"expires_at"` // Unix seconds

@@ -377,6 +377,7 @@ const NoaddxCrypto = (() => {
 
     return Object.freeze({
         INVITE_PREFIX,
+        INVITE_BODY_CHARS: Math.ceil((INVITE_TOKEN_BYTES + INVITE_FP_BYTES) * 4 / 3),
         b64urlDecode,
         deriveAuthKey,
         deriveIdentity,

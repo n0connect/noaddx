@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
@@ -98,7 +99,7 @@ func TestPairingAndMessaging(t *testing.T) {
 	mux := setup(t)
 	alice, bob := register(t, mux), register(t, mux)
 
-	rr := alice.do("POST", "/api/v2/invites", nil)
+	rr := alice.createInvite()
 	expectStatus(t, rr, http.StatusCreated, "create invite")
 	var invite models.InviteResponse
 	decode(t, rr, &invite)
@@ -243,9 +244,45 @@ func TestInvites_ActiveLimit(t *testing.T) {
 	mux := setup(t)
 	alice := register(t, mux)
 	for i := 0; i < 5; i++ {
-		expectStatus(t, alice.do("POST", "/api/v2/invites", nil), http.StatusCreated, "invite "+itoa(int64(i)))
+		expectStatus(t, alice.createInvite(), http.StatusCreated, "invite "+itoa(int64(i)))
 	}
-	expectStatus(t, alice.do("POST", "/api/v2/invites", nil), http.StatusTooManyRequests, "invite over limit")
+	expectStatus(t, alice.createInvite(), http.StatusTooManyRequests, "invite over limit")
+}
+
+// An invite costs a fresh, single-use proof of work, like each registration phase: a missing
+// body, a missing solution, a nonce below the issued difficulty and a replayed solution are
+// all refused before any invite exists.
+func TestInvites_RequireProofOfWork(t *testing.T) {
+	mux := setup(t)
+	alice := register(t, mux)
+	invites := func() int64 {
+		var n int64
+		database.DB.Model(&models.Invite{}).Count(&n)
+		return n
+	}
+
+	expectStatus(t, alice.do("POST", "/api/v2/invites", nil), http.StatusUnsupportedMediaType, "no body")
+	expectStatus(t, alice.do("POST", "/api/v2/invites", models.CreateInviteRequest{}), http.StatusPreconditionFailed, "no proof of work")
+
+	weak := alice.freshPoW()
+	for nonce := 0; ; nonce++ {
+		n := strconv.Itoa(nonce)
+		if leadingZeroBits(sha256.Sum256([]byte(weak.Challenge+n+weak.Salt))) < weak.Difficulty {
+			weak.Solution = n
+			break
+		}
+	}
+	expectStatus(t, alice.do("POST", "/api/v2/invites", models.CreateInviteRequest{PoW: weak}), http.StatusForbidden, "nonce below difficulty")
+	if n := invites(); n != 0 {
+		t.Fatalf("%d invites exist after refused requests", n)
+	}
+
+	paid := models.CreateInviteRequest{PoW: alice.freshPoW()}
+	expectStatus(t, alice.do("POST", "/api/v2/invites", paid), http.StatusCreated, "paid invite")
+	expectStatus(t, alice.do("POST", "/api/v2/invites", paid), http.StatusForbidden, "replayed proof of work")
+	if n := invites(); n != 1 {
+		t.Fatalf("%d invites exist, want exactly the paid one", n)
+	}
 }
 
 func TestEvents_StreamPokesPeerOnMessage(t *testing.T) {
@@ -314,7 +351,7 @@ func TestStorage_NoJoinableIdentifiers(t *testing.T) {
 	alice, bob, carol := register(t, mux), register(t, mux), register(t, mux)
 	conv1 := pair(t, alice, bob)
 	conv2 := pair(t, alice, carol)
-	expectStatus(t, alice.do("POST", "/api/v2/invites", nil), http.StatusCreated, "pending invite")
+	expectStatus(t, alice.createInvite(), http.StatusCreated, "pending invite")
 
 	if s := send(t, alice, bob, conv1, 1); s != 1 {
 		t.Fatalf("first seq in conv1 = %d", s)
@@ -423,7 +460,7 @@ func TestRedeem_RollsBackWhenCreatorIsFull(t *testing.T) {
 	alice, bob, carol := register(t, mux), register(t, mux), register(t, mux)
 	pair(t, alice, bob)
 
-	rr := alice.do("POST", "/api/v2/invites", nil)
+	rr := alice.createInvite()
 	expectStatus(t, rr, http.StatusCreated, "invite")
 	var invite models.InviteResponse
 	decode(t, rr, &invite)

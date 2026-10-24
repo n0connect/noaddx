@@ -82,7 +82,7 @@ Pairing is strictly peer-to-peer using single-use invite codes. There is **no pu
 ```text
 Alice (Creator)                           Server                               Bob (Redeemer)
   |                                         |                                    |
-  | POST /api/v2/invites                    |                                    |
+  | POST /api/v2/invites {pow}              |                                    |
   |---------------------------------------->| Stores HMAC(token) +               |
   |                                         | AES-GCM(creator_ref, master_key)   |
   |<----------------------------------------|                                    |
