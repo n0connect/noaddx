@@ -73,41 +73,19 @@ func EncryptWithMasterKey(text string) (string, error) {
 	return result, nil
 }
 
+// DecryptWithMasterKey opens a record with the master key named by its stored key id.
+// There is no fallback: a record is never trial-decrypted under every key.
 func DecryptWithMasterKey(encryptedText string, keyID string) (string, error) {
-	cryptoLogger.Debug("DecryptWithMasterKey: starting decryption with master key, input length: %d", len(encryptedText))
-
-	if keyID != "" {
-		key, ok := MasterKeyByID(keyID)
-		if !ok {
-			return "", fmt.Errorf("unknown master key id")
-		}
-		result, err := DecryptWithKey(encryptedText, key)
-		if err != nil {
-			cryptoLogger.LogError("DecryptWithMasterKey", err)
-			return "", err
-		}
-		cryptoLogger.Debug("DecryptWithMasterKey: successfully decrypted with key id: %s", keyID)
-		return result, nil
+	key, ok := MasterKeyByID(keyID)
+	if !ok {
+		return "", fmt.Errorf("unknown master key id")
 	}
-
-	result, err := DecryptWithKey(encryptedText, ActiveMasterKey())
-	if err == nil {
-		cryptoLogger.Debug("DecryptWithMasterKey: successfully decrypted with active key")
-		return result, nil
+	result, err := DecryptWithKey(encryptedText, key)
+	if err != nil {
+		cryptoLogger.LogError("DecryptWithMasterKey", err)
+		return "", err
 	}
-
-	if HasOldMasterKeys() {
-		for oldID, key := range masterKeys.old {
-			plaintext, tryErr := DecryptWithKey(encryptedText, key)
-			if tryErr == nil {
-				cryptoLogger.Warn("DecryptWithMasterKey: decrypted with old key id=%s", oldID)
-				return plaintext, nil
-			}
-		}
-	}
-
-	cryptoLogger.LogError("DecryptWithMasterKey", err)
-	return "", err
+	return result, nil
 }
 
 func GenerateUserAESKey() ([]byte, error) {

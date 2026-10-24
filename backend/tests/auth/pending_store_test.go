@@ -90,9 +90,13 @@ func TestStoreAndGetPendingRegistration(t *testing.T) {
 func TestGetPendingRegistration_NotFound(t *testing.T) {
 	setupPendingStoreEnv(t)
 
-	nonExistentID := "00000000000000000000000000000000"
+	// A freshly generated id that was never stored: exactly what a forged token would carry
+	nonExistentID, err := auth.GeneratePendingID()
+	if err != nil {
+		t.Fatalf("GeneratePendingID: %v", err)
+	}
 
-	_, err := auth.GetPendingRegistration(nonExistentID)
+	_, err = auth.GetPendingRegistration(nonExistentID)
 	if err == nil {
 		t.Error("GetPendingRegistration() with non-existent ID should have failed")
 	}
@@ -177,5 +181,36 @@ func TestPendingRegistration_OneTimeUse(t *testing.T) {
 	_, err = auth.GetPendingRegistration(pendingID)
 	if err == nil {
 		t.Error("GetPendingRegistration() after delete should have failed (one-time use)")
+	}
+}
+
+// The pending-registration store is bounded: once full it refuses (fail closed) instead of
+// growing without limit, and frees capacity as entries are consumed.
+func TestStorePendingRegistration_IsBounded(t *testing.T) {
+	setupPendingStoreEnv(t)
+	auth.ResetPendingStoreForTesting()
+	t.Cleanup(auth.ResetPendingStoreForTesting)
+
+	account := testutil.NewAccountNumber(t)
+	var last string
+	for i := 0; i < auth.MaxPendingRegistrations; i++ {
+		id, err := auth.GeneratePendingID()
+		if err != nil {
+			t.Fatalf("GeneratePendingID: %v", err)
+		}
+		if err := auth.StorePendingRegistration(id, account); err != nil {
+			t.Fatalf("entry %d refused below the cap: %v", i, err)
+		}
+		last = id
+	}
+	overflow, _ := auth.GeneratePendingID()
+	if err := auth.StorePendingRegistration(overflow, account); !errors.Is(err, auth.ErrPendingStoreFull) {
+		t.Fatalf("entry beyond the cap = %v, want ErrPendingStoreFull", err)
+	}
+	if _, err := auth.GetPendingRegistration(last); err != nil {
+		t.Fatalf("consume: %v", err)
+	}
+	if err := auth.StorePendingRegistration(overflow, account); err != nil {
+		t.Fatalf("freed capacity not reusable: %v", err)
 	}
 }

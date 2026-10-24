@@ -81,15 +81,20 @@ func parseRemoteIP(remoteAddr string) net.IP {
 	return net.ParseIP(host)
 }
 
-func firstValidIPFromXFF(xff string) net.IP {
+// clientFromXFF walks X-Forwarded-For from the right. Each trusted proxy appends the peer it
+// saw, so the first entry from the right that is not itself a trusted proxy is the client;
+// anything further left was supplied by the client and is never believed.
+func clientFromXFF(xff string) net.IP {
 	if xff == "" {
 		return nil
 	}
-	for _, part := range strings.Split(xff, ",") {
-		ip := net.ParseIP(strings.TrimSpace(part))
-		if ip != nil {
-			return ip
+	parts := strings.Split(xff, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		ip := net.ParseIP(strings.TrimSpace(parts[i]))
+		if ip == nil || isTrustedProxy(ip) {
+			continue
 		}
+		return ip
 	}
 	return nil
 }
@@ -103,10 +108,10 @@ func ClientIP(r *http.Request) string {
 
 	remoteIP := parseRemoteIP(r.RemoteAddr)
 	if isTrustedProxy(remoteIP) {
-		if ip := firstValidIPFromXFF(r.Header.Get("X-Forwarded-For")); ip != nil {
+		if ip := clientFromXFF(r.Header.Get("X-Forwarded-For")); ip != nil {
 			return ip.String()
 		}
-		if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); ip != nil {
+		if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP"))); ip != nil && !isTrustedProxy(ip) {
 			return ip.String()
 		}
 	}
@@ -115,6 +120,22 @@ func ClientIP(r *http.Request) string {
 		return remoteIP.String()
 	}
 	return ""
+}
+
+// ipv6SubscriberBits is the prefix one IPv6 subscriber controls (RFC 6177 assigns at least a /64)
+const ipv6SubscriberBits = 64
+
+// clientNetwork reduces an address to what one client controls: the IPv4 address itself,
+// or the IPv6 /64. Rate limits keyed on full IPv6 addresses are bypassed by rotation.
+func clientNetwork(raw string) string {
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return "unknown"
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ip.Mask(net.CIDRMask(ipv6SubscriberBits, 128)).String() + "/64"
 }
 
 // IsRequestHTTPS returns true if the request is HTTPS, considering trusted proxy headers.
@@ -140,8 +161,9 @@ var (
 	clientKeySecret []byte
 )
 
-// ClientKey returns an opaque, per-boot pseudonym for the client address. Rate limiters
-// key on this instead of the raw IP. Panics if the CSPRNG fails (RULES.md §1.3).
+// ClientKey returns an opaque, per-boot pseudonym for the client's network (IPv4 address or
+// IPv6 /64). Rate limiters key on this instead of the raw IP. Panics if the CSPRNG fails
+// (RULES.md §1.3).
 func ClientKey(r *http.Request) string {
 	clientKeyOnce.Do(func() {
 		secret, err := cryptoengine.RandomBytes(32)
@@ -150,11 +172,7 @@ func ClientKey(r *http.Request) string {
 		}
 		clientKeySecret = secret
 	})
-	ip := ClientIP(r)
-	if ip == "" {
-		ip = "unknown"
-	}
-	mac, err := cryptoengine.HMACSHA256(clientKeySecret, []byte(ip))
+	mac, err := cryptoengine.HMACSHA256(clientKeySecret, []byte(clientNetwork(ClientIP(r))))
 	if err != nil {
 		panic("HMAC unavailable: " + err.Error())
 	}

@@ -102,3 +102,34 @@ func TestCORSMiddleware_ActualRequest(t *testing.T) {
 		t.Error("Access-Control-Allow-Origin header should be set")
 	}
 }
+
+// Only exact origins match: no localhost port wildcard, no prefix tricks
+func TestCORSMiddleware_ExactOriginMatchOnly(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	defer testutil.TeardownTestEnv(t)
+	t.Setenv("ALLOWED_ORIGINS", "http://localhost,http://localhost:3000")
+	middleware.ResetAllowedOriginsForTesting()
+	t.Cleanup(middleware.ResetAllowedOriginsForTesting)
+
+	for _, origin := range []string{"http://localhost:1234", "http://localhost:3000.evil.example", "http://localhost:30001", "https://localhost", "http://127.0.0.1:3000"} {
+		req := httptest.NewRequest("GET", "/api/v2/me", nil)
+		req.Header.Set("Origin", origin)
+		rr := httptest.NewRecorder()
+		middleware.CORSMiddleware(func(w http.ResponseWriter, r *http.Request) {})(rr, req)
+		if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "" {
+			t.Errorf("origin %q was allowed (ACAO %q)", origin, got)
+		}
+	}
+
+	req := httptest.NewRequest("OPTIONS", "/api/v2/login", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	rr := httptest.NewRecorder()
+	middleware.CORSMiddleware(func(w http.ResponseWriter, r *http.Request) {})(rr, req)
+	if rr.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
+		t.Fatal("listed origin was not allowed")
+	}
+	if allowed := rr.Header().Get("Access-Control-Allow-Headers"); allowed != "Content-Type" {
+		t.Fatalf("Access-Control-Allow-Headers = %q, want exactly Content-Type", allowed)
+	}
+}

@@ -142,3 +142,40 @@ func TestVerifyAccountNumberHash_Empty_ShouldFail(t *testing.T) {
 		t.Error("VerifyAccountNumberHash() with an empty key should have failed")
 	}
 }
+
+// Stored parameters are bounded before any work is done: a corrupted or planted record can
+// neither crash the server (parallelism 0 or > 255 used to panic inside argon2) nor make it
+// allocate unbounded memory, and only canonical decimal fields parse.
+func TestVerifyAccountNumberHash_RejectsOutOfRangeParameters(t *testing.T) {
+	setupAuthTestEnv(t)
+
+	authKey := testutil.NewAuthKey(t)
+	real, err := auth.HashAccountNumber(authKey)
+	if err != nil {
+		t.Fatalf("HashAccountNumber() failed: %v", err)
+	}
+	parts := strings.Split(real, "$")
+	join := func(p ...string) string { return strings.Join(p, "$") }
+
+	corrupted := map[string]string{
+		"parallelism 0":     join(parts[0], parts[1], parts[2], "p=0", parts[4], parts[5]),
+		"parallelism 256":   join(parts[0], parts[1], parts[2], "p=256", parts[4], parts[5]),
+		"time 0":            join(parts[0], parts[1], "t=0", parts[3], parts[4], parts[5]),
+		"memory 0":          join(parts[0], "m=0", parts[2], parts[3], parts[4], parts[5]),
+		"memory over bound": join(parts[0], "m=4294967295", parts[2], parts[3], parts[4], parts[5]),
+		"trailing garbage":  join(parts[0], parts[1]+"abc", parts[2], parts[3], parts[4], parts[5]),
+		"signed number":     join(parts[0], "m=+"+strings.TrimPrefix(parts[1], "m="), parts[2], parts[3], parts[4], parts[5]),
+		"short salt":        join(parts[0], parts[1], parts[2], parts[3], parts[4][:16], parts[5]),
+		"short hash":        join(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5][:16]),
+	}
+	for name, encoded := range corrupted {
+		t.Run(name, func(t *testing.T) {
+			if err := auth.VerifyAccountNumberHash(encoded, authKey); err == nil {
+				t.Errorf("corrupted hash (%s) verified", name)
+			}
+		})
+	}
+	if err := auth.VerifyAccountNumberHash(real, authKey); err != nil {
+		t.Fatalf("the genuine hash no longer verifies: %v", err)
+	}
+}

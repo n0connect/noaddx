@@ -12,9 +12,11 @@ import (
 
 var serverLogger = utils.NewLogger("SERVER")
 
-// public wraps an unauthenticated endpoint with the base security chain
+// public wraps an unauthenticated endpoint with the base security chain:
+// headers -> CORS (exact origins) -> same-origin proof for writes -> content-type whitelist
 func public(h http.HandlerFunc) http.HandlerFunc {
-	return middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(middleware.ContentTypeMiddleware(h)))
+	return middleware.SecurityHeadersMiddleware(middleware.CORSMiddleware(
+		middleware.SameOriginWritesMiddleware(middleware.ContentTypeMiddleware(h))))
 }
 
 // protected additionally requires a valid, non-revoked session

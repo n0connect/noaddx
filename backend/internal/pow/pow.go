@@ -3,6 +3,7 @@ package pow
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -33,6 +34,17 @@ const (
 	cleanupInterval    = time.Minute
 	// maxCleanupCycles bounds the cleanup loop (RULES.md §8.1); one per minute outlives any deployment
 	maxCleanupCycles = 1 << 26
+	// maxOutstandingChallenges bounds issued-but-unexpired challenges (~200 bytes each);
+	// maxTrackedClients bounds per-client limiters. Past either cap the issuer fails closed.
+	maxOutstandingChallenges = 50000
+	maxTrackedClients        = 50000
+)
+
+var (
+	// ErrRateLimited: this client asked for too many challenges in the current window
+	ErrRateLimited = errors.New("pow: rate limit exceeded")
+	// ErrCapacity: the issuer is at its memory bound (flood in progress); retry later
+	ErrCapacity = errors.New("pow: challenge capacity reached")
 )
 
 type RateLimiter struct {
@@ -90,10 +102,20 @@ var (
 // clientKey is an opaque per-client pseudonym used only for rate limiting
 func GenerateChallenge(clientKey string) (*models.PoWChallenge, error) {
 
-	// Apply rate limiting per IP
+	// Apply rate limiting per client network
 	rateLimiterMutex.Lock()
 	limiter, exists := challengeRateLimiters[clientKey]
 	if !exists {
+		if len(challengeRateLimiters) >= maxTrackedClients {
+			rateLimiterMutex.Unlock()
+			cleanupInactiveRateLimiters(time.Now())
+			rateLimiterMutex.Lock()
+		}
+		if len(challengeRateLimiters) >= maxTrackedClients {
+			rateLimiterMutex.Unlock()
+			powLogger.Warn("Challenge issuer at client capacity")
+			return nil, ErrCapacity
+		}
 		limiter = NewRateLimiter(challengesPerWindow, challengeWindow)
 		challengeRateLimiters[clientKey] = limiter
 	}
@@ -101,7 +123,7 @@ func GenerateChallenge(clientKey string) (*models.PoWChallenge, error) {
 
 	if !limiter.Allow() {
 		powLogger.Warn("Challenge rate limit exceeded")
-		return nil, fmt.Errorf("rate limit exceeded")
+		return nil, ErrRateLimited
 	}
 
 	challengeBytes, err := cryptoengine.RandomBytes(challengeBytesLen)
@@ -137,13 +159,20 @@ func GenerateChallenge(clientKey string) (*models.PoWChallenge, error) {
 	// Store the challenge with proper lifecycle management
 	challengeKey := challengeStr + saltStr
 	challengeMutex.Lock()
+	defer challengeMutex.Unlock()
+	if len(issuedChallenges) >= maxOutstandingChallenges {
+		removeExpiredLocked(now)
+	}
+	if len(issuedChallenges) >= maxOutstandingChallenges {
+		powLogger.Warn("Challenge issuer at capacity")
+		return nil, ErrCapacity
+	}
 	issuedChallenges[challengeKey] = &ChallengeEntry{
 		Used:       false,
 		Difficulty: difficulty,
 		CreatedAt:  now,
 		ExpiresAt:  now.Add(time.Duration(ttl) * time.Second),
 	}
-	challengeMutex.Unlock()
 
 	return challengeObj, nil
 }
@@ -168,7 +197,11 @@ func RunCleanup(ctx context.Context) {
 func cleanupExpiredChallenges(now time.Time) {
 	challengeMutex.Lock()
 	defer challengeMutex.Unlock()
+	removeExpiredLocked(now)
+}
 
+// removeExpiredLocked deletes expired challenges. Caller holds challengeMutex.
+func removeExpiredLocked(now time.Time) {
 	cleaned := 0
 	for key, entry := range issuedChallenges {
 		if now.After(entry.ExpiresAt) {
@@ -241,7 +274,7 @@ func ValidateSolution(solution *models.PoWSolution) bool {
 		return false
 	}
 
-	// Verify the proof of work using OpenSSL SHA256
+	// Verify the proof of work: SHA-256(challenge || nonce || salt) under the issued difficulty
 	input := []byte(solution.Challenge + solution.Solution + solution.Salt)
 	hash, err := cryptoengine.SHA256(input)
 	if err != nil {

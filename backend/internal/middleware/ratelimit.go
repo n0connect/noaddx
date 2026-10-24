@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -64,11 +65,10 @@ func (tb *TokenBucket) Allow() bool {
 	return false
 }
 
-// RateLimiter stores token buckets per IP
+// RateLimiter stores token buckets per client key (Lock order: rl.mu before bucket.mu)
 type RateLimiter struct {
-	buckets map[string]*TokenBucket
-	mu      sync.RWMutex
-	// Cleanup old buckets periodically
+	buckets         map[string]*TokenBucket
+	mu              sync.RWMutex
 	cleanupInterval time.Duration
 	lastCleanup     time.Time
 	maxTokens       int
@@ -100,100 +100,65 @@ func (rl *RateLimiter) loadConfig() error {
 	return nil
 }
 
-// getBucket gets or creates a token bucket for an IP
-func (rl *RateLimiter) getBucket(ip string) *TokenBucket {
-	rl.mu.RLock()
-	bucket, exists := rl.buckets[ip]
-	rl.mu.RUnlock()
+// inactivityThreshold drops buckets nobody has touched for an hour
+const inactivityThreshold = time.Hour
 
-	if !exists {
-		rl.mu.Lock()
-		// Double-check after acquiring write lock
-		bucket, exists = rl.buckets[ip]
-		if !exists {
-			bucket = NewTokenBucket(rl.maxTokens, rl.refillInterval)
-			rl.buckets[ip] = bucket
-		}
-		rl.mu.Unlock()
-	}
+// getBucket returns the bucket for key, creating it if needed. The bucket count is bounded
+// at insertion: when the limiter is full, the least recently used tenth is evicted in one
+// O(n log n) pass, so a flood of new keys costs amortised O(log n) and bounded memory.
+func (rl *RateLimiter) getBucket(key string) *TokenBucket {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
 
-	// SECURITY: Periodic cleanup check (without lock to avoid deadlock)
-	// Cleanup is safe to call without lock since it acquires its own lock
 	now := time.Now()
-	rl.mu.RLock()
-	needsCleanup := now.Sub(rl.lastCleanup) > rl.cleanupInterval
-	rl.mu.RUnlock()
-
-	if needsCleanup {
-		rl.mu.Lock()
-		// Double-check after acquiring write lock
-		if now.Sub(rl.lastCleanup) > rl.cleanupInterval {
-			rl.cleanupUnsafe() // Call cleanup without lock since we already hold it
-			rl.lastCleanup = now
-		}
-		rl.mu.Unlock()
+	if now.Sub(rl.lastCleanup) > rl.cleanupInterval {
+		rl.evictInactiveLocked(now)
+		rl.lastCleanup = now
 	}
-
+	if bucket, ok := rl.buckets[key]; ok {
+		return bucket
+	}
+	if len(rl.buckets) >= rl.maxBuckets {
+		rl.evictInactiveLocked(now)
+	}
+	if len(rl.buckets) >= rl.maxBuckets {
+		rl.evictOldestLocked(len(rl.buckets) - rl.maxBuckets + 1 + rl.maxBuckets/10)
+	}
+	bucket := NewTokenBucket(rl.maxTokens, rl.refillInterval)
+	rl.buckets[key] = bucket
 	return bucket
 }
 
-// cleanup removes old buckets (simple: remove all, they'll be recreated if needed)
-// This function acquires its own lock
-func (rl *RateLimiter) cleanup() {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	rl.cleanupUnsafe()
+func (rl *RateLimiter) lastAccess(bucket *TokenBucket) time.Time {
+	bucket.mu.Lock()
+	defer bucket.mu.Unlock()
+	return bucket.lastAccess
 }
 
-// cleanupUnsafe removes old buckets without acquiring a lock
-// Caller must hold rl.mu.Lock()
-func (rl *RateLimiter) cleanupUnsafe() {
-	now := time.Now()
-	inactivityThreshold := 1 * time.Hour // Remove buckets inactive for 1 hour
-	cleaned := 0
-
-	// First pass: remove inactive buckets
-	for ip, bucket := range rl.buckets {
-		bucket.mu.Lock()
-		if now.Sub(bucket.lastAccess) > inactivityThreshold {
-			delete(rl.buckets, ip)
-			cleaned++
-		}
-		bucket.mu.Unlock()
-	}
-
-	// Second pass: if still over limit, remove oldest buckets
-	if len(rl.buckets) > rl.maxBuckets {
-		// Find oldest buckets and remove them
-		type bucketAge struct {
-			ip         string
-			lastAccess time.Time
-		}
-		ages := make([]bucketAge, 0, len(rl.buckets))
-		for ip, bucket := range rl.buckets {
-			bucket.mu.Lock()
-			ages = append(ages, bucketAge{ip: ip, lastAccess: bucket.lastAccess})
-			bucket.mu.Unlock()
-		}
-		// Sort by lastAccess (oldest first)
-		for i := 0; i < len(ages)-1; i++ {
-			for j := i + 1; j < len(ages); j++ {
-				if ages[i].lastAccess.After(ages[j].lastAccess) {
-					ages[i], ages[j] = ages[j], ages[i]
-				}
-			}
-		}
-		// Remove oldest buckets until we're under the limit
-		toRemove := len(rl.buckets) - rl.maxBuckets
-		for i := 0; i < toRemove && i < len(ages); i++ {
-			delete(rl.buckets, ages[i].ip)
-			cleaned++
+// evictInactiveLocked removes buckets idle past inactivityThreshold. Caller holds rl.mu.
+func (rl *RateLimiter) evictInactiveLocked(now time.Time) {
+	for key, bucket := range rl.buckets {
+		if now.Sub(rl.lastAccess(bucket)) > inactivityThreshold {
+			delete(rl.buckets, key)
 		}
 	}
+}
 
-	if cleaned > 0 {
-		rateLimitLogger.Debug("RateLimiter: cleaned up %d inactive/old buckets (remaining: %d)", cleaned, len(rl.buckets))
+// evictOldestLocked removes the n least recently used buckets. Caller holds rl.mu.
+func (rl *RateLimiter) evictOldestLocked(n int) {
+	type entry struct {
+		key        string
+		lastAccess time.Time
 	}
+	entries := make([]entry, 0, len(rl.buckets))
+	for key, bucket := range rl.buckets {
+		entries = append(entries, entry{key: key, lastAccess: rl.lastAccess(bucket)})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].lastAccess.Before(entries[j].lastAccess) })
+	for i := 0; i < n && i < len(entries); i++ {
+		delete(rl.buckets, entries[i].key)
+	}
+	rateLimitLogger.Debug("RateLimiter: limiter full, evicted %d least recently used buckets", n)
 }
 
 // RateLimitMiddleware limits requests per IP for login and register endpoints

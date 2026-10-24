@@ -16,3 +16,10 @@ func ResetRateLimiterForTesting() {
 	globalRateLimiter.lastCleanup = time.Now()
 	rateLimitLogger.Debug("RateLimiter: reset for testing")
 }
+
+// RateLimiterBucketCountForTesting reports how many buckets the global limiter holds.
+func RateLimiterBucketCountForTesting() int {
+	globalRateLimiter.mu.RLock()
+	defer globalRateLimiter.mu.RUnlock()
+	return len(globalRateLimiter.buckets)
+}

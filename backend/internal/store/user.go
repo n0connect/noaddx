@@ -34,11 +34,11 @@ func (r *userRepository) FindByUUID(uuid string) (*models.User, error) {
 	var user models.User
 	result := database.DB.Where("uuid = ?", uuid).First(&user)
 	if result.Error != nil {
-		userRepoLogger.LogError("UserRepository.FindByUUID", result.Error)
-		// Wrap GORM's ErrRecordNotFound as ErrNotFound for consistent error handling
+		// Not found is an expected outcome (unknown account, deleted user): not an error to log
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
+		userRepoLogger.LogError("UserRepository.FindByUUID", result.Error)
 		return nil, result.Error
 	}
 	return &user, nil
@@ -59,11 +59,11 @@ func (r *userRepository) FindByAccountLookup(lookup string) (*models.User, error
 	var user models.User
 	result := database.DB.Where("account_lookup = ?", lookup).First(&user)
 	if result.Error != nil {
-		userRepoLogger.LogError("UserRepository.FindByAccountLookup", result.Error)
-		// Wrap GORM's ErrRecordNotFound as ErrNotFound for consistent error handling
+		// Not found is an expected outcome (unknown account, deleted user): not an error to log
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
+		userRepoLogger.LogError("UserRepository.FindByAccountLookup", result.Error)
 		return nil, result.Error
 	}
 	return &user, nil

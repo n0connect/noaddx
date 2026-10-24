@@ -11,3 +11,9 @@ func ResetTrustedProxiesForTesting() {
 	trustedProxyNets = nil
 	trustedProxyIPs = nil
 }
+
+// ResetAllowedOriginsForTesting forces ALLOWED_ORIGINS to be re-read.
+func ResetAllowedOriginsForTesting() {
+	corsOnce = sync.Once{}
+	allowedOrigins = nil
+}

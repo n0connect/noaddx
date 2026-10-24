@@ -37,19 +37,19 @@ type PoWChallenge struct {
 	Salt       string `json:"salt"`
 }
 
+// LoginResponse never carries the session token: it travels only in the HttpOnly cookie
 type LoginResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
-	Token   string `json:"token,omitempty"` // JWT token
 }
 
+// RegisterResponse: phase 1 shows the AccountNumber once; phase 2 sets the session cookie only
 type RegisterResponse struct {
 	Success       bool   `json:"success"`
 	Message       string `json:"message"`
-	AccountNumber string `json:"account_number"`
-	Token         string `json:"token,omitempty"`         // Only sent when confirm=true
-	PendingToken  string `json:"pending_token,omitempty"` // Only sent when confirm=false
-	Confirmed     bool   `json:"confirmed"`               // true if account was created
+	AccountNumber string `json:"account_number,omitempty"` // Only sent when confirm=false
+	PendingToken  string `json:"pending_token,omitempty"`  // Only sent when confirm=false
+	Confirmed     bool   `json:"confirmed"`                // true if account was created
 }
 
 // ---- messaging ----

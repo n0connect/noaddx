@@ -20,7 +20,6 @@ const (
 	defaultDBHost                  = "postgres"
 	defaultDBPort                  = "5432"
 	defaultDBUser                  = "postgres"
-	defaultDBPassword              = "postgres"
 	defaultDBName                  = "noaddx"
 	defaultDBSSLMode               = "disable"
 	defaultBackendPort             = "8080"
@@ -62,6 +61,23 @@ const (
 	maxPoWDifficulty               = 24  // Maximum difficulty (high load, DoS protection)
 	defaultPoWChallengeTTLSeconds  = 300 // A challenge must be solved and used within 5 minutes
 	maxPoWChallengeTTLSeconds      = 3600
+	minPepperBytes                 = 32
+)
+
+// Argon2id bounds (RULES.md §5.1 range checks). They apply to configuration at startup and
+// to every stored hash before verification, so no record can request unbounded work.
+const (
+	MinArgon2MemoryKiB           = 8192    // 8 MiB: test floor; production requires ProductionMinArgon2MemoryKiB
+	MaxArgon2MemoryKiB           = 1 << 20 // 1 GiB
+	MinArgon2Time                = 1
+	MaxArgon2Time                = 16
+	MinArgon2Parallelism         = 1
+	MaxArgon2Parallelism         = 255 // argon2 takes uint8 lanes
+	MinArgon2SaltBytes           = 16
+	MaxArgon2SaltBytes           = 64
+	MinArgon2HashBytes           = 16
+	MaxArgon2HashBytes           = 64
+	ProductionMinArgon2MemoryKiB = 19456 // OWASP minimum for Argon2id (19 MiB, t=2)
 )
 
 // ========================================
@@ -308,9 +324,9 @@ func GetDBUser() string {
 	return strings.TrimSpace(GetEnv("DB_USER", defaultDBUser))
 }
 
-// GetDBPassword returns database password
+// GetDBPassword returns the database password; there is no default (make setup generates one)
 func GetDBPassword() string {
-	return strings.TrimSpace(GetEnv("DB_PASSWORD", defaultDBPassword))
+	return GetEnv("DB_PASSWORD", "")
 }
 
 // GetDBName returns database name
@@ -354,29 +370,19 @@ func GetArgon2HashLength() int {
 	return getEnvIntDefault("ARGON2_HASH_LENGTH", defaultArgon2HashLength)
 }
 
-// GetAccountLookupPepper returns the pepper for account lookup HMAC
-// MUST be at least 32 bytes (can be hex or base64 encoded)
+// GetAccountLookupPepper returns the pepper for account lookup HMAC: at least 32 bytes of
+// key material encoded as hex or base64. Raw text is rejected (nil), never used as bytes.
 func GetAccountLookupPepper() []byte {
-	pepperStr := GetEnv("ACCOUNT_LOOKUP_PEPPER", "")
+	pepperStr := strings.TrimSpace(GetEnv("ACCOUNT_LOOKUP_PEPPER", ""))
 	if pepperStr == "" {
 		return nil
 	}
-
-	// Try hex decoding first
-	if decoded, err := hex.DecodeString(pepperStr); err == nil && len(decoded) >= 32 {
+	if decoded, err := hex.DecodeString(pepperStr); err == nil && len(decoded) >= minPepperBytes {
 		return decoded
 	}
-
-	// Try base64 decoding
-	if decoded, err := base64.StdEncoding.DecodeString(pepperStr); err == nil && len(decoded) >= 32 {
+	if decoded, err := base64.StdEncoding.Strict().DecodeString(pepperStr); err == nil && len(decoded) >= minPepperBytes {
 		return decoded
 	}
-
-	// Try raw bytes (if exactly 32+ bytes)
-	if len(pepperStr) >= 32 {
-		return []byte(pepperStr)
-	}
-
 	return nil
 }
 

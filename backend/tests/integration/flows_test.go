@@ -67,33 +67,9 @@ func TestResponses_NeverEchoTheAccountNumber(t *testing.T) {
 	if _, leaked := login["account_number"]; leaked || strings.Contains(rr.Body.String(), account) {
 		t.Fatal("login response contains the AccountNumber")
 	}
-	if login["success"] != true || login["token"] == "" {
+	if login["success"] != true {
 		t.Fatalf("login body %v", login)
 	}
-}
-
-// API clients authenticate with the same JWT in an Authorization header
-func TestSession_BearerHeaderReachesProtectedRoutes(t *testing.T) {
-	mux := setup(t)
-	alice := register(t, mux)
-
-	req := httptest.NewRequest("GET", "/api/v2/me", nil)
-	req.RemoteAddr = alice.ip
-	req.Header.Set("Authorization", "Bearer "+alice.cookie.Value)
-	rr := httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	expectStatus(t, rr, http.StatusOK, "bearer session")
-	var me models.MeResponse
-	decode(t, rr, &me)
-	if me.PublicKey != alice.publicKey {
-		t.Fatal("bearer session resolved to a different identity")
-	}
-
-	req = httptest.NewRequest("GET", "/api/v2/me", nil)
-	req.Header.Set("Authorization", "Bearer "+alice.cookie.Value+"x")
-	rr = httptest.NewRecorder()
-	mux.ServeHTTP(rr, req)
-	expectStatus(t, rr, http.StatusUnauthorized, "tampered bearer token")
 }
 
 func TestRegister_ProofOfWorkCannotBeBypassed(t *testing.T) {

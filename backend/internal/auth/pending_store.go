@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -19,6 +20,13 @@ var (
 	cleanupOnce   sync.Once
 	cleanupTicker *time.Ticker
 )
+
+// MaxPendingRegistrations bounds phase-1 registrations awaiting confirmation (each costs the
+// client a proof of work; the bound caps memory even under a distributed flood).
+const MaxPendingRegistrations = 50000
+
+// ErrPendingStoreFull: the store is at its bound; the client retries later
+var ErrPendingStoreFull = errors.New("pending registration store full")
 
 type pendingRegistration struct {
 	AccountNumber string
@@ -88,9 +96,17 @@ func StorePendingRegistration(pendingID, accountNumber string) error {
 		return err
 	}
 
+	now := time.Now()
+	if len(pendingStore.store) >= MaxPendingRegistrations {
+		removeExpiredPendingLocked(now)
+	}
+	if len(pendingStore.store) >= MaxPendingRegistrations {
+		pendingStoreLogger.Warn("Pending registration store at capacity")
+		return ErrPendingStoreFull
+	}
 	pendingStore.store[pendingID] = &pendingRegistration{
 		AccountNumber: accountNumber,
-		ExpiresAt:     time.Now().Add(ttl),
+		ExpiresAt:     now.Add(ttl),
 	}
 
 	return nil
@@ -124,8 +140,11 @@ func GetPendingRegistration(pendingID string) (string, error) {
 func cleanupExpiredPending() {
 	pendingStore.mu.Lock()
 	defer pendingStore.mu.Unlock()
+	removeExpiredPendingLocked(time.Now())
+}
 
-	now := time.Now()
+// removeExpiredPendingLocked deletes expired entries. Caller holds pendingStore.mu.
+func removeExpiredPendingLocked(now time.Time) {
 	for id, pending := range pendingStore.store {
 		if now.After(pending.ExpiresAt) {
 			delete(pendingStore.store, id)

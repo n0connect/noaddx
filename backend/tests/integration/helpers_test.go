@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -69,6 +71,12 @@ func newClient(t *testing.T, mux http.Handler) *client {
 // do sends body as JSON (string bodies are sent raw) and tracks the session cookie.
 func (c *client) do(method, path string, body interface{}) *httptest.ResponseRecorder {
 	c.t.Helper()
+	return c.doWithHeaders(method, path, body, nil)
+}
+
+// doWithHeaders is do plus extra request headers (what a browser adds: Origin, Sec-Fetch-*).
+func (c *client) doWithHeaders(method, path string, body interface{}, headers map[string]string) *httptest.ResponseRecorder {
+	c.t.Helper()
 	var reader *bytes.Reader
 	switch b := body.(type) {
 	case nil:
@@ -86,6 +94,9 @@ func (c *client) do(method, path string, body interface{}) *httptest.ResponseRec
 	req.RemoteAddr = c.ip
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		req.Header.Set(name, value)
 	}
 	if c.cookie != nil {
 		req.AddCookie(c.cookie)
@@ -256,4 +267,31 @@ func randomBytes(t *testing.T, n int) []byte {
 		t.Fatalf("crypto/rand: %v", err)
 	}
 	return b
+}
+
+func registeredAuthKey(t *testing.T, accountNumber string) string {
+	t.Helper()
+	authKey, err := identity.DeriveAuthKey(accountNumber)
+	if err != nil {
+		t.Fatalf("DeriveAuthKey: %v", err)
+	}
+	return authKey
+}
+
+// headerString renders headers deterministically for test labels.
+func headerString(headers map[string]string) string {
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, len(names))
+	for i, name := range names {
+		parts[i] = name + "=" + headers[name]
+	}
+	return strings.Join(parts, ",")
+}
+
+func containsString(haystack, needle string) bool {
+	return strings.Contains(haystack, needle)
 }

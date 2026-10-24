@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -103,57 +104,50 @@ func HashAccountNumber(accountNumber string) (string, error) {
 	return encoded, nil
 }
 
-// VerifyAccountNumberHash verifies account number against Argon2id hash
-func VerifyAccountNumberHash(encodedHash, accountNumber string) error {
-	// Parse encoded hash format: "argon2id$m=65536$t=3$p=2$<salt_hex>$<hash_hex>"
-	var memory, time, parallelism uint32
-	var saltHex, hashHex string
+// parseParam reads one "<name>=<canonical decimal>" field within [min, max].
+func parseParam(field, name string, min, max uint64) (uint32, error) {
+	digits := strings.TrimPrefix(field, name+"=")
+	if digits == field || digits == "" {
+		return 0, fmt.Errorf("invalid %s parameter", name)
+	}
+	value, err := strconv.ParseUint(digits, 10, 32)
+	if err != nil || strconv.FormatUint(value, 10) != digits || value < min || value > max {
+		return 0, fmt.Errorf("invalid %s parameter", name)
+	}
+	return uint32(value), nil
+}
 
-	// Split by $ to parse components
+// VerifyAccountNumberHash verifies an auth key against a stored Argon2id hash
+// ("argon2id$m=<KiB>$t=<n>$p=<n>$<salt hex>$<hash hex>"). Every parameter is range-checked
+// before Argon2 runs, so a corrupted record can neither crash nor exhaust the server.
+func VerifyAccountNumberHash(encodedHash, accountNumber string) error {
 	parts := strings.Split(encodedHash, "$")
 	if len(parts) != 6 || parts[0] != "argon2id" {
 		return fmt.Errorf("invalid hash format: expected 6 parts starting with 'argon2id'")
 	}
-
-	// Parse memory
-	if _, err := fmt.Sscanf(parts[1], "m=%d", &memory); err != nil {
-		return fmt.Errorf("invalid memory parameter: %w", err)
-	}
-
-	// Parse time
-	if _, err := fmt.Sscanf(parts[2], "t=%d", &time); err != nil {
-		return fmt.Errorf("invalid time parameter: %w", err)
-	}
-
-	// Parse parallelism
-	if _, err := fmt.Sscanf(parts[3], "p=%d", &parallelism); err != nil {
-		return fmt.Errorf("invalid parallelism parameter: %w", err)
-	}
-
-	saltHex = parts[4]
-	hashHex = parts[5]
-
-	// Validate salt and hash are not empty
-	if saltHex == "" {
-		return fmt.Errorf("invalid hash format: salt is empty")
-	}
-	if hashHex == "" {
-		return fmt.Errorf("invalid hash format: hash is empty")
-	}
-
-	// Decode salt and hash
-	salt, err := hex.DecodeString(saltHex)
+	memory, err := parseParam(parts[1], "m", config.MinArgon2MemoryKiB, config.MaxArgon2MemoryKiB)
 	if err != nil {
-		return fmt.Errorf("invalid salt encoding: %w", err)
+		return err
 	}
-
-	expectedHash, err := hex.DecodeString(hashHex)
+	timeCost, err := parseParam(parts[2], "t", config.MinArgon2Time, config.MaxArgon2Time)
 	if err != nil {
-		return fmt.Errorf("invalid hash encoding: %w", err)
+		return err
+	}
+	parallelism, err := parseParam(parts[3], "p", config.MinArgon2Parallelism, config.MaxArgon2Parallelism)
+	if err != nil {
+		return err
 	}
 
-	// Compute hash with same parameters
-	computedHash, err := cryptoengine.Argon2idKey([]byte(accountNumber), salt, time, memory, parallelism, uint32(len(expectedHash)))
+	salt, err := hex.DecodeString(parts[4])
+	if err != nil || len(salt) < config.MinArgon2SaltBytes || len(salt) > config.MaxArgon2SaltBytes {
+		return fmt.Errorf("invalid salt")
+	}
+	expectedHash, err := hex.DecodeString(parts[5])
+	if err != nil || len(expectedHash) < config.MinArgon2HashBytes || len(expectedHash) > config.MaxArgon2HashBytes {
+		return fmt.Errorf("invalid hash")
+	}
+
+	computedHash, err := cryptoengine.Argon2idKey([]byte(accountNumber), salt, timeCost, memory, parallelism, uint32(len(expectedHash)))
 	if err != nil {
 		return fmt.Errorf("argon2id failed: %w", err)
 	}
@@ -162,8 +156,6 @@ func VerifyAccountNumberHash(encodedHash, accountNumber string) error {
 	if !cryptoengine.ConstantTimeEqual(computedHash, expectedHash) {
 		return errors.New("account number hash mismatch")
 	}
-
-	accountLogger.Debug("VerifyAccountNumberHash: verified account number hash")
 	return nil
 }
 

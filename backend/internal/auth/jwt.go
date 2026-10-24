@@ -17,6 +17,12 @@ var (
 	jwtLogger       = utils.NewLogger("JWT")
 )
 
+// maxTokenBytes bounds what the JWT parser ever sees; a genuine token is ~250 bytes
+const maxTokenBytes = 1024
+
+// pendingSubject marks pending-registration tokens; it can never be a valid user id
+const pendingSubject = "pending_registration"
+
 // Claims represents JWT claims with security best practices
 // Uses RegisteredClaims.Subject for user UUID (standard "sub" claim)
 // SessionEpoch must equal users.session_epoch; logout bumps it to revoke every token
@@ -72,8 +78,11 @@ func getJWTBaseConfig() (string, string, string, error) {
 }
 
 // SignToken creates a JWT token for the given user UUID and session epoch
-// Security: Uses HS256, includes iss/aud/iat/exp/nbf claims
+// Security: Uses HS256, includes iss/aud/iat/exp/nbf claims; the subject must be an internal id
 func SignToken(userUUID string, sessionEpoch int) (string, error) {
+	if !utils.ValidateUUID(userUUID) || sessionEpoch < 0 {
+		return "", ErrInvalidToken
+	}
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
@@ -133,7 +142,7 @@ func SignPendingRegistrationToken(pendingID string) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			Audience:  jwt.ClaimStrings{audience},
-			Subject:   "pending_registration",
+			Subject:   pendingSubject,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiration)),
 			NotBefore: jwt.NewNumericDate(now),
@@ -155,7 +164,9 @@ func SignPendingRegistrationToken(pendingID string) (string, error) {
 // VerifyPendingRegistrationToken verifies a pending registration token and returns the pending AccountNumber
 // Returns error if token is not a pending registration token or is invalid/expired
 func VerifyPendingRegistrationToken(tokenString string) (string, error) {
-	jwtLogger.Debug("VerifyPendingRegistrationToken: starting verification")
+	if len(tokenString) == 0 || len(tokenString) > maxTokenBytes {
+		return "", ErrInvalidToken
+	}
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
@@ -191,7 +202,7 @@ func VerifyPendingRegistrationToken(tokenString string) (string, error) {
 	}
 
 	// Verify this is a pending registration token
-	if !claims.IsPending || claims.Subject != "pending_registration" {
+	if !claims.IsPending || claims.Subject != pendingSubject {
 		jwtLogger.Warn("VerifyPendingRegistrationToken: not a pending registration token")
 		return "", ErrInvalidToken
 	}
@@ -214,8 +225,11 @@ func VerifyPendingRegistrationToken(tokenString string) (string, error) {
 }
 
 // VerifyToken verifies a JWT token and returns the session it carries
-// Security: Validates signing method, issuer, audience, and expiration
+// Security: Validates signing method, issuer, audience, expiration and the subject's exact shape
 func VerifyToken(tokenString string) (*Session, error) {
+	if len(tokenString) == 0 || len(tokenString) > maxTokenBytes {
+		return nil, ErrInvalidToken
+	}
 
 	secret, issuer, audience, err := getJWTBaseConfig()
 	if err != nil {
@@ -243,7 +257,6 @@ func VerifyToken(tokenString string) (*Session, error) {
 			jwtLogger.Warn("VerifyToken: token expired")
 			return nil, ErrExpiredToken
 		}
-		jwtLogger.LogError("VerifyToken", err)
 		jwtLogger.Warn("VerifyToken: invalid token")
 		return nil, ErrInvalidToken
 	}
@@ -254,8 +267,8 @@ func VerifyToken(tokenString string) (*Session, error) {
 		return nil, ErrInvalidToken
 	}
 
-	// Validate Subject is not empty and is not a pending-registration token
-	if claims.Subject == "" || claims.Subject == "pending_registration" || claims.IssuedAt == nil || claims.SessionEpoch < 0 {
+	// Whitelist: the subject is an internal user id (never a pending-registration token)
+	if !utils.ValidateUUID(claims.Subject) || claims.IssuedAt == nil || claims.SessionEpoch < 0 {
 		jwtLogger.Warn("VerifyToken: Subject/iat/sep claims invalid")
 		return nil, ErrInvalidToken
 	}

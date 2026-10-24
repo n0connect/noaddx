@@ -3,11 +3,11 @@ package middleware
 import (
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"noaddx/internal/auth"
 	"noaddx/internal/config"
+	"noaddx/internal/models"
 	"noaddx/internal/store"
 	"noaddx/internal/utils"
 )
@@ -15,53 +15,55 @@ import (
 var (
 	authMiddlewareLogger = utils.NewLogger("AUTH_MIDDLEWARE")
 	userRepository       = store.NewUserRepository()
+
+	// ErrNoSession means the request carries no live, non-revoked session
+	ErrNoSession = errors.New("no valid session")
 )
 
-// sessionToken extracts the JWT: HttpOnly cookie first (browsers), Bearer header second (API clients)
-func sessionToken(r *http.Request) string {
-	if token := auth.GetAuthCookie(r); token != "" {
-		return token
+// Authenticate is the single session gate (protected routes and logout share it).
+// The only credential is the HttpOnly session cookie: no header, no body field, so the
+// token is never readable by page script. It must verify and carry the user's current
+// session epoch, which every logout bumps.
+func Authenticate(r *http.Request) (*models.User, *auth.Session, error) {
+	token := auth.GetAuthCookie(r)
+	if token == "" {
+		return nil, nil, ErrNoSession
 	}
-	parts := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return ""
+	session, err := auth.VerifyToken(token)
+	if err != nil {
+		if !errors.Is(err, auth.ErrExpiredToken) {
+			authMiddlewareLogger.Warn("invalid session token presented")
+		}
+		return nil, nil, ErrNoSession
 	}
-	return parts[1]
+	user, err := userRepository.FindByUUID(session.UserUUID)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			return nil, nil, err
+		}
+		return nil, nil, ErrNoSession
+	}
+	if user.SessionEpoch != session.SessionEpoch {
+		authMiddlewareLogger.Debug("revoked session presented")
+		return nil, nil, ErrNoSession
+	}
+	return user, session, nil
 }
 
-// JWTMiddleware verifies JWT token and adds user UUID to request context
-// SECURITY: Token must carry the user's current session epoch (logout revokes every token)
+// JWTMiddleware admits only requests with a live session and adds the user UUID to the context.
 // SECURITY: Sliding session: tokens past half their lifetime are re-issued as a fresh cookie
 func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tokenString := sessionToken(r)
-		if tokenString == "" {
-			authMiddlewareLogger.Debug("JWTMiddleware: missing authentication")
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		session, err := auth.VerifyToken(tokenString)
+		user, session, err := Authenticate(r)
 		if err != nil {
-			if errors.Is(err, auth.ErrExpiredToken) {
-				authMiddlewareLogger.Debug("JWTMiddleware: expired token")
-			} else {
-				authMiddlewareLogger.Warn("JWTMiddleware: invalid token")
+			if !errors.Is(err, ErrNoSession) {
+				authMiddlewareLogger.LogError("Authenticate", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
 			}
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Verify user exists and the session has not been revoked
-		user, err := userRepository.FindByUUID(session.UserUUID)
-		if err != nil {
-			authMiddlewareLogger.LogError("UserRepository.FindByUUID", err)
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-		if user.SessionEpoch != session.SessionEpoch {
-			authMiddlewareLogger.Warn("JWTMiddleware: revoked session presented")
-			auth.ClearAuthCookie(w)
+			if auth.GetAuthCookie(r) != "" {
+				auth.ClearAuthCookie(w)
+			}
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

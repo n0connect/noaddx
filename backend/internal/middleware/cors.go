@@ -40,27 +40,12 @@ func loadAllowedOrigins() {
 	})
 }
 
-// isOriginAllowed checks if an origin is allowed, with flexible matching for localhost
+// isOriginAllowed is an exact whitelist match: scheme, host and port must all be listed in
+// ALLOWED_ORIGINS. No prefix or pattern matching ("http://localhost:3000.evil.example").
 func isOriginAllowed(origin string) bool {
 	loadAllowedOrigins()
-
-	// Exact match first
-	if _, ok := allowedOrigins[origin]; ok {
-		return true
-	}
-
-	// Flexible matching for localhost: allow any port for localhost origins
-	if strings.HasPrefix(origin, "http://localhost:") || strings.HasPrefix(origin, "http://127.0.0.1:") {
-		// Check if base localhost is in allowed origins
-		if _, ok := allowedOrigins["http://localhost"]; ok && strings.HasPrefix(origin, "http://localhost:") {
-			return true
-		}
-		if _, ok := allowedOrigins["http://127.0.0.1"]; ok && strings.HasPrefix(origin, "http://127.0.0.1:") {
-			return true
-		}
-	}
-
-	return false
+	_, ok := allowedOrigins[origin]
+	return ok
 }
 
 func CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
@@ -76,7 +61,7 @@ func CORSMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 				// Whitelist: exactly the methods and headers the API uses
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 				w.Header().Set("Access-Control-Max-Age", "3600")
 			} else {
 				// If Preflight then return error

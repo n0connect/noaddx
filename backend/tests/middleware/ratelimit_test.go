@@ -6,6 +6,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -196,5 +197,24 @@ func TestRateLimitMiddleware_TokenRefill(t *testing.T) {
 
 	if handlerCalled != 11 {
 		t.Errorf("Handler called %d times after refill, want 11", handlerCalled)
+	}
+}
+
+// The limiter's memory is bounded at insertion time, not only at the periodic cleanup:
+// a flood of new client keys cannot grow it past RATE_LIMIT_MAX_BUCKETS.
+func TestRateLimiter_BucketCountIsBoundedAtInsertion(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	defer testutil.TeardownTestEnv(t)
+	t.Setenv("RATE_LIMIT_MAX_BUCKETS", "50")
+	middleware.ResetRateLimiterForTesting()
+	t.Cleanup(middleware.ResetRateLimiterForTesting)
+
+	for i := 0; i < 1000; i++ {
+		if !middleware.AllowKey("flood:" + strconv.Itoa(i)) {
+			t.Fatalf("fresh key %d was refused", i)
+		}
+		if n := middleware.RateLimiterBucketCountForTesting(); n > 50 {
+			t.Fatalf("after %d keys the limiter holds %d buckets, cap is 50", i+1, n)
+		}
 	}
 }

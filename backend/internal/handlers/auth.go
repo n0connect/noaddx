@@ -2,8 +2,8 @@ package handlers
 
 import (
 	"encoding/hex"
+	"errors"
 	"net/http"
-	"strings"
 
 	"noaddx/internal/auth"
 	"noaddx/internal/encryption"
@@ -111,6 +111,10 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Store AccountNumber server-side with pending ID
 		if err := auth.StorePendingRegistration(pendingID, accountNumber); err != nil {
+			if errors.Is(err, auth.ErrPendingStoreFull) {
+				http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+				return
+			}
 			authLogger.LogError("StorePendingRegistration", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
@@ -251,34 +255,26 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	authLogger.Debug("New identity registered")
 
-	// Generate JWT token for immediate login (using internal UUID as subject)
+	// Immediate login: the session token goes into the HttpOnly cookie and nowhere else
 	token, err := auth.SignToken(internalUUID, user.SessionEpoch)
 	if err != nil {
 		authLogger.LogError("SignToken", err)
-		// Account created but token failed - user can still login manually
-		// SECURITY: Don't return AccountNumber in response
-		responseData := models.RegisterResponse{
+		// Account created but no session: the user logs in with the account number
+		utils.EncodeJSONResponse(w, models.RegisterResponse{
 			Success:   true,
 			Message:   "Account created successfully",
 			Confirmed: true,
-		}
-		utils.EncodeJSONResponse(w, responseData, http.StatusCreated)
+		}, http.StatusCreated)
 		return
 	}
-
-	// SECURITY: Set HttpOnly cookie (primary auth method for browsers - XSS protection)
-	// Token also returned in response for API client compatibility
 	auth.SetAuthCookie(w, token)
 
-	// SECURITY: Don't return AccountNumber in response (already shown to user in Phase 1)
-	// Prevents network sniffing and reduces information leakage
-	responseData := models.RegisterResponse{
+	// SECURITY: Don't return the AccountNumber again (already shown once in phase 1)
+	utils.EncodeJSONResponse(w, models.RegisterResponse{
 		Success:   true,
 		Message:   "Account created successfully",
-		Token:     token,
 		Confirmed: true,
-	}
-	utils.EncodeJSONResponse(w, responseData, http.StatusCreated)
+	}, http.StatusCreated)
 	authLogger.LogResponse(http.StatusCreated, "Account created successfully")
 }
 
@@ -304,12 +300,15 @@ func PoWChallengeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Rate-limit key: HMAC(client IP) with a per-boot secret (forwarded headers trusted only from TRUSTED_PROXIES)
 	challenge, err := pow.GenerateChallenge(middleware.ClientKey(r))
-	if err != nil {
+	switch {
+	case errors.Is(err, pow.ErrRateLimited):
+		http.Error(w, "Too many requests", http.StatusTooManyRequests)
+		return
+	case errors.Is(err, pow.ErrCapacity):
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	case err != nil:
 		authLogger.LogError("GenerateChallenge", err)
-		if strings.Contains(err.Error(), "rate limit exceeded") {
-			http.Error(w, "Too many requests", http.StatusTooManyRequests)
-			return
-		}
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -380,12 +379,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	// Find user by lookup
 	user, err := userRepository.FindByAccountLookup(lookup)
 	if err != nil {
-		authLogger.LogError("UserRepository.FindByAccountLookup", err)
-		authLogger.Warn("Login failed: user not found")
-		// SECURITY: Spend a full Argon2id verification anyway to prevent a timing attack
-		// This ensures user existence cannot be determined by response time
-		// Even though OpenSSL Argon2id is constant-time within verification,
-		// the absence of verification creates a timing side-channel
+		authLogger.Debug("Login failed: no account for this auth key")
+		// SECURITY: Spend a full Argon2id verification anyway so that response time does
+		// not reveal whether an account exists (no user-enumeration timing side channel)
 		auth.EqualizeVerificationTiming(req.AuthKey)
 		utils.EncodeJSONResponse(w, models.LoginResponse{Success: false, Message: "Invalid credentials"}, http.StatusUnauthorized)
 		return
@@ -415,15 +411,8 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SECURITY: Set HttpOnly cookie (primary auth method for browsers - XSS protection)
-	// Token also returned in response for API client compatibility
+	// SECURITY: the session token goes into the HttpOnly cookie and nowhere else
 	auth.SetAuthCookie(w, token)
-
-	responseData := models.LoginResponse{
-		Success: true,
-		Message: "Login successful",
-		Token:   token,
-	}
-	utils.EncodeJSONResponse(w, responseData, http.StatusOK)
+	utils.EncodeJSONResponse(w, models.LoginResponse{Success: true, Message: "Login successful"}, http.StatusOK)
 	authLogger.LogResponse(http.StatusOK, "LoginHandler completed successfully")
 }

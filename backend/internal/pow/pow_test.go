@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -181,7 +182,7 @@ func TestGenerateChallenge_RateLimitedPerClient(t *testing.T) {
 			t.Fatalf("request %d within the window rejected: %v", i, err)
 		}
 	}
-	if _, err := GenerateChallenge(client); err == nil || err.Error() != "rate limit exceeded" {
+	if _, err := GenerateChallenge(client); !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("request beyond the window = %v, want rate limit", err)
 	}
 	if _, err := GenerateChallenge(newClientKey(t)); err != nil {
@@ -232,5 +233,33 @@ func TestDifficulty_ClampedToConfiguredRange(t *testing.T) {
 		if got := GetPoWDifficulty(); got != want {
 			t.Errorf("POW_DIFFICULTY=%s → %d, want %d", env, got, want)
 		}
+	}
+}
+
+// Outstanding challenges are bounded no matter how many distinct clients ask: past the cap
+// the issuer refuses (fail closed) instead of growing without limit.
+func TestGenerateChallenge_OutstandingChallengesAreBounded(t *testing.T) {
+	t.Setenv("POW_DIFFICULTY", "18")
+	t.Cleanup(func() {
+		challengeMutex.Lock()
+		issuedChallenges = make(map[string]*ChallengeEntry)
+		challengeMutex.Unlock()
+	})
+
+	refused := false
+	for i := 0; i <= maxOutstandingChallenges; i++ {
+		if _, err := GenerateChallenge(newClientKey(t)); err != nil {
+			if !errors.Is(err, ErrCapacity) {
+				t.Fatalf("challenge %d: %v, want ErrCapacity", i, err)
+			}
+			refused = true
+			break
+		}
+	}
+	challengeMutex.RLock()
+	outstanding := len(issuedChallenges)
+	challengeMutex.RUnlock()
+	if !refused || outstanding > maxOutstandingChallenges {
+		t.Fatalf("refused=%v outstanding=%d cap=%d", refused, outstanding, maxOutstandingChallenges)
 	}
 }
