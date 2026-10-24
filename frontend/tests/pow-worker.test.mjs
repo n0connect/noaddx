@@ -1,6 +1,6 @@
 // frontend/js/pow-worker.js loaded as a classic script whose global object is `self`,
 // as in a dedicated worker. Its hand-written SHA-256 is checked against Node's.
-// Run: node --test frontend/tests/
+// Run: node --test frontend/tests/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

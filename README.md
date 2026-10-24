@@ -89,7 +89,7 @@ AccountNumber (256-bit CSPRNG, base64url, 43 chars) - generated at signup, shown
                                                                              server keeps the public key only
 ```
 
-Both Go (`backend/internal/identity`) and JavaScript (`frontend/js/crypto.js`) implement this exact derivation and are tested byte-for-byte against each other (`node --test frontend/tests/`, `backend/tests/identity`).
+Both Go (`backend/internal/identity`) and JavaScript (`frontend/js/crypto.js`) implement this exact derivation and are tested byte-for-byte against each other (`node --test frontend/tests/*.test.mjs`, `backend/tests/identity`).
 
 In the browser, the private key is imported into IndexedDB as a **non-extractable** `CryptoKey`. Script running on the page can execute cryptographic operations, but cannot read or export raw private key bytes.
 

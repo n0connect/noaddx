@@ -174,7 +174,7 @@ go mod download
 Node.js 20+ has native support for `node:crypto` with WebCrypto X25519 and `node --test`:
 ```bash
 node -v # Must be >= 20.0.0
-node --test frontend/tests/
+node --test frontend/tests/*.test.mjs
 ```
 No `package.json` or `npm install` is required; it executes against Node's built-in test runner.
 

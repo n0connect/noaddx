@@ -1,5 +1,5 @@
 // frontend/validation.js loaded exactly as the browser loads it (after js/crypto.js).
-// Run: node --test frontend/tests/
+// Run: node --test frontend/tests/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

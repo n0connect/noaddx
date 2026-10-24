@@ -9,7 +9,7 @@ This guide covers running test suites across Go backend units, database migratio
 ```text
 +-------------------------------------------------------------+
 | 1. Frontend WebCrypto Verification                          |
-|    node --test frontend/tests/                              |
+|    node --test frontend/tests/*.test.mjs                              |
 |    (Checks byte-for-byte derivation matches Go)             |
 +-------------------------------------------------------------+
 | 2. Backend Unit & Cryptographic Tests                       |
@@ -72,7 +72,7 @@ Verify that JavaScript's native W3C WebCrypto produces identical cryptographic k
 
 ```bash
 make test-crypto
-# Direct command: node --test frontend/tests/
+# Direct command: node --test frontend/tests/*.test.mjs
 ```
 
 To run both unit tests and frontend crypto tests with a single command:

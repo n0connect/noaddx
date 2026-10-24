@@ -196,7 +196,7 @@ test-unit:
 
 test-crypto:
 	@echo "[INFO] Running frontend WebCrypto verification tests..."
-	@node --test frontend/tests/
+	@node --test frontend/tests/*.test.mjs
 
 test-all: test-crypto test-unit
 

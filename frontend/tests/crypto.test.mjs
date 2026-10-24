@@ -1,5 +1,5 @@
 // Cross-implementation tests: frontend/js/crypto.js must match backend/internal/identity.
-// Run: node --test frontend/tests/
+// Run: node --test frontend/tests/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
