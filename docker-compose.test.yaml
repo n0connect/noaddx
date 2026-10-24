@@ -1,5 +1,5 @@
 # docker-compose.test.yaml - Test environment
-# Usage: ./run.sh --test
+# Usage: make test
 
 name: noaddress-test
 

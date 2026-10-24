@@ -10,7 +10,7 @@ This guide details real-world pitfalls, diagnostic commands, and immediate copy-
 |---|---|---|
 | `OpenSSL >= 3.2.0 is required (LibreSSL is not supported)` | macOS default `/usr/bin/openssl` is Apple LibreSSL. | `export PATH="$(brew --prefix openssl@3)/bin:$PATH"` |
 | `TypeError: Cannot read properties of undefined (reading 'subtle')` | Accessing via non-secure HTTP on IP address (e.g. `192.168.x.x`). | Use `http://localhost` or configure HTTPS/TLS. |
-| `bash: ./setup.sh: \r: invalid command` | Git on Windows converted script line endings to CRLF. | `dos2unix setup.sh run.sh` |
+| `bash: \r: invalid command` | Git on Windows converted script line endings to CRLF. | `dos2unix Makefile setup.sh run.sh` |
 | `bind: address already in use (port 80 or 5432)` | Port occupied by another local service (Apache, local Postgres). | `sudo lsof -i :80` or remap ports in `docker-compose.yaml`. |
 | `failed to connect to host=localhost:5432` inside container | Container tries connecting to itself instead of Postgres service. | Set `DOCKER_DB_HOST=postgres` in `.env`. |
 | Backend container exits with code `137` | Linux Out-Of-Memory (OOM) Killer killed backend during Argon2id. | Reduce `ARGON2_MEMORY_KIB=32768` and enable host swap. |
@@ -21,20 +21,20 @@ This guide details real-world pitfalls, diagnostic commands, and immediate copy-
 ## 1. macOS: LibreSSL Rejection
 
 ### Symptom
-Running `./setup.sh` on macOS exits with:
+Running `make setup` on macOS exits with:
 ```text
 ERROR: OpenSSL >= 3.2.0 is required (LibreSSL is not supported).
 ```
 
 ### Cause
-macOS ships with `/usr/bin/openssl`, which is actually Apple's LibreSSL fork (v3.3.6). `setup.sh` requires real OpenSSL >= 3.2.0. Even after `brew install openssl@3`, Homebrew keeps OpenSSL "keg-only" to avoid breaking Apple system utilities.
+macOS ships with `/usr/bin/openssl`, which is actually Apple's LibreSSL fork (v3.3.6). `make setup` requires real OpenSSL >= 3.2.0. Even after `brew install openssl@3`, Homebrew keeps OpenSSL "keg-only" to avoid breaking Apple system utilities.
 
 ### Immediate Fix
 Copy and paste this into your terminal:
 ```bash
 brew install openssl@3
 export PATH="$(brew --prefix openssl@3)/bin:$PATH"
-./setup.sh
+make setup
 ```
 To persist this across all future terminal sessions:
 ```bash
@@ -63,9 +63,9 @@ W3C WebCrypto API specification requires a **Secure Context**. Modern browsers a
 ## 3. Windows / WSL2: CRLF Line-Ending Failure
 
 ### Symptom
-Inside WSL2, executing `./setup.sh` or `./run.sh` fails with:
+Inside WSL2, executing `make` or shell scripts fails with:
 ```text
-bash: ./setup.sh: \r: invalid command
+bash: \r: invalid command
 ```
 
 ### Cause
@@ -74,10 +74,10 @@ When cloned using Git for Windows, text files have Unix `LF` line-endings replac
 ### Immediate Fix
 Inside your WSL terminal, run:
 ```bash
-sed -i 's/\r$//' setup.sh run.sh
+sed -i 's/\r$//' Makefile setup.sh run.sh
 # Or using dos2unix:
 sudo apt-get install -y dos2unix
-dos2unix setup.sh run.sh
+dos2unix Makefile setup.sh run.sh
 ```
 To prevent Git from doing this in future checkouts:
 ```bash
@@ -89,7 +89,7 @@ git config --global core.autocrlf input
 ## 4. Port Conflict: Port 80 or 5432 Already in Use
 
 ### Symptom
-Running `./run.sh` fails during Docker startup:
+Running `make up` fails during Docker startup:
 ```text
 Error response from daemon: driver failed programming external connectivity on endpoint noaddress-frontend:
 Bind for 0.0.0.0:80 failed: port is already allocated

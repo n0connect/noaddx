@@ -14,7 +14,7 @@ Before running any script, make sure your machine has:
 
 > [!IMPORTANT]
 > **macOS Users Attention:**
-> macOS ships with **LibreSSL** by default. Running `./setup.sh` directly will fail with `OpenSSL >= 3.2.0 is required`.
+> macOS ships with **LibreSSL** by default. Running `make setup` directly will fail with `OpenSSL >= 3.2.0 is required`.
 > Run this single command before running setup:
 > ```bash
 > brew install openssl@3 && export PATH="$(brew --prefix openssl@3)/bin:$PATH"
@@ -26,17 +26,16 @@ Before running any script, make sure your machine has:
 
 ### Step 1: Configure Environment
 
-Run `setup.sh` to generate cryptographic master keys, peppers, and default configuration in `.env`:
+Run `make setup` to generate cryptographic master keys, peppers, and default configuration in `.env`:
 
 ```bash
-chmod +x setup.sh run.sh
-./setup.sh
+make setup
 ```
 
 **What happens here:**
 - Checks system dependencies (Docker, OpenSSL >= 3.2.0).
 - Generates a 256-bit CSPRNG `JWT_SECRET`, `ACCOUNT_LOOKUP_PEPPER`, and `MASTER_KEY_ACTIVE`.
-- Populates `.env` with secure default values.
+- Populates `.env` with secure default values and strict permissions (`0600`).
 
 ---
 
@@ -45,17 +44,17 @@ chmod +x setup.sh run.sh
 Start all services (PostgreSQL, Go backend, and Nginx reverse proxy):
 
 ```bash
-./run.sh
+make up
 ```
 
 To clean all previous containers and run a fresh build:
 ```bash
-./run.sh --clean
+make clean && make up
 ```
 
 To run the containerized test suite first and only launch if all tests pass:
 ```bash
-./run.sh --test-run
+make test-run
 ```
 
 **Expected output:**

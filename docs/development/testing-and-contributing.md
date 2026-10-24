@@ -18,7 +18,7 @@ This guide covers running test suites across Go backend units, database migratio
 +-------------------------------------------------------------+
 | 3. Database Migration & Integration E2E Tests               |
 |    Requires PostgreSQL (containerized or local)             |
-|    ./run.sh --test                                          |
+|    make test                                                |
 +-------------------------------------------------------------+
 ```
 
@@ -31,7 +31,7 @@ This guide covers running test suites across Go backend units, database migratio
 Run all tests inside an isolated Docker container with a disposable tmpfs PostgreSQL instance:
 
 ```bash
-./run.sh --test
+make test
 ```
 
 **What this does:**
@@ -49,18 +49,17 @@ If developing natively on your host machine:
 
 #### 1. Non-DB Unit Tests (Instant, No Postgres Required)
 ```bash
-cd backend
-go test -tags=test -v ./internal/pow/... ./internal/handlers/... ./tests/identity/... ./tests/encryption/... ./tests/utils/...
+make test-unit
+# Direct command: cd backend && go test -tags=test -v ./internal/pow/... ./internal/handlers/... ./tests/identity/... ./tests/encryption/... ./tests/utils/...
 ```
 
 #### 2. Full Suite (Requires Local Postgres running on 5432)
 ```bash
-cd backend
-
 # Step 1: Database Migration Tests (MUST RUN FIRST)
-DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noaddress_test go test -tags=test ./tests/database -v
+make test-db
 
 # Step 2: Full Suite with Race Condition Detector
+cd backend
 DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noaddress_test go test -p 1 -race -tags=test ./...
 ```
 
@@ -71,7 +70,13 @@ DB_HOST=127.0.0.1 DB_PORT=5432 DB_USER=postgres DB_PASSWORD=postgres DB_NAME=noa
 Verify that JavaScript's native W3C WebCrypto produces identical cryptographic keys, fingerprints, and AAD ciphertexts as Go's internal packages:
 
 ```bash
-node --test frontend/tests/
+make test-crypto
+# Direct command: node --test frontend/tests/
+```
+
+To run both unit tests and frontend crypto tests with a single command:
+```bash
+make test-all
 ```
 
 **Requirements:** Node.js 20+ (utilizes native `node:crypto` and built-in test runner, zero npm dependencies).

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 330 52" width="330" height="52">
+  <style>
+    .ascii {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 9px;
+      line-height: 11px;
+      font-weight: 700;
+      fill: #1f2328;
+      white-space: pre;
+    }
+    .dot {
+      fill: #0969da;
+      font-weight: 800;
+    }
+    @media (prefers-color-scheme: dark) {
+      .ascii {
+        fill: #f0f6fc;
+      }
+      .dot {
+        fill: #58a6ff;
+      }
+    }
+  </style>
+  <text class="ascii" xml:space="preserve">
+    <tspan x="8" y="12">                         _      _                         </tspan>
+    <tspan x="8" y="23">  _ _    ___   __ _   __| |  __| |  _ _   ___   ___  ___  </tspan>
+    <tspan x="8" y="34"> | &apos; \  / _ \ / _` | / _` | / _` | | &apos;_| / -_) (_-&lt; (_-&lt;  </tspan>
+    <tspan x="8" y="45"> |_||_| \___/ \__,_| \__,_| \__,_| |_|   \___| /__/ /__/ </tspan><tspan class="dot">.</tspan>
+  </text>
+</svg>

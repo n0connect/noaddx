@@ -23,7 +23,7 @@ This guide provides deep, situation-aware setup instructions across **macOS (App
 ### The LibreSSL vs. OpenSSL >= 3.2.0 Trap
 
 macOS ships `/usr/bin/openssl` by default, but it is actually **Apple's LibreSSL fork** (typically LibreSSL 3.3.6).
-`setup.sh` strictly enforces **OpenSSL >= 3.2.0** to generate high-entropy cryptographic seeds and will abort with:
+`make setup` strictly enforces **OpenSSL >= 3.2.0** to generate high-entropy cryptographic seeds and will abort with:
 ```text
 ERROR: OpenSSL >= 3.2.0 is required (LibreSSL is not supported).
 ```
@@ -83,13 +83,13 @@ sudo apt-get install -y docker.io docker-compose-v2
 
 > [!WARNING]
 > **Ubuntu 22.04 LTS (Jammy) Note:**
-> Ubuntu 22.04 LTS ships with OpenSSL `3.0.2`. `setup.sh` requires `>= 3.2.0`.
+> Ubuntu 22.04 LTS ships with OpenSSL `3.0.2`. `make setup` requires `>= 3.2.0`.
 > If you are on Ubuntu 22.04, upgrade OpenSSL or use Ubuntu 24.04 LTS / Debian 12 (Bookworm).
 
 ### 2. Fedora / Red Hat / Rocky Linux
 
 ```bash
-sudo dnf install -y openssl git curl
+sudo dnf install -y openssl git curl make
 sudo dnf install -y docker-ce docker-compose-plugin
 sudo systemctl enable --now docker
 ```
@@ -97,13 +97,13 @@ sudo systemctl enable --now docker
 ### 3. Arch Linux
 
 ```bash
-sudo pacman -Syu --needed openssl git docker docker-compose
+sudo pacman -Syu --needed openssl git docker docker-compose make
 sudo systemctl enable --now docker
 ```
 
 ### Critical Linux Permission Check (Non-Root Docker)
 
-If running `./run.sh` fails with `permission denied while trying to connect to the Docker daemon socket`:
+If running `make up` fails with `permission denied while trying to connect to the Docker daemon socket`:
 
 ```bash
 # Add your user to the docker group
@@ -116,23 +116,18 @@ newgrp docker
 docker ps
 ```
 
-Ensure scripts are marked executable:
-```bash
-chmod +x setup.sh run.sh
-```
-
 ---
 
 ## Windows 10 / 11 Installation (via WSL2)
 
-`noaddress.` relies on standard POSIX shell scripts (`setup.sh`, `run.sh`), Linux-targeted Docker images, and Unix socket conventions. **Running directly on native Windows PowerShell/CMD is not supported; you MUST use WSL2.**
+`noaddress.` relies on a standard Makefile, Linux-targeted Docker images, and Unix socket conventions. **Running directly on native Windows PowerShell/CMD is not supported; you MUST use WSL2.**
 
 ### The CRLF vs. LF Line-Ending Trap
 
 When Git clones a repository on Windows, it often automatically converts Unix line endings (`LF`) to Windows carriage returns (`CRLF`).
-When you execute `./setup.sh` inside WSL2, bash encounters `\r` and fails immediately with errors such as:
+If shell scripts or Makefile recipes contain `\r`, commands may fail with errors such as:
 ```text
-bash: ./setup.sh: \r: invalid command
+bash: \r: invalid command
 ```
 
 ### Complete Windows Setup Procedure
@@ -151,20 +146,20 @@ bash: ./setup.sh: \r: invalid command
    ```
 
 3. **If you already cloned the repo and have CRLF errors:**
-   Fix all script line endings with one command inside WSL:
+   Fix line endings with one command inside WSL:
    ```bash
    sudo apt-get install -y dos2unix
-   dos2unix setup.sh run.sh
+   dos2unix Makefile setup.sh run.sh
    ```
 
 4. **Install Docker Desktop for Windows:**
    - In Docker Desktop Settings -> *General*, check **"Use the WSL 2 based engine"**.
    - In Settings -> *Resources* -> *WSL Integration*, enable integration with your installed distribution (e.g., `Ubuntu-24.04`).
 
-5. **Execute Setup and Runner inside WSL2:**
+5. **Execute Setup and Launch inside WSL2:**
    ```bash
-   ./setup.sh
-   ./run.sh
+   make setup
+   make up
    ```
    Access the app from your Windows browser at `http://localhost`.
 
