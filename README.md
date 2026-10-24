@@ -169,19 +169,26 @@ make test-db      # Run database migration tests (requires local PostgreSQL)
 
 ---
 
-## Standards & Specifications
+## Built On
 
-- **X25519**: RFC 7748 - Elliptic Curves for Security
-- **HKDF**: RFC 5869 - HMAC-based Extract-and-Expand Key Derivation Function
-- **AES-256-GCM**: NIST SP 800-38D - Galois/Counter Mode (GCM) for Block Ciphers
-- **Argon2id**: RFC 9106 - Argon2 Memory-Hard Function for Password Hashing
-- **PKCS#8 for X25519**: RFC 8410 - Asymmetric Key Packages (OID 1.3.101.110)
-- **Base64URL**: RFC 4648 Section 5 - Base 64 with URL and Filename Safe Alphabet
-- **Trusted Types**: W3C Trusted Types API Specification
-- **Web Cryptography API**: W3C Recommendation (Secure Contexts)
-- **Zero-Trust Architecture**: NIST SP 800-207
+| Standard | Used for |
+|---|---|
+| [X25519 · RFC 7748](https://www.rfc-editor.org/rfc/rfc7748) | Identity keys and the per-conversation key agreement |
+| [HKDF-SHA-256 · RFC 5869](https://www.rfc-editor.org/rfc/rfc5869) | Deriving the auth key, identity key and conversation keys |
+| [AES-256-GCM · NIST SP 800-38D](https://csrc.nist.gov/pubs/sp/800/38/d/final) | Messages in the browser, sensitive columns at rest |
+| [HMAC-SHA-256 · RFC 2104](https://www.rfc-editor.org/rfc/rfc2104) | Account lookup and per-conversation pseudonyms |
+| [Argon2id · RFC 9106](https://www.rfc-editor.org/rfc/rfc9106) | Hashing the auth key on the server |
+| [JWT · RFC 7519](https://www.rfc-editor.org/rfc/rfc7519) | HS256 session token, HttpOnly cookie only |
+| [PKCS #8 for X25519 · RFC 8410](https://www.rfc-editor.org/rfc/rfc8410) | Importing the derived key as a non-extractable `CryptoKey` |
+| [Base64url · RFC 4648 §5](https://www.rfc-editor.org/rfc/rfc4648#section-5) | Account numbers, keys, invite codes, ciphertext |
+| [Web Cryptography API](https://www.w3.org/TR/WebCryptoAPI/) · [Trusted Types](https://w3c.github.io/trusted-types/dist/spec/) | All browser cryptography; DOM-injection sinks locked by CSP |
 
----
+## License
 
-**Version**: 1.0-dev  
-**License**: GNU Affero General Public License v3.0 ([`LICENSE`](LICENSE))
+noaddx. is free software under the [GNU Affero General Public License v3.0](LICENSE). Run a modified version as a network service, and you must offer its users the source.
+
+<br>
+
+<p align="center">
+  <sub><b>noaddx.</b> · no email · no phone · no address</sub>
+</p>
