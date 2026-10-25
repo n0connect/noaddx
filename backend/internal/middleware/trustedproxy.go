@@ -125,8 +125,14 @@ func ClientIP(r *http.Request) string {
 // ipv6SubscriberBits is the prefix one IPv6 subscriber controls (RFC 6177 assigns at least a /64)
 const ipv6SubscriberBits = 64
 
+// torCircuitPrefix holds the addresses tor gives onion-service clients
+// (HiddenServiceExportCircuitID haproxy): one per circuit, the circuit ID in the low 32 bits.
+// They reach us only through nginx's onion listener, which accepts the tor container alone.
+var torCircuitPrefix = &net.IPNet{IP: net.ParseIP("fc00:dead:beef:4dad::"), Mask: net.CIDRMask(64, 128)}
+
 // clientNetwork reduces an address to what one client controls: the IPv4 address itself,
-// or the IPv6 /64. Rate limits keyed on full IPv6 addresses are bypassed by rotation.
+// the IPv6 /64, or a single Tor circuit. Rate limits keyed on full IPv6 addresses are
+// bypassed by rotation; grouping Tor's /64 would put every onion user in one bucket.
 func clientNetwork(raw string) string {
 	ip := net.ParseIP(raw)
 	if ip == nil {
@@ -134,6 +140,9 @@ func clientNetwork(raw string) string {
 	}
 	if v4 := ip.To4(); v4 != nil {
 		return v4.String()
+	}
+	if torCircuitPrefix.Contains(ip) {
+		return ip.String()
 	}
 	return ip.Mask(net.CIDRMask(ipv6SubscriberBits, 128)).String() + "/64"
 }

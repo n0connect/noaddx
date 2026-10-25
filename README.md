@@ -51,6 +51,7 @@ Exhaustive, production-grade documentation is organized under the [`docs/`](docs
 | [**Verifying the Client**](docs/security/verifying-the-client.md) | Signed frontend manifest per release and `make verify-frontend` for any instance. |
 | [**REST API Reference**](docs/api/rest-api.md) | Exhaustive `/api/v2/*` endpoints, JSON constraints, and Server-Sent Events (SSE). |
 | [**Configuration & Tuning**](docs/operations/configuration-and-tuning.md) | Environment variables, dual-key rotation runbook, and Argon2id memory tuning. |
+| [**Onion Service (Tor)**](docs/operations/onion-service.md) | `make onion`, per-circuit rate limits, Tor-layer PoW, and onion key custody. |
 | [**Troubleshooting Guide**](docs/troubleshooting/troubleshooting-guide.md) | Common errors with immediate diagnostic steps and copy-paste solutions. |
 | [**Testing & Development**](docs/development/testing-and-contributing.md) | Automated testing suites, WebCrypto parity verification, and lock hierarchy rules. |
 | [**Security Policy**](SECURITY.md) | How to report a vulnerability, supported versions and scope. |

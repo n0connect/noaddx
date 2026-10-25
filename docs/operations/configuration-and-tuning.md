@@ -137,7 +137,7 @@ Master key rotation allows you to replace your database encryption key without l
 
 ## Nginx Security Headers & Trusted Types
 
-The reverse proxy (`nginx.conf`) enforces strict browser isolation policies:
+The reverse proxy (`nginx-site.conf`, shared by the clearnet and onion listeners in `nginx.conf`) enforces strict browser isolation policies:
 
 ```nginx
 # Content Security Policy (CSP)

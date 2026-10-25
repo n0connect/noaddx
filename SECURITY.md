@@ -22,7 +22,7 @@ formats and protocol labels may change, and fixes are not backported.
 
 In scope: the backend (`backend/`), the browser client (`frontend/`), the protocol described in
 [`docs/security/cryptography.md`](docs/security/cryptography.md), and the deployment files
-(`docker-compose*.yaml`, `*.Dockerfile`, `nginx.conf`, `Makefile`).
+(`docker-compose*.yaml`, `*.Dockerfile`, `nginx*.conf`, `tor/torrc`, `Makefile`).
 
 Out of scope, because they are stated design limits
 ([`docs/security/threat-model.md`](docs/security/threat-model.md#known-limitations)):

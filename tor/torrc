@@ -1,0 +1,18 @@
+# noaddx. onion service (tor >= 0.4.8). This tor only publishes the service: it offers no
+# SOCKS proxy and relays no traffic for others.
+SocksPort 0
+DataDirectory /var/lib/tor
+# notice level never includes client data (an onion service never learns client addresses)
+Log notice stdout
+
+HiddenServiceDir /var/lib/tor/noaddx
+HiddenServiceVersion 3
+# Every connection reaches nginx's onion listener prefixed with a PROXY header whose source
+# address identifies the circuit (fc00:dead:beef:4dad::/64), so per-client rate limits keep
+# working with no client IP at all
+HiddenServiceExportCircuitID haproxy
+# Tor-layer DoS defenses: client puzzles when the service is under load, rate-limited introductions
+HiddenServicePoWDefensesEnabled 1
+HiddenServiceEnableIntroDoSDefense 1
+# nginx's onion listener; tor resolves the compose service name once, at start
+HiddenServicePort 80 frontend:8081

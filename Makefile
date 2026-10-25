@@ -28,10 +28,12 @@ CGO_native := 0
 DEV_BRANCH := noaddx-dev
 RELEASE_BRANCH := main
 COMPOSE_ENV := ENGINE=$(ENGINE)
+# Includes the opt-in tor service, so stopping and listing always cover it too
+COMPOSE_ALL := $(DOCKER_COMPOSE) -f docker-compose.yaml --profile onion
 # Frontend manifest: what the release workflow signs and verify-frontend checks against
 MANIFEST ?= frontend.sha256
 
-.PHONY: all help setup check-deps check-docker build up start run down stop restart logs ps clean \
+.PHONY: all help setup check-deps check-docker build up onion onion-address start run down stop restart logs ps clean \
         test test-engines test-equivalence test-run test-unit test-crypto test-all test-db \
         build-ref tag-dev release check-clean-branch-dev check-clean-branch-release shell-backend shell-db \
         manifest verify-frontend
@@ -51,6 +53,8 @@ help:
 	@echo "  setup         Generate .env configuration with fresh cryptographic keys"
 	@echo "  build         Build Docker container images for ENGINE"
 	@echo "  up            Build and start services in background for ENGINE"
+	@echo "  onion         Like up, and publish the app as a Tor onion service"
+	@echo "  onion-address Print the onion address (published by make onion)"
 	@echo "  down          Stop and remove running containers"
 	@echo "  restart       Restart services"
 	@echo "  logs          Stream container logs (Ctrl+C to exit)"
@@ -137,12 +141,23 @@ up: check-docker $(ENV_FILE)
 	@echo "[OK] Services running"
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml ps
 
+# The tor service is opt-in: it makes this instance reachable from anywhere through Tor
+onion: check-docker $(ENV_FILE)
+	@echo "[INFO] Starting services and the onion service (crypto engine: $(ENGINE))..."
+	@$(COMPOSE_ENV) $(COMPOSE_ALL) up -d --build
+	@echo "[OK] Services running; the onion address appears once tor has published it (about a minute):"
+	@echo "     make onion-address"
+
+onion-address:
+	@docker exec noaddx-tor cat /var/lib/tor/noaddx/hostname 2>/dev/null \
+		|| echo "[INFO] Not published yet: run make onion, then retry in a minute"
+
 start: up
 run: up
 
 down:
 	@echo "[INFO] Stopping services..."
-	@$(DOCKER_COMPOSE) -f docker-compose.yaml down
+	@$(COMPOSE_ALL) down
 
 stop: down
 
@@ -151,15 +166,15 @@ restart:
 	@$(COMPOSE_ENV) $(DOCKER_COMPOSE) -f docker-compose.yaml restart
 
 logs:
-	@$(DOCKER_COMPOSE) -f docker-compose.yaml logs -f
+	@$(COMPOSE_ALL) logs -f
 
 ps:
-	@$(DOCKER_COMPOSE) -f docker-compose.yaml ps
+	@$(COMPOSE_ALL) ps
 
 clean:
 	@echo "[INFO] Cleaning containers, volumes and test artifacts..."
 	@$(DOCKER_COMPOSE) -f docker-compose.test.yaml down -v --rmi local 2>/dev/null || true
-	@$(DOCKER_COMPOSE) -f docker-compose.yaml down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_ALL) down -v --rmi local 2>/dev/null || true
 	@docker images --filter "reference=*noaddx*" -q | xargs docker rmi -f 2>/dev/null || true
 	@rm -rf test-results
 	@echo "[OK] Clean complete"

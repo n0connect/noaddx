@@ -73,6 +73,12 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   takes the account number again (as its auth key), and the browser checks the number belongs
   to this identity before sending, so the server never sees a second account's key. A `DELETE`
   that carries a body must now declare JSON, like every other write.
+- **Onion service (`make onion`).** An opt-in tor container publishes the app as a Tor v3
+  onion service with Tor's own PoW and introduction DoS defenses. Abuse control keeps working
+  without client IPs: tor names each circuit in a PROXY header, nginx's onion listener accepts
+  only the tor container, and the backend rate-limits each circuit separately (it used to group
+  Tor's whole address range like one IPv6 subscriber, which would have put every Tor user in
+  one bucket).
 - **Invites cost a proof of work.** `POST /api/v2/invites` now takes `{"pow": …}` with a fresh,
   single-use solution, like each registration phase: missing → 412, invalid or replayed → 403,
   empty body → 415. While the browser solves it, the invite code scrambles, masks and reveals

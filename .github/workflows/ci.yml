@@ -132,6 +132,11 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build --build-arg ENGINE=${{ matrix.engine }} -f dev.backend.Dockerfile -t noaddx-backend:${{ matrix.engine }} .
       - run: docker build -f dev.frontend.Dockerfile -t noaddx-frontend .
+      - run: docker build -f tor.Dockerfile -t noaddx-tor .
+      - name: nginx renders and accepts its config; tor accepts its config with the onion defenses
+        run: |
+          docker run --rm --add-host noaddx-backend:127.0.0.1 -e TOR_IP=172.29.73.11 noaddx-frontend nginx -t
+          docker run --rm --add-host frontend:172.29.73.10 noaddx-tor --verify-config
       - name: image runs as the unprivileged user and passes its self-test
         run: |
           docker run --rm --entrypoint id noaddx-backend:${{ matrix.engine }} | grep -q 'uid=10001'

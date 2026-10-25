@@ -110,6 +110,9 @@ services:
     container_name: noaddx-frontend
     security_opt:
       - no-new-privileges:true
+    environment:
+      # The only peer nginx's onion listener (8081) accepts; see nginx.conf
+      TOR_IP: ${TOR_IP:-172.29.73.11}
     # Loopback only, like the other services: WebCrypto needs a secure context, so plain HTTP
     # is only ever usable as http://localhost; expose it to a network through TLS instead
     ports:
@@ -119,6 +122,31 @@ services:
         ipv4_address: ${PROXY_IP:-172.29.73.10}
     depends_on:
       - backend
+    restart: unless-stopped
+
+  # Opt-in (make onion): publishes the app as a Tor onion service. Off by default because it
+  # makes this instance reachable from anywhere; everything else listens on loopback only.
+  tor:
+    profiles: ["onion"]
+    build:
+      context: .
+      dockerfile: tor.Dockerfile
+    image: noaddx-tor
+    container_name: noaddx-tor
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # The onion address's private key: losing it changes the address, leaking it lets someone
+    # impersonate the service. `make clean` deletes it with every other volume.
+    volumes:
+      - tor_data:/var/lib/tor
+    networks:
+      default:
+        ipv4_address: ${TOR_IP:-172.29.73.11}
+    depends_on:
+      - frontend
     restart: unless-stopped
 
 networks:
@@ -131,4 +159,6 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  tor_data:
     driver: local

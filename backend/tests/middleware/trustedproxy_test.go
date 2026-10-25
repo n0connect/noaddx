@@ -94,3 +94,32 @@ func TestClientKey_GroupsIPv6ByPrefix(t *testing.T) {
 		t.Error("IPv4-mapped IPv6 and IPv4 for the same client got different keys")
 	}
 }
+
+// Behind the onion service every client arrives from tor, which gives each circuit its own
+// address inside fc00:dead:beef:4dad::/64 (HiddenServiceExportCircuitID haproxy). Grouping
+// that /64 like one subscriber's prefix would put every Tor user in a single bucket.
+func TestClientKey_SeparatesTorCircuits(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	defer testutil.TeardownTestEnv(t)
+	t.Setenv("TRUSTED_PROXIES", "203.0.113.0/24")
+	middleware.ResetTrustedProxiesForTesting()
+	t.Cleanup(middleware.ResetTrustedProxiesForTesting)
+
+	viaProxy := func(client string) string {
+		req := httptest.NewRequest("GET", "/api/v2/me", nil)
+		req.RemoteAddr = "203.0.113.10:12345"
+		req.Header.Set("X-Forwarded-For", client)
+		return middleware.ClientKey(req)
+	}
+	circuit := viaProxy("fc00:dead:beef:4dad::1:2c3d")
+	if circuit == viaProxy("fc00:dead:beef:4dad::1:2c3e") {
+		t.Error("two Tor circuits share a rate-limit key")
+	}
+	if again := viaProxy("fc00:dead:beef:4dad::1:2c3d"); again != circuit {
+		t.Error("one Tor circuit got two rate-limit keys")
+	}
+	// Only tor's own prefix is per-address; the neighbouring /64 is still one subscriber
+	if viaProxy("fc00:dead:beef:4dae::1") != viaProxy("fc00:dead:beef:4dae::2") {
+		t.Error("an ordinary IPv6 /64 is no longer grouped")
+	}
+}
