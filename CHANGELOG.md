@@ -61,6 +61,10 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   (`make test-equivalence`), and the server runs a known-answer self-test before it starts.
 - Release tags per engine (`noaddx-openssl-vX.Y.Z`, `noaddx-native-vX.Y.Z`), moving dev tags
   (`noaddx-openssl-dev`, `noaddx-native-dev`) and `make build-ref REF=<tag>` to rebuild any of them.
+- **Five padding sizes.** Messages are padded to a power of two from 256 to 4096 bytes, so a
+  ciphertext's length reveals one of five size classes (it was one of 24), and the server
+  accepts no other size. The longest message drops from 6000 to 4094 bytes of payload, still
+  above the 2000-character composer limit; messages stored before the change still open.
 - **Delete identity.** `DELETE /api/v2/me` erases the account, its invites and every
   conversation it is in, for both sides; peers are told at once and every session ends. It
   takes the account number again (as its auth key), and the browser checks the number belongs

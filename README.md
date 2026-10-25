@@ -47,7 +47,7 @@ Exhaustive, production-grade documentation is organized under the [`docs/`](docs
 | [**Installation & Platforms**](docs/getting-started/installation-and-platforms.md) | Platform instructions: macOS, Linux, Windows (WSL2), arm64 vs amd64. |
 | [**System Architecture**](docs/architecture/system-overview.md) | Detailed data flow, identity derivation, database schema, and retention daemon. |
 | [**Threat Model & Security**](docs/security/threat-model.md) | Adversary capabilities matrix, database dump resilience, and memory zeroization. |
-| [**Cryptography Specification**](docs/security/cryptography.md) | WebCrypto, non-extractable keys, 256-byte bucket padding, and PoW hashcash. |
+| [**Cryptography Specification**](docs/security/cryptography.md) | WebCrypto, non-extractable keys, power-of-two padding classes, and PoW hashcash. |
 | [**REST API Reference**](docs/api/rest-api.md) | Exhaustive `/api/v2/*` endpoints, JSON constraints, and Server-Sent Events (SSE). |
 | [**Configuration & Tuning**](docs/operations/configuration-and-tuning.md) | Environment variables, dual-key rotation runbook, and Argon2id memory tuning. |
 | [**Troubleshooting Guide**](docs/troubleshooting/troubleshooting-guide.md) | Common errors with immediate diagnostic steps and copy-paste solutions. |
@@ -120,7 +120,7 @@ The fingerprint never touches the server. Because it binds to the single-use tok
 
 ```text
 conversation key = HKDF-SHA256(X25519(myPriv, peerPub), salt: conversation_id, info: "noaddx/conv/v1")
-plaintext        = len(2) || {"t": text, "ts": sentAt} || zero padding to a multiple of 256 bytes
+plaintext        = len(2) || {"t": text, "ts": sentAt, "n": counter} || zero padding to 256, 512, 1024, 2048 or 4096 bytes
 AAD              = "NADM" || 0x01 || conversation_id(16) || message_id(16) || SHA-256(sender_pub)(32)
 wire             = base64url(nonce(12) || AES-256-GCM(plaintext, AAD) || tag(16))
 ```

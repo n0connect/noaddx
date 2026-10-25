@@ -126,9 +126,9 @@ Conversation Key = HKDF-SHA256(
 
 ### Message Framing & Length Obfuscation
 To prevent network and database observers from inferring message contents based on ciphertext length:
-1. **JSON Payload:** `{"t": text, "ts": clientUnixTimestamp}`
+1. **JSON Payload:** `{"t": text, "ts": clientUnixTimestampMs, "n": perConversationCounter}`
 2. **Length Prefix:** 2-byte big-endian payload length.
-3. **Padding:** Padded with zero-bytes up to the next **256-byte bucket boundary** (block size = 256).
+3. **Padding:** Zero bytes up to the next **power-of-two size from 256 to 4096 bytes** (five classes); the server rejects any other ciphertext size.
 
 ### Authenticated Additional Data (AAD)
 Every message payload is encrypted using **AES-256-GCM** bound to a strict AAD:

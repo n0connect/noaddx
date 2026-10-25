@@ -58,6 +58,17 @@ test('both peers derive the same conversation key and round-trip a message', asy
     assert.equal(C.b64urlDecode(ct).length, 12 + 256 + 16);
 });
 
+// Payload = {"t":"<text>","ts":1,"n":1}: 21 bytes + text; the frame adds a 2-byte length.
+test('ciphertext length is one of five power-of-two buckets', async () => {
+    const { a, ab } = await peers();
+    const frameFor = async (chars) => C.b64urlDecode(
+        await C.encryptMessage(ab, CONV, C.newMessageId(), a.publicKey, 'x'.repeat(chars), 1, 1)).length - 12 - 16;
+    assert.equal(await frameFor(1), 256);
+    assert.equal(await frameFor(700), 1024);  // 723 framed bytes
+    assert.equal(await frameFor(3000), 4096); // 3023 framed bytes
+    await assert.rejects(C.encryptMessage(ab, CONV, C.newMessageId(), a.publicKey, 'x'.repeat(4074), 1, 1));
+});
+
 test('opens a message encrypted by the Go implementation (interop)', async () => {
     const { a, ba } = await peers();
     const out = await C.decryptMessage(ba, CONV, GO_VECTOR.message, a.publicKey, GO_VECTOR.ciphertext);
@@ -106,8 +117,9 @@ test('safety number and aura are symmetric and deterministic', async () => {
 
 test('payload limit is enforced before encryption', async () => {
     const { a, ab } = await peers();
-    assert.equal(C.payloadFits('x'.repeat(5900)), true);
-    assert.equal(C.payloadFits('x'.repeat(6000)), false);
+    // 4094-byte payloads; payloadFits budgets 48 bytes of JSON for the longest ts and counter
+    assert.equal(C.payloadFits('x'.repeat(4046)), true);
+    assert.equal(C.payloadFits('x'.repeat(4047)), false);
     await assert.rejects(C.encryptMessage(ab, CONV, C.newMessageId(), a.publicKey, 'x'.repeat(7000), 1, 1));
     await assert.rejects(C.encryptMessage(ab, CONV, C.newMessageId(), a.publicKey, 'hi', 1, 0)); // counter must be >= 1
 });

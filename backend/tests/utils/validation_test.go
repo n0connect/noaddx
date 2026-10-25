@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"bytes"
+	"encoding/base64"
 	"regexp"
 	"testing"
 
@@ -60,6 +62,24 @@ func TestValidateAccountNumber(t *testing.T) {
 	for name, input := range corrupted {
 		if utils.ValidateAccountNumber(input) {
 			t.Errorf("%s: %q accepted", name, input)
+		}
+	}
+}
+
+// Only the five padded sizes are accepted: nonce (12) + a power-of-two frame of 256..4096
+// bytes + tag (16). A client that skips the padding cannot store a message's length.
+func TestValidateCiphertext_OnlyPaddedSizes(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	defer testutil.TeardownTestEnv(t)
+	encoded := func(n int) string { return base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{1}, n)) }
+	for _, frame := range []int{256, 512, 1024, 2048, 4096} {
+		if !utils.ValidateCiphertext(encoded(28 + frame)) {
+			t.Errorf("padded size %d rejected", frame)
+		}
+	}
+	for _, n := range []int{29, 28 + 255, 28 + 768, 28 + 4352, 28 + 8192, 8192} {
+		if utils.ValidateCiphertext(encoded(n)) {
+			t.Errorf("unpadded ciphertext of %d bytes accepted", n)
 		}
 	}
 }

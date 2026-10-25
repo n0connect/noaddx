@@ -4,7 +4,7 @@
 // ciphertext through the real server, and interop vectors pin both implementations together.
 //
 //	conversation key = HKDF-SHA256(X25519(priv, peerPub), salt = conversation id, info "noaddx/conv/v1")
-//	plaintext        = len(2) || {"t":text,"ts":sentAt,"n":counter} || zero padding to a multiple of 256
+//	plaintext        = len(2) || {"t":text,"ts":sentAt,"n":counter} || zero padding to 256..4096 (a power of two)
 //	AAD              = "NADM" || 0x01 || conversation id(16) || message id(16) || SHA-256(sender public key)(32)
 //	wire             = base64url(nonce(12) || AES-256-GCM ciphertext || tag(16))
 package e2e
@@ -24,8 +24,9 @@ import (
 
 const (
 	keySize          = 32
-	padBlock         = 256
-	maxPayloadBytes  = 6000
+	padBlock         = 256 // smallest frame; frames double from here up to maxFrameBytes
+	maxFrameBytes    = 4096
+	maxPayloadBytes  = maxFrameBytes - 2
 	infoConversation = "noaddx/conv/v1"
 	aadVersion       = 0x01
 )
@@ -97,11 +98,16 @@ func messageAAD(conversationID, messageID uuid.UUID, senderPublicKey string) ([]
 	return append(aad, senderTag...), nil
 }
 
+// frame pads to a power-of-two size (256..4096 bytes): the ciphertext's length reveals only
+// which of five size classes the message is in.
 func frame(body []byte) ([]byte, error) {
 	if len(body) == 0 || len(body) > maxPayloadBytes {
 		return nil, ErrInvalidInput
 	}
-	size := (len(body) + 2 + padBlock - 1) / padBlock * padBlock
+	size := padBlock
+	for size < len(body)+2 {
+		size *= 2
+	}
 	out := make([]byte, size)
 	out[0] = byte(len(body) >> 8)
 	out[1] = byte(len(body))
@@ -109,12 +115,14 @@ func frame(body []byte) ([]byte, error) {
 	return out, nil
 }
 
+// unframe opens any multiple of padBlock, so frames written before the power-of-two sizes
+// (payloads up to 6000 bytes) stay readable.
 func unframe(framed []byte) ([]byte, error) {
 	if len(framed) < 2 || len(framed)%padBlock != 0 {
 		return nil, ErrBadMessage
 	}
 	length := int(framed[0])<<8 | int(framed[1])
-	if length == 0 || length > maxPayloadBytes || length+2 > len(framed) {
+	if length == 0 || length+2 > len(framed) {
 		return nil, ErrBadMessage
 	}
 	for _, b := range framed[2+length:] {

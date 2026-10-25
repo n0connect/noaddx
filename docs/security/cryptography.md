@@ -107,7 +107,7 @@ Conversation Key = HKDF-SHA256(
 
 ### 2. Message Framing & Bucket Padding
 
-To thwart traffic analysis based on message length, plaintexts are bucketed into **256-byte multiples**:
+To thwart traffic analysis based on message length, every frame is padded to a **power-of-two size from 256 to 4096 bytes**, so the ciphertext reveals one of five size classes. The server accepts no other size, so even a client that skipped the padding could not store a message's length. Frames written before these classes (any multiple of 256, payloads up to 6000 bytes) still open.
 
 ```text
  0                   1                   2                   3
@@ -116,10 +116,10 @@ To thwart traffic analysis based on message length, plaintexts are bucketed into
 |       Payload Length (2B)     |                               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               +
 |                    JSON UTF-8 Payload                         |
-|             {"t": "Hello world", "ts": 1729731200}            |
+|       {"t": "Hello world", "ts": 1729731200000, "n": 1}       |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                 Zero Padding (0x00 bytes)                     |
-|           Padded to next multiple of 256 bytes                |
+|     Padded to the next of 256, 512, 1024, 2048, 4096 bytes    |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 

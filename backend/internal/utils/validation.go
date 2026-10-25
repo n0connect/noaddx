@@ -31,8 +31,12 @@ var (
 const (
 	// Invite tokens carry 128 bits of CSPRNG output
 	InviteTokenBytes = 16
-	// AES-256-GCM framing: nonce(12) || ciphertext(>=1) || tag(16)
-	minCiphertextBytes = cryptoengine.GCMNonceSize + 1 + cryptoengine.GCMTagSize
+	// E2E ciphertext: nonce(12) || frame || tag(16), the frame a power of two from 256 to
+	// 4096 bytes (frontend/js/crypto.js)
+	ciphertextOverhead = cryptoengine.GCMNonceSize + cryptoengine.GCMTagSize
+	minFrameBytes      = 256
+	maxFrameBytes      = 4096
+	minCiphertextBytes = ciphertextOverhead + minFrameBytes
 )
 
 func internalIDLength() (int, error) {
@@ -150,7 +154,8 @@ func ValidateInviteToken(token string) ([]byte, bool) {
 	return raw, true
 }
 
-// ValidateCiphertext whitelists an opaque base64url E2E ciphertext within size bounds.
+// ValidateCiphertext whitelists an opaque base64url E2E ciphertext of one of the padded sizes.
+// Accepting no other size keeps message length out of storage even if a client skips padding.
 func ValidateCiphertext(encoded string) bool {
 	maxBytes := config.GetMaxMessageBytes()
 	if maxBytes <= 0 {
@@ -163,7 +168,11 @@ func ValidateCiphertext(encoded string) bool {
 		return false
 	}
 	raw, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
-	return err == nil && len(raw) >= minCiphertextBytes && len(raw) <= maxBytes
+	return err == nil && len(raw) <= maxBytes && isPaddedFrame(len(raw)-ciphertextOverhead)
+}
+
+func isPaddedFrame(n int) bool {
+	return n >= minFrameBytes && n <= maxFrameBytes && n&(n-1) == 0
 }
 
 func isAlphaNumeric(b byte) bool {

@@ -23,12 +23,13 @@ const NoaddxCrypto = (() => {
     const INVITE_TOKEN_BYTES = 16;
     const INVITE_FP_BYTES = 16;
     const INVITE_PREFIX = 'noaddx:';
-    // Plaintext is framed as len(2) || json || zero padding to a multiple of PAD_BLOCK,
-    // so ciphertext length only reveals a coarse size bucket.
+    // Plaintext is framed as len(2) || json || zero padding to a power-of-two size from
+    // PAD_BLOCK to MAX_FRAME_BYTES, so ciphertext length reveals one of five size classes.
     // json = {"t": text, "ts": sender clock (ms), "n": sender's per-conversation counter};
     // gaps in a peer's "n" reveal messages the server withheld or deleted.
     const PAD_BLOCK = 256;
-    const MAX_PAYLOAD_BYTES = 6000;
+    const MAX_FRAME_BYTES = 4096;
+    const MAX_PAYLOAD_BYTES = MAX_FRAME_BYTES - 2;
     // RFC 8410 PrivateKeyInfo header for an X25519 key (OID 1.3.101.110)
     const PKCS8_X25519_PREFIX = new Uint8Array([
         0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
@@ -184,7 +185,10 @@ const NoaddxCrypto = (() => {
         if (payloadBytes.length === 0 || payloadBytes.length > MAX_PAYLOAD_BYTES) {
             throw new Error('message too long');
         }
-        const size = Math.ceil((payloadBytes.length + 2) / PAD_BLOCK) * PAD_BLOCK;
+        let size = PAD_BLOCK;
+        while (size < payloadBytes.length + 2) {
+            size *= 2;
+        }
         const out = new Uint8Array(size);
         out[0] = payloadBytes.length >> 8;
         out[1] = payloadBytes.length & 0xff;
@@ -192,12 +196,14 @@ const NoaddxCrypto = (() => {
         return out;
     }
 
+    // Opens any multiple of PAD_BLOCK, so frames written before the power-of-two sizes
+    // (payloads up to 6000 bytes) stay readable
     function unframe(framed) {
         if (framed.length < 2 || framed.length % PAD_BLOCK !== 0) {
             throw new Error('bad frame');
         }
         const length = (framed[0] << 8) | framed[1];
-        if (length === 0 || length > MAX_PAYLOAD_BYTES || length + 2 > framed.length) {
+        if (length === 0 || length + 2 > framed.length) {
             throw new Error('bad frame');
         }
         for (let i = length + 2; i < framed.length; i++) {
