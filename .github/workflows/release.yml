@@ -19,7 +19,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: make manifest
-      - uses: sigstore/cosign-installer@v3
+      # Third-party code in the signing path: pinned to a commit, cosign to a release
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
       - run: cosign sign-blob --yes --bundle frontend.sha256.sigstore.json frontend.sha256
       - name: attach to the release
         env:
