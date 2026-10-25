@@ -37,6 +37,11 @@ type PoWChallenge struct {
 	Salt       string `json:"salt"`
 }
 
+// DeleteAccountRequest re-proves the account: a live session alone cannot erase it
+type DeleteAccountRequest struct {
+	AuthKey string `json:"auth_key"` // HKDF(AccountNumber, "noaddx/auth"), as at login
+}
+
 // LoginResponse never carries the session token: it travels only in the HttpOnly cookie
 type LoginResponse struct {
 	Success bool   `json:"success"`

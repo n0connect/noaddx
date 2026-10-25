@@ -89,6 +89,19 @@ function setupEventListeners() {
 
     // App: header
     document.getElementById('logoutBtn').addEventListener('click', logout);
+    document.getElementById('deleteIdentityBtn').addEventListener('click', () => {
+        Chat.backToList();
+        togglePairPanel('deletePanel');
+        document.getElementById('deleteAccountInput').focus();
+    });
+    document.getElementById('closeDeleteBtn').addEventListener('click', () => {
+        document.getElementById('deleteAccountInput').value = '';
+        togglePairPanel(null);
+    });
+    document.getElementById('deleteConfirmBtn').addEventListener('click', deleteIdentity);
+    document.getElementById('deleteAccountInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') deleteIdentity();
+    });
 
     // App: pairing
     document.getElementById('newInviteBtn').addEventListener('click', () => Chat.createInvite());

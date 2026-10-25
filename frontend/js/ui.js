@@ -183,7 +183,7 @@ function showHome() {
 }
 
 function togglePairPanel(panelId) {
-    ['invitePanel', 'joinPanel'].forEach(id => {
+    ['invitePanel', 'joinPanel', 'deletePanel'].forEach(id => {
         const panel = document.getElementById(id);
         panel.style.display = id === panelId && panel.style.display === 'none' ? 'block' : 'none';
     });

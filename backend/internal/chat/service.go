@@ -537,6 +537,58 @@ func (s *Service) BurnConversation(me *Member, conversationID uuid.UUID) ([]stri
 	return streams, nil
 }
 
+// DeleteAccount erases the caller: its invites, every conversation it is in (all ciphertext,
+// for both sides) and the account row. Returns the peers' live-event addresses.
+// Lock order is RedeemInvite's (invites, then users). Peers' rows are left unlocked: their
+// encrypted indexes drop the vanished conversations at their next listing (pruneIndex).
+func (s *Service) DeleteAccount(me *Member) ([]string, error) {
+	var streams []string
+	err := s.chats.Transaction(func(tx store.ChatRepository) error {
+		if err := tx.DeleteInvites(me.inviteTag); err != nil {
+			return err
+		}
+		rows, err := tx.LockUsers([]string{me.UserUUID})
+		if err != nil {
+			return err
+		}
+		row := rows[me.UserUUID]
+		if row == nil {
+			return ErrNotFound
+		}
+		ids, err := openIndex(me, row.ConvIndexEnc)
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			if _, err := s.requireMembership(tx, me, id); errors.Is(err, ErrNotFound) {
+				continue // the peer burned it already
+			} else if err != nil {
+				return err
+			}
+			_, peers, err := s.peerStreams(tx, me, id)
+			if err != nil {
+				return err
+			}
+			if err := tx.DeleteConversation(id); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+			streams = append(streams, peers...)
+		}
+		if err := tx.DeleteUser(me.UserUUID); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return ErrNotFound
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.logger.Debug("DeleteAccount: account erased")
+	return streams, nil
+}
+
 // ---------- messages ----------
 
 // ListMessages returns messages after `after`, or the latest page when after is nil.

@@ -28,6 +28,7 @@ Requests are subject to strict JSON validation:
 | `POST` | `/api/v2/login` | Public | Authenticate with derived `auth_key` |
 | `POST` | `/api/v2/logout` | Session | Revoke all active sessions and wipe cookies |
 | `GET` | `/api/v2/me` | Session | Fetch user public key and server retention policy |
+| `DELETE` | `/api/v2/me` | Session + auth key | Erase the account, its invites and every conversation (both sides) |
 | `POST` | `/api/v2/invites` | Session | Generate single-use pairing token (requires PoW) |
 | `POST` | `/api/v2/invites/redeem` | Session | Redeem pairing token and start conversation |
 | `GET` | `/api/v2/conversations` | Session | List active conversations |
@@ -159,6 +160,28 @@ Retrieves caller's public key and server retention policy.
 {
   "public_key": "X25519-public-key-base64url",
   "message_ttl_days": 7
+}
+```
+
+---
+
+### `DELETE /api/v2/me`
+Erases the caller's account: pending invites, every conversation it belongs to (all ciphertext, for both sides; peers get a `conv` event) and the account row. Every session of the account ends and the cookie is cleared.
+
+A live session is not enough: the request re-proves the account number with its derived auth key, exactly as login does. The client checks that the number derives this identity's public key before sending anything, so the server never sees a second account's key.
+
+- **Request Body** (`Content-Type: application/json`, required for any `DELETE` that carries a body):
+```json
+{
+  "auth_key": "HKDF(AccountNumber, \"noaddx/auth\") base64url"
+}
+```
+- **Errors:** `400` malformed body or key, `403` the key belongs to another account, `415` body not declared as JSON, `429` too many attempts.
+- **Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Account deleted"
 }
 ```
 

@@ -19,12 +19,19 @@ var emptyBodyAllowed = map[string]struct{}{
 // ContentTypeMiddleware validates Content-Type header for body-carrying methods.
 func ContentTypeMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost && r.Method != http.MethodPut {
-			next(w, r)
-			return
-		}
-
-		if _, ok := emptyBodyAllowed[r.URL.Path]; ok && r.ContentLength == 0 {
+		switch r.Method {
+		case http.MethodPost, http.MethodPut:
+			if _, ok := emptyBodyAllowed[r.URL.Path]; ok && r.ContentLength == 0 {
+				next(w, r)
+				return
+			}
+		case http.MethodDelete:
+			// Usually bodiless; one that carries data (or an unknown length) meets the same rule
+			if r.ContentLength == 0 {
+				next(w, r)
+				return
+			}
+		default:
 			next(w, r)
 			return
 		}

@@ -23,11 +23,13 @@ type ChatRepository interface {
 
 	CountActiveInvites(creatorTag string, now time.Time) (int64, error)
 	DeleteExpiredInvites(creatorTag string, now time.Time) error
+	DeleteInvites(creatorTag string) error
 	CreateInvite(invite *models.Invite) error
 	TakeInvite(lookup, redeemerTag string, now time.Time) (*models.Invite, error)
 
 	LockUsers(userUUIDs []string) (map[string]*models.User, error)
 	SaveConvIndex(userUUID, enc string) error
+	DeleteUser(userUUID string) error
 
 	CreateConversation(conversationID uuid.UUID, members []models.ConversationMember) error
 	FindMembership(conversationID uuid.UUID, memberTag string) (*models.ConversationMember, error)
@@ -89,6 +91,15 @@ func (r *chatRepository) DeleteExpiredInvites(creatorTag string, now time.Time) 
 	return err
 }
 
+// DeleteInvites removes every invite of one creator, pending or expired.
+func (r *chatRepository) DeleteInvites(creatorTag string) error {
+	err := r.db().Where("creator_tag = ?", creatorTag).Delete(&models.Invite{}).Error
+	if err != nil {
+		chatRepoLogger.LogError("ChatRepository.DeleteInvites", err)
+	}
+	return err
+}
+
 func (r *chatRepository) CreateInvite(invite *models.Invite) error {
 	if err := r.db().Create(invite).Error; err != nil {
 		chatRepoLogger.LogError("ChatRepository.CreateInvite", err)
@@ -136,6 +147,19 @@ func (r *chatRepository) SaveConvIndex(userUUID, enc string) error {
 	result := r.db().Model(&models.User{}).Where("uuid = ?", userUUID).UpdateColumn("conv_index_enc", enc)
 	if result.Error != nil {
 		chatRepoLogger.LogError("ChatRepository.SaveConvIndex", result.Error)
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteUser removes the account row (its credentials, keys and conversation index).
+func (r *chatRepository) DeleteUser(userUUID string) error {
+	result := r.db().Where("uuid = ?", userUUID).Delete(&models.User{})
+	if result.Error != nil {
+		chatRepoLogger.LogError("ChatRepository.DeleteUser", result.Error)
 		return result.Error
 	}
 	if result.RowsAffected == 0 {

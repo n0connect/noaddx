@@ -92,6 +92,7 @@
                     <canvas class="aura-glyph" id="meGlyph" width="5" height="5"></canvas>
                     <span class="aura-name" id="meName"></span>
                 </div>
+                <button id="deleteIdentityBtn" class="text-btn">delete</button>
                 <button id="logoutBtn" class="text-btn">logout</button>
             </header>
 
@@ -119,6 +120,16 @@
                         <button id="joinBtn" class="primary-btn">join</button>
                     </div>
                     <button id="closeJoinBtn" class="text-btn">cancel</button>
+                </div>
+
+                <div id="deletePanel" class="pair-panel" data-hidden>
+                    <p class="account-number-label">delete identity</p>
+                    <p class="pair-hint">erases this identity and burns every conversation for both sides. there is no undo. paste your account number to confirm.</p>
+                    <div class="join-input-group">
+                        <input type="password" id="deleteAccountInput" placeholder="account number" maxlength="64" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+                        <button id="deleteConfirmBtn" class="menu-opt burn-yes">delete</button>
+                    </div>
+                    <button id="closeDeleteBtn" class="text-btn">cancel</button>
                 </div>
 
                 <ul id="conversationList" class="conversation-list"></ul>

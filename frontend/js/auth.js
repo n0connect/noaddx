@@ -497,6 +497,46 @@ async function logout() {
     }
 }
 
+// Erases this identity once the account number is re-entered. Only its derived auth key is
+// sent, and only after it proves to be this identity's: another account's key would let the
+// server link the two accounts.
+async function deleteIdentity() {
+    const input = document.getElementById('deleteAccountInput');
+    const accountNumber = String(input.value).normalize('NFKC').trim();
+    input.value = '';
+    if (accountNumber.length !== ACCOUNT_NUMBER_LEN || !ACCOUNT_NUMBER_REGEX.test(accountNumber)) {
+        showError('invalid account number');
+        return;
+    }
+
+    const button = document.getElementById('deleteConfirmBtn');
+    button.disabled = true;
+    try {
+        const identity = await NoaddxCrypto.deriveIdentity(accountNumber);
+        if (identity.publicKey !== Chat.publicKey()) {
+            showError('that is not the account number of this identity');
+            return;
+        }
+        const result = await apiCall('DELETE', '/me', { auth_key: await NoaddxCrypto.deriveAuthKey(accountNumber) });
+        if (result.status === 429) {
+            showWarning('too many attempts — wait a moment');
+            return;
+        }
+        if (!result.ok) {
+            showError('identity not deleted');
+            return;
+        }
+        Chat.stop();
+        await Keystore.wipe();
+        showMainMenu();
+        showSuccess('identity deleted');
+    } catch (error) {
+        showError('identity not deleted');
+    } finally {
+        button.disabled = false;
+    }
+}
+
 // Cancel registration - just go back (no account was created yet)
 function cancelRegistration() {
     // Stop the scramble animation

@@ -125,8 +125,9 @@ const Chat = (() => {
             inviteRun = null;
         }
         resetInvitePanel();
-        document.getElementById('joinPanel').style.display = 'none';
+        togglePairPanel(null);
         document.getElementById('inviteInput').value = '';
+        document.getElementById('deleteAccountInput').value = '';
         document.getElementById('messageInput').value = '';
         document.title = 'noaddx.';
     }
@@ -597,6 +598,7 @@ const Chat = (() => {
     return Object.freeze({
         start, stop, open, backToList, send, createInvite, join,
         showSafety, toggleVerified, askBurn, burn, onVisible,
-        isActive: () => me !== null
+        isActive: () => me !== null,
+        publicKey: () => (me ? me.publicKey : null)
     });
 })();

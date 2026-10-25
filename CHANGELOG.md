@@ -61,6 +61,11 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   (`make test-equivalence`), and the server runs a known-answer self-test before it starts.
 - Release tags per engine (`noaddx-openssl-vX.Y.Z`, `noaddx-native-vX.Y.Z`), moving dev tags
   (`noaddx-openssl-dev`, `noaddx-native-dev`) and `make build-ref REF=<tag>` to rebuild any of them.
+- **Delete identity.** `DELETE /api/v2/me` erases the account, its invites and every
+  conversation it is in, for both sides; peers are told at once and every session ends. It
+  takes the account number again (as its auth key), and the browser checks the number belongs
+  to this identity before sending, so the server never sees a second account's key. A `DELETE`
+  that carries a body must now declare JSON, like every other write.
 - **Invites cost a proof of work.** `POST /api/v2/invites` now takes `{"pow": …}` with a fresh,
   single-use solution, like each registration phase: missing → 412, invalid or replayed → 403,
   empty body → 415. While the browser solves it, the invite code scrambles, masks and reveals

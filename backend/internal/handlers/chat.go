@@ -11,6 +11,8 @@ import (
 	"noaddx/internal/auth"
 	"noaddx/internal/chat"
 	"noaddx/internal/config"
+	"noaddx/internal/cryptoengine"
+	"noaddx/internal/identity"
 	"noaddx/internal/middleware"
 	"noaddx/internal/models"
 	"noaddx/internal/realtime"
@@ -87,10 +89,10 @@ func allowOrTooMany(w http.ResponseWriter, bucket string, me *chat.Member) bool 
 	return false
 }
 
-// MeHandler returns the caller's identity public key so the client can detect
-// a server that swapped it (client compares against its own derivation).
+// MeHandler: GET returns the caller's identity public key so the client can detect a server
+// that swapped it (client compares against its own derivation); DELETE erases the account.
 func MeHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -98,7 +100,50 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok || rejectQuery(w, r) {
 		return
 	}
+	if r.Method == http.MethodDelete {
+		deleteAccount(w, r, me)
+		return
+	}
 	utils.EncodeJSONResponse(w, models.MeResponse{PublicKey: me.PublicKey, MessageTTLDays: config.GetMessageTTLDays()}, http.StatusOK)
+}
+
+// deleteAccount erases the caller once the request re-proves the account number (as its auth
+// key): a live session alone, or a request riding on one, cannot erase an identity. The
+// lookup is HMAC(pepper, auth key), so matching it proves the key without an Argon2 run.
+func deleteAccount(w http.ResponseWriter, r *http.Request, me *chat.Member) {
+	if !allowOrTooMany(w, "delete", me) {
+		return
+	}
+	var req models.DeleteAccountRequest
+	if err := utils.DecodeJSONRequest(r, &req); err != nil || !identity.ValidateEncodedKey(req.AuthKey) {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	user, err := userRepository.FindByUUID(me.UserUUID)
+	if err != nil {
+		writeChatError(w, err, "FindByUUID")
+		return
+	}
+	lookup, err := auth.ComputeAccountLookup(req.AuthKey)
+	if err != nil {
+		writeChatError(w, err, "ComputeAccountLookup")
+		return
+	}
+	if !cryptoengine.ConstantTimeEqual([]byte(lookup), []byte(user.AccountLookup)) {
+		chatLogger.Warn("deleteAccount: auth key does not match the session's account")
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	streams, err := chatService.DeleteAccount(me)
+	if err != nil {
+		writeChatError(w, err, "DeleteAccount")
+		return
+	}
+	realtime.Default.Publish(streams, realtime.Event{Kind: realtime.KindConversation})
+	realtime.Default.Kick(me.StreamTag) // this account's other devices
+	auth.ClearAuthCookie(w)
+	utils.EncodeJSONResponse(w, models.LoginResponse{Success: true, Message: "Account deleted"}, http.StatusOK)
 }
 
 // CreateInviteHandler issues a single-use pairing token (POST /api/v2/invites).
