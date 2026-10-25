@@ -61,6 +61,9 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   (`make test-equivalence`), and the server runs a known-answer self-test before it starts.
 - Release tags per engine (`noaddx-openssl-vX.Y.Z`, `noaddx-native-vX.Y.Z`), moving dev tags
   (`noaddx-openssl-dev`, `noaddx-native-dev`) and `make build-ref REF=<tag>` to rebuild any of them.
+- **Verifiable client.** Each release tag gets the SHA-256 of every frontend file, signed with
+  Sigstore keyless by the release workflow; `make verify-frontend URL=…` checks that any
+  instance, onion included, serves exactly those bytes.
 - **Five padding sizes.** Messages are padded to a power of two from 256 to 4096 bytes, so a
   ciphertext's length reveals one of five size classes (it was one of 24), and the server
   accepts no other size. The longest message drops from 6000 to 4094 bytes of payload, still

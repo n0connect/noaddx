@@ -28,10 +28,13 @@ CGO_native := 0
 DEV_BRANCH := noaddx-dev
 RELEASE_BRANCH := main
 COMPOSE_ENV := ENGINE=$(ENGINE)
+# Frontend manifest: what the release workflow signs and verify-frontend checks against
+MANIFEST ?= frontend.sha256
 
 .PHONY: all help setup check-deps check-docker build up start run down stop restart logs ps clean \
         test test-engines test-equivalence test-run test-unit test-crypto test-all test-db \
-        build-ref tag-dev release check-clean-branch-dev check-clean-branch-release shell-backend shell-db
+        build-ref tag-dev release check-clean-branch-dev check-clean-branch-release shell-backend shell-db \
+        manifest verify-frontend
 
 ## -----------------------------------------------------------------------------
 ## Help
@@ -68,6 +71,8 @@ help:
 	@echo "  build-ref     Build the backend image of any tag or commit: make build-ref REF=noaddx-openssl-v1.0.0"
 	@echo "  tag-dev       Test both engines, then move noaddx-{openssl,native}-dev to $(DEV_BRANCH) HEAD"
 	@echo "  release       Test both engines on $(RELEASE_BRANCH), tag noaddx-{openssl,native}-VERSION: make release VERSION=v1.0.0"
+	@echo "  manifest      Write $(MANIFEST): SHA-256 of every file the frontend serves (signed in each release)"
+	@echo "  verify-frontend  Check an instance serves exactly $(MANIFEST): make verify-frontend URL=https://host"
 	@echo ""
 	@echo "Utility Targets:"
 	@echo "  shell-backend Open interactive shell inside backend container"
@@ -258,6 +263,24 @@ check-clean-branch-release:
 ## -----------------------------------------------------------------------------
 ## Debug & Utilities
 ## -----------------------------------------------------------------------------
+
+# Tracked files only (no local leftovers), paths as served under the web root
+manifest:
+	@git ls-files -- frontend ':!frontend/tests' | LC_ALL=C sort | sed 's|^frontend/||' \
+		| (cd frontend && xargs shasum -a 256) > $(MANIFEST)
+	@echo "[OK] $(MANIFEST): $$(wc -l < $(MANIFEST) | tr -d ' ') files"
+
+# Fetches every file in MANIFEST from URL and compares hashes; index.html is served at /.
+# For an onion address: CURL_OPTS="--socks5-hostname 127.0.0.1:9150" (Tor Browser's proxy)
+verify-frontend:
+	@test -n "$(URL)" || { echo "[ERROR] usage: make verify-frontend URL=https://host [MANIFEST=$(MANIFEST)]"; exit 1; }
+	@test -s "$(MANIFEST)" || { echo "[ERROR] $(MANIFEST) missing: download it from the release or run make manifest"; exit 1; }
+	@fail=0; while read -r want path; do \
+		route="/$$path"; [ "$$path" = "index.html" ] && route="/"; \
+		got=$$(curl -fsS $(CURL_OPTS) "$(URL)$$route" | shasum -a 256 | cut -d' ' -f1); \
+		[ "$$got" = "$$want" ] || { echo "[MISMATCH] $$route"; fail=1; }; \
+	done < $(MANIFEST); \
+	if [ $$fail -eq 0 ]; then echo "[OK] $(URL) serves exactly $(MANIFEST)"; else exit 1; fi
 
 shell-backend:
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml exec backend /bin/sh

@@ -48,6 +48,7 @@ Exhaustive, production-grade documentation is organized under the [`docs/`](docs
 | [**System Architecture**](docs/architecture/system-overview.md) | Detailed data flow, identity derivation, database schema, and retention daemon. |
 | [**Threat Model & Security**](docs/security/threat-model.md) | Adversary capabilities matrix, database dump resilience, and memory zeroization. |
 | [**Cryptography Specification**](docs/security/cryptography.md) | WebCrypto, non-extractable keys, power-of-two padding classes, and PoW hashcash. |
+| [**Verifying the Client**](docs/security/verifying-the-client.md) | Signed frontend manifest per release and `make verify-frontend` for any instance. |
 | [**REST API Reference**](docs/api/rest-api.md) | Exhaustive `/api/v2/*` endpoints, JSON constraints, and Server-Sent Events (SSE). |
 | [**Configuration & Tuning**](docs/operations/configuration-and-tuning.md) | Environment variables, dual-key rotation runbook, and Argon2id memory tuning. |
 | [**Troubleshooting Guide**](docs/troubleshooting/troubleshooting-guide.md) | Common errors with immediate diagnostic steps and copy-paste solutions. |
