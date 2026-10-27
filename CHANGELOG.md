@@ -78,7 +78,9 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   without client IPs: tor names each circuit in a PROXY header, nginx's onion listener accepts
   only the tor container, and the backend rate-limits each circuit separately (it used to group
   Tor's whole address range like one IPv6 subscriber, which would have put every Tor user in
-  one bucket).
+  one bucket). A circuit holding more than 32 open connections is torn down, and the PoW
+  issuer forgets idle clients after one window instead of an hour, so a flood of circuits
+  cannot fill its client cap and refuse challenges to everyone.
 - **Invites cost a proof of work.** `POST /api/v2/invites` now takes `{"pow": …}` with a fresh,
   single-use solution, like each registration phase: missing → 412, invalid or replayed → 403,
   empty body → 415. While the browser solves it, the invite code scrambles, masks and reveals

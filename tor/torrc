@@ -14,5 +14,9 @@ HiddenServiceExportCircuitID haproxy
 # Tor-layer DoS defenses: client puzzles when the service is under load, rate-limited introductions
 HiddenServicePoWDefensesEnabled 1
 HiddenServiceEnableIntroDoSDefense 1
+# Rate limits count requests, not open connections: one circuit may hold at most 32 streams
+# (a browser needs a handful) and tor tears down a circuit that asks for more
+HiddenServiceMaxStreams 32
+HiddenServiceMaxStreamsCloseCircuit 1
 # nginx's onion listener; tor resolves the compose service name once, at start
 HiddenServicePort 80 frontend:8081

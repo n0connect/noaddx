@@ -29,8 +29,9 @@ const (
 	// Challenge rate limit per client: phase 1 + phase 2 of one registration plus retries
 	challengesPerWindow = 5
 	challengeWindow     = time.Minute
-	// limiterIdleTimeout is how long a client's limiter survives without requests
-	limiterIdleTimeout = time.Hour
+	// limiterIdleTimeout: a limiter idle for one window has refilled, so evicting it then loses
+	// nothing, and the client cap below takes a minute's worth of clients to fill, not an hour's
+	limiterIdleTimeout = challengeWindow
 	cleanupInterval    = time.Minute
 	// maxCleanupCycles bounds the cleanup loop (RULES.md §8.1); one per minute outlives any deployment
 	maxCleanupCycles = 1 << 26

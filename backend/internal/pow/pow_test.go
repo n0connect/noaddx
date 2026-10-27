@@ -263,3 +263,21 @@ func TestGenerateChallenge_OutstandingChallengesAreBounded(t *testing.T) {
 		t.Fatalf("refused=%v outstanding=%d cap=%d", refused, outstanding, maxOutstandingChallenges)
 	}
 }
+
+// A limiter idle for a whole window has refilled, so dropping it loses nothing. Keeping it
+// longer only helps distinct clients (one per Tor circuit) fill the issuer's client cap, which
+// then refuses challenges to everyone.
+func TestCleanup_EvictsLimitersIdleForOneWindow(t *testing.T) {
+	t.Setenv("POW_DIFFICULTY", "18")
+	client := newClientKey(t)
+	if _, err := GenerateChallenge(client); err != nil {
+		t.Fatalf("GenerateChallenge: %v", err)
+	}
+	cleanupInactiveRateLimiters(time.Now().Add(challengeWindow + time.Second))
+	rateLimiterMutex.RLock()
+	_, kept := challengeRateLimiters[client]
+	rateLimiterMutex.RUnlock()
+	if kept {
+		t.Fatal("a limiter idle for a full window survived cleanup")
+	}
+}
