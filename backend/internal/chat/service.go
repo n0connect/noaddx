@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"noaddx/internal/auth"
 	"noaddx/internal/config"
 	"noaddx/internal/cryptoengine"
 	"noaddx/internal/encryption"
@@ -37,6 +38,7 @@ var (
 	ErrLimitReached  = errors.New("limit reached")
 	ErrConflict      = errors.New("conflict")
 	ErrIdentityUnset = errors.New("identity not initialised")
+	ErrForbidden     = errors.New("forbidden")
 	errCorrupt       = errors.New("stored record failed authentication")
 )
 
@@ -537,13 +539,20 @@ func (s *Service) BurnConversation(me *Member, conversationID uuid.UUID) ([]stri
 	return streams, nil
 }
 
-// DeleteAccount erases the caller: its invites, every conversation it is in (all ciphertext,
-// for both sides) and the account row. Returns the peers' live-event addresses.
-// Lock order is RedeemInvite's (invites, then users). Peers' rows are left unlocked: their
-// encrypted indexes drop the vanished conversations at their next listing (pruneIndex).
-func (s *Service) DeleteAccount(me *Member) ([]string, error) {
+// DeleteAccount erases the caller once authKey proves the account: its invites, every
+// conversation it is in (all ciphertext, for both sides) and the account row. Returns the
+// peers' live-event addresses. The key is checked against the locked row that is deleted; the
+// lookup is HMAC(pepper, auth key), so a match proves the key without an Argon2 run.
+// Lock order is RedeemInvite's (invites, then users), so the invites go first; a wrong key
+// rolls the whole transaction back. Peers' rows are left unlocked: their encrypted indexes
+// drop the vanished conversations at their next listing (pruneIndex).
+func (s *Service) DeleteAccount(me *Member, authKey string) ([]string, error) {
+	lookup, err := auth.ComputeAccountLookup(authKey)
+	if err != nil {
+		return nil, err
+	}
 	var streams []string
-	err := s.chats.Transaction(func(tx store.ChatRepository) error {
+	err = s.chats.Transaction(func(tx store.ChatRepository) error {
 		if err := tx.DeleteInvites(me.inviteTag); err != nil {
 			return err
 		}
@@ -554,6 +563,9 @@ func (s *Service) DeleteAccount(me *Member) ([]string, error) {
 		row := rows[me.UserUUID]
 		if row == nil {
 			return ErrNotFound
+		}
+		if !cryptoengine.ConstantTimeEqual([]byte(lookup), []byte(row.AccountLookup)) {
+			return ErrForbidden
 		}
 		ids, err := openIndex(me, row.ConvIndexEnc)
 		if err != nil {

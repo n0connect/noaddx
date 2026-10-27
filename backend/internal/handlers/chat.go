@@ -11,7 +11,6 @@ import (
 	"noaddx/internal/auth"
 	"noaddx/internal/chat"
 	"noaddx/internal/config"
-	"noaddx/internal/cryptoengine"
 	"noaddx/internal/identity"
 	"noaddx/internal/middleware"
 	"noaddx/internal/models"
@@ -66,6 +65,9 @@ func writeChatError(w http.ResponseWriter, err error, op string) {
 		http.Error(w, "Conflict", http.StatusConflict)
 	case errors.Is(err, chat.ErrIdentityUnset):
 		http.Error(w, "Forbidden", http.StatusForbidden)
+	case errors.Is(err, chat.ErrForbidden):
+		chatLogger.Warn("%s: refused", op)
+		http.Error(w, "Forbidden", http.StatusForbidden)
 	default:
 		chatLogger.LogError(op, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -108,8 +110,7 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // deleteAccount erases the caller once the request re-proves the account number (as its auth
-// key): a live session alone, or a request riding on one, cannot erase an identity. The
-// lookup is HMAC(pepper, auth key), so matching it proves the key without an Argon2 run.
+// key): a live session alone, or a request riding on one, cannot erase an identity.
 func deleteAccount(w http.ResponseWriter, r *http.Request, me *chat.Member) {
 	if !allowOrTooMany(w, "delete", me) {
 		return
@@ -119,23 +120,7 @@ func deleteAccount(w http.ResponseWriter, r *http.Request, me *chat.Member) {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
-	user, err := userRepository.FindByUUID(me.UserUUID)
-	if err != nil {
-		writeChatError(w, err, "FindByUUID")
-		return
-	}
-	lookup, err := auth.ComputeAccountLookup(req.AuthKey)
-	if err != nil {
-		writeChatError(w, err, "ComputeAccountLookup")
-		return
-	}
-	if !cryptoengine.ConstantTimeEqual([]byte(lookup), []byte(user.AccountLookup)) {
-		chatLogger.Warn("deleteAccount: auth key does not match the session's account")
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	streams, err := chatService.DeleteAccount(me)
+	streams, err := chatService.DeleteAccount(me, req.AuthKey)
 	if err != nil {
 		writeChatError(w, err, "DeleteAccount")
 		return

@@ -15,6 +15,8 @@ import (
 func TestDeleteAccount_RequiresTheAccountNumber(t *testing.T) {
 	mux := setup(t)
 	alice, bob := register(t, mux), register(t, mux)
+	// Deletion removes invites before it checks the key (lock order): a refusal must roll back
+	expectStatus(t, alice.createInvite(), http.StatusCreated, "pending invite")
 
 	expectStatus(t, alice.do("DELETE", "/api/v2/me", nil), http.StatusBadRequest, "no body")
 	expectStatus(t, alice.do("DELETE", "/api/v2/me", models.DeleteAccountRequest{AuthKey: "short"}), http.StatusBadRequest, "malformed auth key")
@@ -26,6 +28,11 @@ func TestDeleteAccount_RequiresTheAccountNumber(t *testing.T) {
 
 	expectStatus(t, alice.do("GET", "/api/v2/me", nil), http.StatusOK, "alice after refused deletions")
 	expectStatus(t, bob.do("GET", "/api/v2/me", nil), http.StatusOK, "bob untouched")
+	var invites int64
+	database.DB.Model(&models.Invite{}).Count(&invites)
+	if invites != 1 {
+		t.Fatalf("a refused deletion removed invites (left %d, want 1)", invites)
+	}
 }
 
 // Deletion leaves nothing behind: every conversation is burned for both sides (and the peer is
