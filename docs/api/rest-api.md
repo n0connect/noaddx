@@ -45,7 +45,7 @@ Requests are subject to strict JSON validation:
 ### `GET /api/v2/pow/challenge`
 Issues a single-use hashcash proof-of-work challenge.
 
-- **Rate Limit:** 5 requests per minute per client key.
+- **Rate Limit:** 5 requests per minute per client key (an IPv4 address, an IPv6 /64, or one Tor circuit on the onion service), shared by registration and invites.
 - **Response (200 OK):**
 ```json
 {

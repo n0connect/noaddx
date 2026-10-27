@@ -9,23 +9,23 @@
 
 ```
 backend/tests/
-|-- auth/                      # Authentication tests (15 test)
-|-- database/                  # Migration tests (7 test)
-|-- encryption/                # Encryption tests (9 test)
+|-- auth/                      # Authentication tests (22 test)
+|-- database/                  # Migration tests (10 test)
+|-- encryption/                # Encryption tests (11 test)
 |-- identity/                  # HKDF / X25519 RFC vectors + derivations + tag separation (5 test)
-|-- integration/               # noaddx end-to-end flows, real E2E ciphertext (15 test)
-|-- middleware/                # Middleware tests (16 test)
+|-- integration/               # noaddx end-to-end flows, real E2E ciphertext (23 test)
+|-- middleware/                # Middleware tests (21 test)
 |-- testutil/                  # Test utilities
 |   |-- db.go                  # Database setup helpers
 |   |-- db_helper.go           # Database env setup
 |   |-- env.go                 # Environment setup (secrets drawn from the CSPRNG per run)
 |   `-- values.go              # Real generators: AccountNumber, auth key, ids
-`-- utils/                     # Utils, SafeMutex, supervised goroutines, logger (20 test)
+`-- utils/                     # Utils, SafeMutex, supervised goroutines, logger (22 test)
 ```
 
-Paket ici testler: `internal/pow` (11, gercek cozum/gercek sure dolumu), `internal/realtime` (3, SSE hub), `internal/handlers` (2, rota/sorgu beyaz listesi), `internal/e2e` (4, Go istemci protokolu + tarayici ciphertext'i).
-Frontend testleri: `frontend/tests/` (crypto.test.mjs 9, validation.test.mjs 2, pow-worker.test.mjs 3) -> `node --test frontend/tests/*.test.mjs`
-Kripto motoru: `internal/cryptoengine` (bilinen-cevap vektorleri, secili motorda), `internal/cryptoengine/equivalence` (iki motoru ayni binary'de karsilastirir; `-tags openssl` ile).
+Paket ici testler: `internal/pow` (13, gercek cozum/gercek sure dolumu, bosta kalan istemcinin unutulmasi), `internal/realtime` (3, SSE hub), `internal/handlers` (2, rota/sorgu beyaz listesi), `internal/e2e` (6, Go istemci protokolu + tarayici ciphertext'i + bes padding boyutu).
+Frontend testleri: `frontend/tests/` (crypto.test.mjs 10, validation.test.mjs 2, pow-worker.test.mjs 3) -> `node --test frontend/tests/*.test.mjs`
+Kripto motoru: `internal/cryptoengine` (10, bilinen-cevap vektorleri, secili motorda), `internal/cryptoengine/equivalence` (9, iki motoru ayni binary'de karsilastirir; `-tags openssl` ile).
 Fuzz hedefleri: `internal/e2e`, `internal/pow`, `tests/auth`, `tests/utils` (`go test -tags test -run '^$' -fuzz '^FuzzX$' -fuzztime 30s <paket>`).
 
 ## Test Calistirma Sirasi
@@ -82,14 +82,14 @@ go test -tags=test ./tests/utils -v
 
 | Kategori | Test Sayisi | Durum |
 |---|---|---|
-| **Database Migration** | **7** | Tamamlandi |
-| Authentication | 15 | Gecti |
-| Encryption | 9 | Gecti |
-| Middleware | 16 | Gecti |
+| **Database Migration** | **10** | Gecti |
+| Authentication | 22 | Gecti |
+| Encryption | 11 | Gecti |
+| Middleware | 21 | Gecti |
 | Identity | 5 | Gecti |
-| Integration (noaddx flows) | 15 | Gecti |
-| Utils | 20 | Gecti |
-| **TOPLAM (tests/)** | **87** | Gecti |
+| Integration (noaddx flows) | 23 | Gecti |
+| Utils | 22 | Gecti |
+| **TOPLAM (tests/)** | **114** | Gecti |
 
 ## Migration Testleri
 
@@ -142,7 +142,8 @@ Bkz: `tests/database/README.md` ve `tests/MIGRATION_TEST_GUIDE.md`
 
 **Testler:**
 - JWT authentication
-- Rate limiting
+- Rate limiting (IPv6 /64 gruplama; Tor devreleri ayri anahtar alir)
+- Guvenilir proxy (X-Forwarded-For sagdan okunur)
 - CORS policy
 - Security headers
 
@@ -158,6 +159,9 @@ Bkz: `tests/database/README.md` ve `tests/MIGRATION_TEST_GUIDE.md`
 - SSE: mesajda durtme, logout'ta akisin kapanmasi
 - DB'de sosyal graf ve sekli sizmamasi (konusma basina takma ad, padding'li sifreli liste, konusma basina seq)
 - Saklama suresi (gun hassasiyetli silinme, purge), dolu kullanicida davetin geri alinmasi, burn sonrasi liste temizligi
+- Davet basina PoW (eksik govde 415, eksik cozum 412, zayif/tekrar cozum 403; reddedilen istek davet olusturmaz)
+- Kimlik silme: hesap numarasi yeniden kanitlanir, yanlis anahtar islemi geri alir (davetler kalir), iki taraf icin konusmalar silinir, karsi taraf SSE ile haberdar olur
+- CSRF: capraz-koken yazmalar reddedilir; reddedilen istek PoW'u tuketmez
 
 **Not:** PostgreSQL erisilemezse paket FAIL verir (TestMain) - hicbir test calismadan "gecti" denmez. Lokal ornek:
 `DB_HOST=127.0.0.1 DB_PORT=5432 go test -p 1 -tags=test ./tests/... -v` (`-p 1`: DB paketleri ayni veritabanini paylasir)
@@ -205,7 +209,6 @@ Testler icin gerekli environment variables:
 
 - `tests/README.md`: Bu dosya
 - `tests/database/README.md`: Migration testleri detaylari
-- `tests/MIGRATION_TEST_GUIDE.md`: Migration test kilavuzu
 
 ---
 

@@ -70,6 +70,7 @@ All settings can be configured via `.env` or injected directly as environment va
 | `TRUSTED_PROXIES` | list | nginx (`PROXY_IP`) | IPs/CIDRs allowed to supply the client address. Empty in Docker means "nginx only". |
 | `COMPOSE_SUBNET` | CIDR | `172.29.73.0/24` | Docker network range; change it (with `PROXY_IP`) if it collides with another network. |
 | `PROXY_IP` | IP | `172.29.73.10` | nginx's fixed address on that network. |
+| `TOR_IP` | IP | `172.29.73.11` | The tor container's fixed address (`make onion`): the only peer nginx's onion listener accepts. Keep it inside `COMPOSE_SUBNET`. |
 | `HTTP_PORT` | int | `80` | Loopback port nginx is published on. |
 | `DB_HOST_PORT` | int | `5432` | Loopback port PostgreSQL is published on. |
 | `SEC_HEADER_COOP` / `SEC_HEADER_CORP` / `SEC_HEADER_COEP` | string | `same-origin` / `same-origin` / `require-corp` | API isolation headers; `off` disables one. |

@@ -14,7 +14,8 @@
 |  - IndexedDB Keystore: non-extractable CryptoKey storage               |
 |  - Web Worker: Proof of Work (PoW) SHA-256 hashcash solver             |
 +-----------------------------------+------------------------------------+
-                                    | HTTPS (Same-Origin)
+                                    | HTTPS (same-origin), or over Tor (make onion):
+                                    | Tor -> tor container -> :8081 (one PROXY id per circuit)
                                     v
 +------------------------------------------------------------------------+
 |                       NGINX (Reverse Proxy)                            |
@@ -23,6 +24,8 @@
 |  - Strict CSP + Trusted Types policy ('noaddx-worker')                 |
 |  - Unbuffered SSE proxy for /api/v2/events (proxy_buffering off)       |
 |  - Strips/Overrides untrusted client proxy headers                     |
+|  - Onion listener :8081: tor container only; forwards the circuit as   |
+|    the client address, so rate limits stay per circuit                 |
 +-----------------------------------+------------------------------------+
                                     | HTTP (Loopback / Internal Network)
                                     v
@@ -201,6 +204,15 @@ Ciphertexts do not live forever. The backend launches a supervised background go
 - **Configuration:** `MESSAGE_TTL_DAYS` (default: 7 days, maximum: 365 days).
 - **Purge Operation:** Atomically deletes all messages where `expires_on < today_utc` and all unredeemed invites where `expires_at < now_utc`.
 - **Client Visibility:** `GET /api/v2/me` returns `message_ttl_days` so the client UI can inform the user of room ephemerality.
+
+---
+
+## Identity Deletion (`DELETE /api/v2/me`)
+
+The account owner can erase an identity completely; a live session alone cannot.
+- **Re-proof:** the request carries the auth key derived from the AccountNumber, checked inside the transaction against the locked row that is deleted. The browser first checks that the pasted number derives *this* identity's public key, so the server never sees another account's key (which would link the two).
+- **What goes:** the account's invites, every conversation it is in (members and all ciphertext, for both sides) and the `users` row with its credentials, keys and encrypted index. Peers receive a `conv` poke and see the conversation disappear; the account's other devices are disconnected.
+- **Locks:** invites first, then the account's own row (the order `RedeemInvite` uses); peers' rows are not locked. Their encrypted indexes drop the vanished conversations at their next listing.
 
 ---
 

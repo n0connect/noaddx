@@ -109,7 +109,9 @@ Any input that fails is written to `testdata/fuzz/` next to the package and beco
 
 ### Continuous Integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and `noaddx-dev`, on tags and on pull requests: the complete suite with the race detector for **both crypto engines**, the engine **equivalence** suite, short fuzz runs, the frontend interop tests, `govulncheck`, `gitleaks` over the full history, and both Docker images (which must boot as the unprivileged user and pass the startup self-test).
+`.github/workflows/ci.yml` runs on every push to `main` and `noaddx-dev`, on tags and on pull requests: the complete suite with the race detector for **both crypto engines**, the engine **equivalence** suite, short fuzz runs, the frontend interop tests, `govulncheck`, `gitleaks` over the full history, and the Docker images: the backend must boot as the unprivileged user and pass the startup self-test, nginx must render and accept its config (`nginx -t`), and tor must accept its config with the onion defenses compiled in.
+
+`.github/workflows/release.yml` runs on each `noaddx-{openssl,native}-vX.Y.Z` tag: it signs the frontend manifest with Sigstore keyless and attaches it to the release ([Verifying the Client](../security/verifying-the-client.md)). Every action in that job is pinned to a commit, since it holds the signing and publishing permissions.
 
 ---
 

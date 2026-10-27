@@ -19,8 +19,13 @@ Locks MUST be acquired in the following order (lowest to highest priority) to pr
 
 ### Priority Level 3 (Highest) - Database/Critical Resources
 - Database transaction locks (implicit via GORM)
+- `invites` row locks (`ChatRepository.TakeInvite`, `ChatRepository.DeleteInvites`): always taken
+  **before** any `users` row lock in the same transaction (redeem, account deletion) — the reverse
+  order would deadlock a redemption against the deletion of its creator
 - `users` row locks (`SELECT … FOR UPDATE`, `ChatRepository.LockUsers`): always taken in ascending
-  `uuid` order inside one transaction (redeem, burn, index prune) — a global order rules out deadlocks
+  `uuid` order inside one transaction (redeem, burn, index prune, account deletion) — a global order
+  rules out deadlocks. Account deletion locks only its own row: peers' encrypted indexes drop the
+  vanished conversations at their next listing instead
 - `conversations` row lock (`ChatRepository.NextSeq`, `UPDATE … RETURNING`): serialises senders of
   one conversation until the transaction ends; never held while acquiring a `users` row lock
 - Master key initialization lock (`masterKeyOnce`)
@@ -74,5 +79,5 @@ rl.mu.Lock()
 
 ---
 
-**Last Updated**: 2026-10-24
+**Last Updated**: 2026-10-27
 **Next Review**: Every sprint or when adding new locks

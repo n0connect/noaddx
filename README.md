@@ -23,63 +23,49 @@
 
 ---
 
-## Executive Summary
+**noaddx.** is a browser-based messenger built to keep as little as possible about its users: an identity is one random 256-bit account number, every message is encrypted in the browser, and the server stores only padded ciphertext and pseudonyms it cannot link across conversations. It can be published as a Tor onion service without switching off a single server-side defense.
 
-**noaddx.** is a secure, browser-based messaging relay designed with absolute metadata minimization and zero persistent identity:
+## Documentation
 
-- **Zero-Knowledge Identity:** A user identity is a single 256-bit CSPRNG `AccountNumber`. The server generates it once during registration, then never sees or stores it again.
-- **Client-Side E2E Encryption:** All messages are encrypted directly in the browser via native WebCrypto (X25519 + HKDF-SHA256 + AES-256-GCM). The server relays and stores only opaque ciphertext.
-- **Graph Unlinkability:** Every participant receives a distinct, isolated HMAC member tag per conversation (`HMAC(subkey, uuid || convID)`). Even a complete database leak cannot determine if user X in conversation A is also participant in conversation B.
-- **Per-Conversation Sequencing:** Sequence numbers (`seq`) are strictly per-conversation atomic counters, eliminating global activity correlation across rooms.
-- **Automated Ephemerality:** Ciphertexts are purged via a day-granular hourly background retention daemon (`MESSAGE_TTL_DAYS`, default 7 days). Bilateral "Burn" allows instant, complete erasure on demand.
-- **Zero Telemetry:** Access logging is disabled, IP recording is omitted, and server master keys are zeroized in memory upon shutdown.
-- **Two Equivalent Crypto Engines:** The backend builds against OpenSSL (default) or the Go standard library (`ENGINE=native`). Both produce byte-identical results, proven by a differential test suite and a startup self-test.
+- **[Quick Start](docs/getting-started/quickstart.md)** — `make setup && make up`, then a two-party chat in a minute
+- **[Installation & Platforms](docs/getting-started/installation-and-platforms.md)** — macOS, Linux, Windows (WSL2), arm64 vs amd64
+- **[System Architecture](docs/architecture/system-overview.md)** — Data flow, identity derivation, database schema, identity deletion, retention
+- **[Threat Model & Security](docs/security/threat-model.md)** — What each adversary sees, database dump resilience, known limitations
+- **[Cryptography Specification](docs/security/cryptography.md)** — The two crypto engines, X25519 / HKDF / AES-256-GCM, five padding sizes, PoW
+- **[Verifying the Client](docs/security/verifying-the-client.md)** — Signed frontend manifest per release and `make verify-frontend`
+- **[REST API Reference](docs/api/rest-api.md)** — Every `/api/v2/*` endpoint with its JSON, error codes and Server-Sent Events
+- **[Configuration & Tuning](docs/operations/configuration-and-tuning.md)** — Every environment variable, master key rotation, Argon2id memory tuning
+- **[Onion Service (Tor)](docs/operations/onion-service.md)** — `make onion`, per-circuit abuse control, onion key custody
+- **[Troubleshooting](docs/troubleshooting/troubleshooting-guide.md)** — Common errors with copy-paste fixes
+- **[Testing & Development](docs/development/testing-and-contributing.md)** — Test suites, fuzzing, CI, lock hierarchy
+- **[SECURITY.md](SECURITY.md)** — How to report a vulnerability, supported versions and scope
+- **[CHANGELOG.md](CHANGELOG.md)** — Notable changes, with every security fix listed explicitly
 
----
+## Features
 
-## Complete Documentation Index
-
-Exhaustive, production-grade documentation is organized under the [`docs/`](docs/README.md) directory:
-
-| Document | Description |
-|---|---|
-| [**Quick Start Guide**](docs/getting-started/quickstart.md) | Rapid 3-minute setup, verification, and first two-party chat walkthrough. |
-| [**Installation & Platforms**](docs/getting-started/installation-and-platforms.md) | Platform instructions: macOS, Linux, Windows (WSL2), arm64 vs amd64. |
-| [**System Architecture**](docs/architecture/system-overview.md) | Detailed data flow, identity derivation, database schema, and retention daemon. |
-| [**Threat Model & Security**](docs/security/threat-model.md) | Adversary capabilities matrix, database dump resilience, and memory zeroization. |
-| [**Cryptography Specification**](docs/security/cryptography.md) | WebCrypto, non-extractable keys, power-of-two padding classes, and PoW hashcash. |
-| [**Verifying the Client**](docs/security/verifying-the-client.md) | Signed frontend manifest per release and `make verify-frontend` for any instance. |
-| [**REST API Reference**](docs/api/rest-api.md) | Exhaustive `/api/v2/*` endpoints, JSON constraints, and Server-Sent Events (SSE). |
-| [**Configuration & Tuning**](docs/operations/configuration-and-tuning.md) | Environment variables, dual-key rotation runbook, and Argon2id memory tuning. |
-| [**Onion Service (Tor)**](docs/operations/onion-service.md) | `make onion`, per-circuit rate limits, Tor-layer PoW, and onion key custody. |
-| [**Troubleshooting Guide**](docs/troubleshooting/troubleshooting-guide.md) | Common errors with immediate diagnostic steps and copy-paste solutions. |
-| [**Testing & Development**](docs/development/testing-and-contributing.md) | Automated testing suites, WebCrypto parity verification, and lock hierarchy rules. |
-| [**Security Policy**](SECURITY.md) | How to report a vulnerability, supported versions and scope. |
-| [**Changelog**](CHANGELOG.md) | Notable changes, with every security fix listed explicitly. |
-
----
+- **Zero-Knowledge Identity:** an identity is a single 256-bit CSPRNG `AccountNumber`. The server shows it once at signup and never stores it; the browser derives the login key and the X25519 identity from it.
+- **Client-Side E2E Encryption:** messages are encrypted in the browser with WebCrypto (X25519 + HKDF-SHA256 + AES-256-GCM) and padded to one of five sizes (256 to 4096 bytes); the server accepts no other size.
+- **Graph Unlinkability:** every participant has a distinct HMAC tag per conversation, so even a full database dump cannot tell whether one user is in two conversations.
+- **Erasable by Design:** messages expire after `MESSAGE_TTL_DAYS` (default 7), **burn** erases a conversation for both sides, and **delete** erases a whole identity, re-proven by its account number.
+- **Anonymous Transport:** `make onion` publishes the app as a Tor onion service. Rate limits, proofs of work (registration and every invite) and connection caps apply per Tor circuit.
+- **Verifiable Client:** each release signs the hashes of every frontend file; `make verify-frontend` checks what an instance serves.
+- **Zero Telemetry:** no access logs, no stored IP addresses, master keys zeroized on shutdown.
+- **Two Equivalent Crypto Engines:** the backend builds against OpenSSL (default) or the Go standard library (`ENGINE=native`), proven byte-for-byte equivalent by a differential suite and a startup self-test.
 
 ## Quick Start
 
-### 1. Initialize Configuration
 ```bash
-make setup
+make setup    # .env with fresh secrets (any openssl, LibreSSL included), mode 0600
+make up       # build and start; open http://localhost
 ```
 
-`make setup` generates every secret (JWT secret, lookup pepper, master key, database password) with `openssl rand` into a `0600` `.env`. Any `openssl` works, including the LibreSSL that macOS ships.
-
-### 2. Start Services
 ```bash
-make up
+make onion            # optional: the same, also published as a Tor onion service
+make onion-address    # its .onion address, about a minute after the first start
 ```
-
-### 3. Access Application
-Open your browser and navigate to:
-
-**[http://localhost](http://localhost)**
 
 > [!CAUTION]
-> **WebCrypto Secure Context Requirement:** Always access via `http://localhost` or `http://127.0.0.1`. Modern browsers automatically disable `window.crypto.subtle` on unencrypted remote IP addresses (`http://192.168.x.x`), which prevents key derivation and messaging. For remote server deployments, TLS/HTTPS termination is mandatory.
+> **WebCrypto Secure Context Requirement:** Always access via `http://localhost` or `http://127.0.0.1`. Modern browsers automatically disable `window.crypto.subtle` on unencrypted remote IP addresses (`http://192.168.x.x`), which prevents key derivation and messaging. For remote server deployments, TLS/HTTPS termination is mandatory (or the onion service, which Tor Browser treats as secure).
 
 ---
 
@@ -116,7 +102,7 @@ Alice (Creator)                         Server                                  
   |                                      |       fingerprint; mismatch ---> auto-burn!
 ```
 
-The fingerprint never touches the server. Because it binds to the single-use token, two invites created by the same person share no bytes.
+The fingerprint never touches the server. Because it binds to the single-use token, two invites created by the same person share no bytes. Every invite costs a fresh, single-use proof of work.
 
 ### 3. Message Framing & AAD Binding
 
@@ -131,7 +117,7 @@ The message ID is a client-generated UUIDv4 bound into the AAD. A ciphertext can
 
 ### 4. Realtime Server-Sent Events (SSE)
 
-`GET /api/v2/events` provides an unbuffered stream of content-free pokes (`event: msg` with conversation ID, `event: conv` for membership changes). Clients refetch content through authorized REST endpoints. Open streams close immediately on logout or server shutdown.
+`GET /api/v2/events` provides an unbuffered stream of content-free pokes (`event: msg` with conversation ID, `event: conv` for membership changes). Clients refetch content through authorized REST endpoints. Open streams close immediately on logout, identity deletion or server shutdown.
 
 ---
 
@@ -143,7 +129,7 @@ The message ID is a client-generated UUIDv4 bound into the AAD. A ciphertext can
 | `invites` | `lookup` (HMAC), `creator_ref_enc` (AES-GCM), `master_key_id`, `expires_at` | **Expiry timestamp only**. Token and creator reference are unreadable. |
 | `conversations` | `id` (UUIDv4) | Room ID exists; participants remain completely anonymous. |
 | `conversation_members` | `conversation_id`, `member_tag` (HMAC per room), `member_ref_enc` (AES-GCM), `master_key_id`, `peer_key_enc` (AES-GCM), `read_seq` | **Read sequence only**. Member tags are unique per room; cross-room correlation is impossible. |
-| `messages` | `conversation_id`, `seq` (per-room atomic counter), `id` (UUIDv4), `sender_tag`, `ciphertext`, `expires_on` (UTC day) | **Nothing about content**. Message lengths are bucket-padded; ordering is scoped to the room. |
+| `messages` | `conversation_id`, `seq` (per-room atomic counter), `id` (UUIDv4), `sender_tag`, `ciphertext`, `expires_on` (UTC day) | **Nothing about content**. Every ciphertext has one of five padded sizes; ordering is scoped to the room. |
 
 ### Memory Zeroization on Shutdown
 Upon receiving `SIGINT` or `SIGTERM`, the server halts incoming connections, cleanly drains in-flight requests, terminates SSE streams, and executes `encryption.ZeroizeAllKeys()` to overwrite master keys in memory with zeros.
@@ -159,11 +145,13 @@ The project uses a standard `Makefile` for container management and test automat
 make setup        # Generate .env with fresh cryptographic keys
 make build        # Build Docker service images (ENGINE=openssl by default, or ENGINE=native)
 make up           # Start all services in the background (same ENGINE choice)
-make down         # Stop and remove containers
+make onion        # Like up, and publish the app as a Tor onion service (opt-in)
+make onion-address # Print the .onion address
+make down         # Stop and remove containers (tor included)
 make restart      # Restart containers
 make logs         # Tail live container logs
 make ps           # Check container status
-make clean        # Remove this project's containers, volumes, images and test artifacts
+make clean        # Remove this project's containers, volumes (onion key included), images and test artifacts
 
 # Run test suites
 make test         # Complete Go suite (incl. database + integration) for ENGINE against a disposable PostgreSQL
@@ -179,6 +167,10 @@ make test-db      # Database + integration tests against a local PostgreSQL (TES
 make release VERSION=v1.0.0           # on main: tags noaddx-openssl-v1.0.0 and noaddx-native-v1.0.0
 make tag-dev                          # on noaddx-dev: moves noaddx-openssl-dev / noaddx-native-dev
 make build-ref REF=noaddx-native-v1.0.0  # build the image of any tag or commit
+
+# Verifying a deployment
+make manifest                         # SHA-256 of every served frontend file (signed in each release)
+make verify-frontend URL=https://host # check an instance serves exactly those bytes
 ```
 
 ---
@@ -197,6 +189,8 @@ make build-ref REF=noaddx-native-v1.0.0  # build the image of any tag or commit
 | [Base64url · RFC 4648 §5](https://www.rfc-editor.org/rfc/rfc4648#section-5) | Account numbers, keys, invite codes, ciphertext |
 | [Web Cryptography API](https://www.w3.org/TR/WebCryptoAPI/) · [Trusted Types](https://w3c.github.io/trusted-types/dist/spec/) | All browser cryptography; DOM-injection sinks locked by CSP |
 | [OpenSSL 3](https://docs.openssl.org/3.5/man7/crypto/) · [Go crypto](https://pkg.go.dev/crypto) | The two interchangeable server engines (byte-for-byte equivalent) |
+| [Tor onion services v3](https://spec.torproject.org/rend-spec/) | Anonymous transport (`make onion`), circuit IDs via the [HAProxy PROXY header](https://spec.torproject.org/haproxy-proxy.html) |
+| [Sigstore](https://docs.sigstore.dev/) | Keyless signature of each release's frontend manifest |
 
 ## License
 

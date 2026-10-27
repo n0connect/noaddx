@@ -22,7 +22,8 @@ formats and protocol labels may change, and fixes are not backported.
 
 In scope: the backend (`backend/`), the browser client (`frontend/`), the protocol described in
 [`docs/security/cryptography.md`](docs/security/cryptography.md), and the deployment files
-(`docker-compose*.yaml`, `*.Dockerfile`, `nginx*.conf`, `tor/torrc`, `Makefile`).
+(`docker-compose*.yaml`, `*.Dockerfile`, `nginx*.conf`, `tor/torrc`, `Makefile`) and the CI and
+release workflows (`.github/workflows/`), which sign each release's frontend manifest.
 
 Out of scope, because they are stated design limits
 ([`docs/security/threat-model.md`](docs/security/threat-model.md#known-limitations)):

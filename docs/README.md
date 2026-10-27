@@ -28,7 +28,9 @@ Welcome to the **noaddx.** documentation. This documentation suite is designed t
 2. **Zero Plaintext & Zero Metadata Storage:** Messages are encrypted in the browser using AES-256-GCM. The server stores only opaque ciphertexts padded to one of five power-of-two sizes (256 to 4096 bytes) and accepts no other size. User accounts contain **no creation or update timestamps**. Message send times reside solely inside the ciphertext; the server only tracks a coarse, day-granular expiry date.
 3. **Graph Unlinkability:** Unlike legacy designs where a member tag is shared across all rooms, **noaddx generates a unique, isolated HMAC member tag per conversation**. Even a complete database dump cannot correlate that a user in Conversation A is the participant in Conversation B.
 4. **Scoped Ordering:** Sequence numbers (`seq`) are calculated **per conversation**, eliminating global activity correlation across different channels.
-5. **Ephemerality by Default:** All messages automatically expire and are purged by an hourly background daemon based on `MESSAGE_TTL_DAYS` (default 7 days). Complete, bilateral conversation wiping ("Burn") is supported at any time.
+5. **Ephemerality by Default:** All messages automatically expire and are purged by an hourly background daemon based on `MESSAGE_TTL_DAYS` (default 7 days). Complete, bilateral conversation wiping ("Burn") is supported at any time, and the owner can erase a whole identity (`DELETE /api/v2/me`, re-proven by the AccountNumber).
+6. **Anonymous Transport, Abuse Control Intact:** `make onion` publishes the app as a Tor onion service, so the server never sees a client address. Rate limits, proofs of work and stream caps apply per Tor circuit: anonymity does not switch the backend's defenses off.
+7. **Verifiable Client:** Each release signs the hashes of every frontend file; `make verify-frontend` checks what any instance actually serves.
 
 ---
 

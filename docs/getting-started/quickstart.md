@@ -80,24 +80,25 @@ Open your browser and navigate to:
 To test end-to-end encryption locally between two parties:
 
 1. **Party A (Normal Window):**
-   - Click **"Create Identity"**.
-   - Your browser solves a Proof-of-Work (PoW) hashcash challenge in a background Web Worker.
-   - You are shown your **AccountNumber** (e.g., `k8x9F...43-chars`). **Copy and save it!**
-   - Click **"Continue"** to complete registration.
-   - Click **"+ Invite"** at the top left.
-   - Copy the generated invite code (format: `noaddx:TOKEN_BASE64URL_WITH_FINGERPRINT`).
+   - Click **new identity**, then **copy**.
+   - Your browser solves a Proof-of-Work (PoW) hashcash challenge in a background Web Worker while the account number scrambles; then your **AccountNumber** appears (43 characters) and is copied to the clipboard. **Save it in a password manager:** it is the only way back into this identity.
+   - Click **continue →** to create the account (a second, fresh PoW).
+   - Click **+ invite**. Every invite costs one PoW too: the code scrambles for a few seconds, then appears (`noaddx:` + 43 characters) and is copied.
 
 2. **Party B (Incognito / Second Browser Window):**
-   - Open a private/incognito window to `http://localhost`.
-   - Click **"Create Identity"** and complete registration for Party B.
-   - Paste Party A's invite code into the **"Join with Invite"** input box and click **"Join"**.
+   - Open a private window to `http://localhost` and create a second identity the same way.
+   - Click **join**, paste Party A's invite code and press **join**.
 
 3. **Verify & Talk:**
-   - Both parties immediately see the new conversation appear in their sidebar via Server-Sent Events (SSE).
-   - Click on the conversation. Notice the deterministic **"Aura"** (a distinct name and 5x5 pixel glyph derived from each other's public keys).
-   - Type a message and send. Party B receives it in realtime!
-   - Verify safety numbers out-of-band by clicking the contact details.
-   - Test the **"Burn"** button: deleting the conversation completely wipes every ciphertext for both participants immediately.
+   - The conversation appears for both parties at once (Server-Sent Events).
+   - Open it. Each side shows the other's **aura**: a name and a 5x5 glyph derived from the peer's public key.
+   - Send a message; the other side receives it in realtime.
+   - Click **verify** and compare the safety number with your peer over another channel, then **mark as verified**.
+   - **burn** erases the conversation and every ciphertext for both participants.
+   - **delete** (next to logout) erases the whole identity: paste the account number to confirm. Every conversation is burned for both sides and the number can never log in again.
+
+> [!TIP]
+> **Over Tor:** `make onion` publishes the same app as a Tor onion service and `make onion-address` prints its address; open it in Tor Browser (security level Standard). See [**Onion Service (Tor)**](../operations/onion-service.md).
 
 ---
 

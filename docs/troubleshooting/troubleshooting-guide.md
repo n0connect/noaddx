@@ -179,6 +179,17 @@ In this mode, `keystore.js` keeps private keys in volatile memory only.
 
 ---
 
+## 8. Onion Service (`make onion`)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `make onion-address` says *Not published yet* | tor is still bootstrapping into the Tor network (about a minute on first start). | Wait, then retry; `docker logs noaddx-tor` must show `Bootstrapped 100%`. |
+| Tor Browser shows the page, but **new identity** / **login** does nothing | JavaScript is off ("Safest" security level) or Tor Browser is older than 15 (no X25519 in WebCrypto). | Security level **Standard**; update Tor Browser. |
+| `nginx: [emerg] invalid parameter "${TOR_IP}"` | The frontend image was started without `TOR_IP` (outside compose). | Set `TOR_IP` (compose defaults it to `172.29.73.11`); nginx refuses to start rather than open the onion port to anyone. |
+| Every onion request answers `403` | The connection does not come from the tor container: `TOR_IP` differs from the tor container's address. | Keep `TOR_IP` and the tor service's `ipv4_address` equal (both come from `.env`). |
+
+---
+
 ### Next Steps:
 - Review [**Testing & Development**](../development/testing-and-contributing.md) for automated test suites.
 - Read [**Configuration & Tuning**](../operations/configuration-and-tuning.md) for full parameter references.
