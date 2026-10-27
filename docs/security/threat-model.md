@@ -95,9 +95,10 @@ These are properties of the design, stated so nobody relies on a guarantee that 
 
 - **No forward secrecy.** Each account has one static X25519 identity key derived from its AccountNumber, and each conversation one key derived from the two identities. Whoever obtains an AccountNumber can decrypt every message of that account that is still stored (up to `MESSAGE_TTL_DAYS`) or was recorded in transit. Retention and **Burn** bound the exposure; treat the AccountNumber like a master key.
 - **The invite creator trusts the server for the peer key.** The fingerprint in the invite code protects the *redeemer* against a substituted creator key. The creator learns the redeemer's key from the server and is protected only after both compare safety numbers.
-- **Code delivery is trust in the server.** A browser application runs the JavaScript it is served; a malicious or compromised deployment can serve code that leaks keys (see the matrix above).
+- **Code delivery is trust in the server.** A browser application runs the JavaScript it is served; a malicious or compromised deployment can serve code that leaks keys (see the matrix above). Each release signs the list of frontend file hashes, and `make verify-frontend` proves what an instance serves ([Verifying the Client](verifying-the-client.md)), but only to the verifier: a server can still target one user.
 - **Withheld-message detection is per device.** The encrypted sender counter reveals gaps in what one device has seen; it is not a cross-device delivery guarantee.
-- **Network metadata.** The server sees connection addresses and timing in transit. It does not log them (`access_log off`; rate-limit keys are HMACs of the address under a per-boot secret), but an operator could capture them at runtime.
+- **Network metadata.** The server sees connection addresses and timing in transit. It does not log them (`access_log off`; rate-limit keys are HMACs of the address under a per-boot secret), but an operator could capture them at runtime. Over the [onion service](../operations/onion-service.md) there is no client address to see, only a per-circuit number.
+- **Deletion is logical, not forensic.** Deleting an identity or burning a conversation removes the rows at once, but PostgreSQL keeps dead row versions until autovacuum reuses the space and keeps the WAL until it is recycled. A disk image taken soon after can still hold them: ciphertext, HMAC tags and encrypted references, never plaintext.
 
 ---
 

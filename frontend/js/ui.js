@@ -182,10 +182,20 @@ function showHome() {
     document.getElementById('homeView').style.display = 'block';
 }
 
+const PAIR_PANELS = ['invitePanel', 'joinPanel', 'deletePanel'];
+
+// Opens panelId alone, or closes every pair panel when it is already open (or null)
 function togglePairPanel(panelId) {
-    ['invitePanel', 'joinPanel', 'deletePanel'].forEach(id => {
+    PAIR_PANELS.forEach(id => {
         const panel = document.getElementById(id);
         panel.style.display = id === panelId && panel.style.display === 'none' ? 'block' : 'none';
+    });
+}
+
+// Opens panelId and closes the others, whatever was open
+function showPairPanel(panelId) {
+    PAIR_PANELS.forEach(id => {
+        document.getElementById(id).style.display = id === panelId ? 'block' : 'none';
     });
 }
 
@@ -200,8 +210,7 @@ function showInviteGenerating() {
     document.getElementById('copyInviteBtn').disabled = true;
     document.getElementById('inviteHint').style.display = 'none';
     document.getElementById('inviteStatus').style.display = 'block';
-    document.getElementById('joinPanel').style.display = 'none';
-    document.getElementById('invitePanel').style.display = 'block';
+    showPairPanel('invitePanel');
     return startScramble(codeElement, NoaddxCrypto.INVITE_BODY_CHARS, NoaddxCrypto.INVITE_PREFIX);
 }
 

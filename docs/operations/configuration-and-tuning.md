@@ -48,7 +48,7 @@ All settings can be configured via `.env` or injected directly as environment va
 | `INVITE_TTL_SEC` | int | `86400` | Lifetime of unredeemed invites (default 24 hours). |
 | `MAX_ACTIVE_INVITES` | int | `5` | Maximum active, unredeemed invites allowed per account. |
 | `MAX_CONVERSATIONS_PER_USER` | int | `256` | Maximum conversations allowed per account. |
-| `MAX_MESSAGE_BYTES` | int | `8192` | Maximum allowed E2E ciphertext size per message. |
+| `MAX_MESSAGE_BYTES` | int | `8192` | Upper bound for one E2E ciphertext. Messages come in five padded sizes (284 to 4124 bytes), so values above 4124 change nothing; a lower value drops the larger sizes. |
 | `MESSAGE_PAGE_LIMIT` | int | `200` | Maximum messages returned per fetch page (1-1000). |
 | `MESSAGE_TTL_DAYS` | int | `7` | Days to retain ciphertext before day-granular deletion (1-365). |
 | `POW_DIFFICULTY` | int | `20` | Proof-of-work target leading zero bits (18-24). |
