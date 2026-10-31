@@ -307,6 +307,7 @@ button:disabled {
 .text-btn {
     background: transparent;
     border: none;
+    box-shadow: none;
     color: var(--muted);
     margin-top: 16px;
     padding: 8px 12px;
@@ -826,6 +827,7 @@ header {
 .action-btn {
     background: transparent;
     border: none;
+    box-shadow: none;
     font-size: 14px;
     color: var(--muted);
     cursor: pointer;
@@ -1043,7 +1045,11 @@ header {
     font-size: 16px;
 }
 
-.chat-header #verifyBtn {
+/* The actions stay together: on narrow screens they wrap as one group, right-aligned */
+.chat-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     margin-left: auto;
 }
 
@@ -1226,8 +1232,15 @@ header {
     margin-left: auto;
 }
 
-.chat-header #membersBtn {
-    margin-left: auto;
+/* On narrow screens the actions move to their own line instead of squeezing the room's name */
+.chat-header {
+    flex-wrap: wrap;
+    row-gap: 4px;
+}
+
+.chat-header .aura-name,
+.room-meta {
+    white-space: nowrap;
 }
 
 .member-list {

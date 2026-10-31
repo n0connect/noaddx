@@ -141,7 +141,7 @@
 
                 <div id="deletePanel" class="pair-panel" data-hidden>
                     <p class="account-number-label">delete identity</p>
-                    <p class="pair-hint">erases this identity and burns every conversation for both sides. there is no undo. paste your account number to confirm.</p>
+                    <p class="pair-hint">erases this identity, burns every conversation for both sides and every room you own, and leaves the rooms you joined. there is no undo. paste your account number to confirm.</p>
                     <div class="join-input-group">
                         <input type="password" id="deleteAccountInput" placeholder="account number" maxlength="64" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
                         <button id="deleteConfirmBtn" class="menu-opt burn-yes">delete</button>
@@ -161,10 +161,12 @@
                     <span id="peerCode" class="aura-code"></span>
                     <span id="peerVerified" class="verified-mark" title="safety number verified on this device" data-hidden>✓</span>
                     <span id="roomMeta" class="aura-code room-meta" data-hidden></span>
-                    <button id="membersBtn" class="action-btn" title="Members" data-hidden>members</button>
-                    <button id="roomCodeBtn" class="action-btn" title="Room code" data-hidden>code</button>
-                    <button id="verifyBtn" class="action-btn" title="Verify safety number">verify</button>
-                    <button id="burnBtn" class="action-btn burn-btn" title="Burn conversation">burn</button>
+                    <div class="chat-actions">
+                        <button id="membersBtn" class="action-btn" title="Members" data-hidden>members</button>
+                        <button id="roomCodeBtn" class="action-btn" title="Room code" data-hidden>code</button>
+                        <button id="verifyBtn" class="action-btn" title="Verify safety number">verify</button>
+                        <button id="burnBtn" class="action-btn burn-btn" title="Burn conversation">burn</button>
+                    </div>
                 </div>
 
                 <div id="notesPanel" class="pair-panel" data-hidden>
