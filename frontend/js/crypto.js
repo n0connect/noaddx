@@ -132,14 +132,11 @@ const NoaddxCrypto = (() => {
         }
     }
 
-    // Returns a NON-extractable private key plus the public key (base64url).
-    async function deriveIdentity(accountNumber) {
-        const raw = accountBytes(accountNumber);
-        let seed = null;
-        let pkcs8 = null;
+    // Turns a 32-byte X25519 scalar into a NON-extractable private key plus its public key
+    // (base64url). The caller wipes the seed.
+    async function x25519FromSeed(seed) {
+        const pkcs8 = concat(PKCS8_X25519_PREFIX, seed);
         try {
-            seed = await hkdf(raw, encoder.encode(SALT), INFO_IDENTITY, KEY_BYTES);
-            pkcs8 = concat(PKCS8_X25519_PREFIX, seed);
             // Extractable only long enough to read the public coordinate (x)
             const temp = await subtle.importKey('pkcs8', pkcs8, { name: 'X25519' }, true, ['deriveBits']);
             const jwk = await subtle.exportKey('jwk', temp);
@@ -149,9 +146,20 @@ const NoaddxCrypto = (() => {
             const privateKey = await subtle.importKey('pkcs8', pkcs8, { name: 'X25519' }, false, ['deriveBits']);
             return { privateKey: privateKey, publicKey: publicKey };
         } finally {
+            wipe(pkcs8);
+        }
+    }
+
+    // Returns a NON-extractable private key plus the public key (base64url).
+    async function deriveIdentity(accountNumber) {
+        const raw = accountBytes(accountNumber);
+        let seed = null;
+        try {
+            seed = await hkdf(raw, encoder.encode(SALT), INFO_IDENTITY, KEY_BYTES);
+            return await x25519FromSeed(seed);
+        } finally {
             wipe(raw);
             wipe(seed);
-            wipe(pkcs8);
         }
     }
 
@@ -220,11 +228,27 @@ const NoaddxCrypto = (() => {
         return encoder.encode(JSON.stringify({ t: text, ts: sentAt, n: counter }));
     }
 
-    async function encryptMessage(key, conversationId, messageId, senderPublicKey, text, sentAt, counter) {
+    // The framed payload both conversation kinds encrypt
+    function encodePayload(text, sentAt, counter) {
         if (!Number.isSafeInteger(counter) || counter < 1) {
             throw new Error('invalid counter');
         }
-        const plain = frame(payloadBytes(text, sentAt, counter));
+        return frame(payloadBytes(text, sentAt, counter));
+    }
+
+    // Accepts exactly the three payload fields; the caller wipes `plain`
+    function decodePayload(plain) {
+        const parsed = JSON.parse(decoder.decode(unframe(plain)));
+        const keys = Object.keys(parsed);
+        if (keys.length !== 3 || typeof parsed.t !== 'string' || !Number.isSafeInteger(parsed.ts) || parsed.ts <= 0 ||
+            !Number.isSafeInteger(parsed.n) || parsed.n < 1 || parsed.n > MAX_COUNTER) {
+            throw new Error('bad payload');
+        }
+        return { text: parsed.t, sentAt: parsed.ts, counter: parsed.n };
+    }
+
+    async function encryptMessage(key, conversationId, messageId, senderPublicKey, text, sentAt, counter) {
+        const plain = encodePayload(text, sentAt, counter);
         const nonce = globalThis.crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
         try {
             const aad = await messageAAD(conversationId, messageId, senderPublicKey);
@@ -248,13 +272,7 @@ const NoaddxCrypto = (() => {
             data.subarray(NONCE_BYTES)
         ));
         try {
-            const parsed = JSON.parse(decoder.decode(unframe(plain)));
-            const keys = Object.keys(parsed);
-            if (keys.length !== 3 || typeof parsed.t !== 'string' || !Number.isSafeInteger(parsed.ts) || parsed.ts <= 0 ||
-                !Number.isSafeInteger(parsed.n) || parsed.n < 1 || parsed.n > MAX_COUNTER) {
-                throw new Error('bad payload');
-            }
-            return { text: parsed.t, sentAt: parsed.ts, counter: parsed.n };
+            return decodePayload(plain);
         } finally {
             wipe(plain);
         }
@@ -305,7 +323,11 @@ const NoaddxCrypto = (() => {
     // Order-independent: both peers compute the same 30 digits
     async function safetyNumber(publicKeyA, publicKeyB) {
         const [first, second] = [publicKeyA, publicKeyB].sort();
-        const digest = await sha256(concat(b64urlDecode(first, KEY_BYTES), b64urlDecode(second, KEY_BYTES)));
+        return digitGroups(await sha256(concat(b64urlDecode(first, KEY_BYTES), b64urlDecode(second, KEY_BYTES))));
+    }
+
+    // Six groups of five digits from the first 30 bytes of a digest
+    function digitGroups(digest) {
         const groups = [];
         for (let g = 0; g < 6; g++) {
             let value = 0;
@@ -385,6 +407,15 @@ const NoaddxCrypto = (() => {
         INVITE_PREFIX,
         INVITE_BODY_CHARS: Math.ceil((INVITE_TOKEN_BYTES + INVITE_FP_BYTES) * 4 / 3),
         b64urlDecode,
+        b64urlEncode,
+        uuidBytes,
+        concat,
+        sha256,
+        wipe,
+        x25519FromSeed,
+        encodePayload,
+        decodePayload,
+        digitGroups,
         deriveAuthKey,
         deriveIdentity,
         conversationKey,

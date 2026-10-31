@@ -135,16 +135,10 @@ func unframe(framed []byte) ([]byte, error) {
 
 // Encrypt seals one message exactly as the browser client does.
 func Encrypt(key []byte, conversationID, messageID uuid.UUID, senderPublicKey, text string, sentAt, counter int64) (string, error) {
-	if sentAt <= 0 || counter < 1 || messageID.Version() != 4 {
+	if messageID.Version() != 4 {
 		return "", ErrInvalidInput
 	}
-	var body bytes.Buffer
-	encoder := json.NewEncoder(&body)
-	encoder.SetEscapeHTML(false) // same bytes as JSON.stringify
-	if err := encoder.Encode(payload{T: text, TS: sentAt, N: counter}); err != nil {
-		return "", fmt.Errorf("e2e: encode payload: %w", err)
-	}
-	framed, err := frame(bytes.TrimSuffix(body.Bytes(), []byte("\n")))
+	framed, err := encodePayload(text, sentAt, counter)
 	if err != nil {
 		return "", err
 	}
@@ -177,6 +171,25 @@ func Decrypt(key []byte, conversationID, messageID uuid.UUID, senderPublicKey, c
 	if err != nil {
 		return nil, ErrBadMessage
 	}
+	return decodePayload(framed)
+}
+
+// encodePayload frames {"t","ts","n"} with the exact bytes JSON.stringify produces.
+func encodePayload(text string, sentAt, counter int64) ([]byte, error) {
+	if sentAt <= 0 || counter < 1 {
+		return nil, ErrInvalidInput
+	}
+	var body bytes.Buffer
+	encoder := json.NewEncoder(&body)
+	encoder.SetEscapeHTML(false) // same bytes as JSON.stringify
+	if err := encoder.Encode(payload{T: text, TS: sentAt, N: counter}); err != nil {
+		return nil, fmt.Errorf("e2e: encode payload: %w", err)
+	}
+	return frame(bytes.TrimSuffix(body.Bytes(), []byte("\n")))
+}
+
+// decodePayload accepts exactly the three payload fields, nothing more.
+func decodePayload(framed []byte) (*Message, error) {
 	body, err := unframe(framed)
 	if err != nil {
 		return nil, err
