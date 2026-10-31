@@ -15,6 +15,9 @@ services:
       - "127.0.0.1:${DB_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Like every other service: after a crash or a host reboot the database comes back too,
+    # instead of leaving a running app in front of a stopped database
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
       interval: 10s
@@ -91,6 +94,11 @@ services:
     # Loopback only: browsers must go through nginx (CSP, same-origin); local debugging still works
     ports:
       - "127.0.0.1:8080:8080"
+    # Fixed: nginx resolves the backend's name once, at start. A recreated backend that came
+    # back on another address would leave nginx answering 502 until nginx restarted too.
+    networks:
+      default:
+        ipv4_address: ${BACKEND_IP:-172.29.73.12}
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,8 +161,8 @@ networks:
   default:
     ipam:
       config:
-        # Fixed so nginx has a known address (PROXY_IP) for TRUSTED_PROXIES; change both in
-        # .env if this range collides with another network on the host
+        # Fixed so nginx has a known address (PROXY_IP) for TRUSTED_PROXIES; change it with
+        # PROXY_IP, BACKEND_IP and TOR_IP in .env if this range collides with another network
         - subnet: ${COMPOSE_SUBNET:-172.29.73.0/24}
 
 volumes:

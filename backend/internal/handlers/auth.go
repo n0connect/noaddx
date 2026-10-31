@@ -159,8 +159,9 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Consumes the pending registration (one-time use)
-	pending, err := auth.VerifyPendingRegistrationToken(req.PendingToken)
+	// The pending registration stays redeemable until the account exists: every failure
+	// below leaves it in place for a retry (with a fresh proof of work) until it expires
+	pendingID, pending, err := auth.VerifyPendingRegistrationToken(req.PendingToken)
 	if err != nil {
 		// SECURITY: Generic error message to prevent information leakage
 		// Don't distinguish between expired and invalid tokens
@@ -189,6 +190,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		// SECURITY: Generic error message to prevent enumeration
 		// Don't reveal that account exists - use same message as invalid token
 		authLogger.Warn("Account already exists (possible replay)")
+		auth.CompletePendingRegistration(pendingID)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -242,10 +244,17 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := userRepository.Create(&user); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			// A concurrent confirmation of the same token created it first
+			auth.CompletePendingRegistration(pendingID)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
 		authLogger.LogError("UserRepository.Create", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	auth.CompletePendingRegistration(pendingID)
 	authLogger.Debug("New identity registered")
 
 	// Immediate login: the session token goes into the HttpOnly cookie and nowhere else
@@ -385,8 +394,13 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find user by lookup
+	// Find user by lookup. An unreachable database says so: answering "invalid credentials"
+	// would tell the user their only key is worthless (and says nothing about the account)
 	user, err := userRepository.FindByAccountLookup(lookup)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	if err != nil {
 		authLogger.Debug("Login failed: no account for this auth key")
 		// SECURITY: Spend a full Argon2id verification anyway so that response time does

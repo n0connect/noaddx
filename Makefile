@@ -36,7 +36,7 @@ MANIFEST ?= frontend.sha256
 .PHONY: all help setup check-deps check-docker build up onion onion-address start run down stop restart logs ps clean \
         test test-engines test-equivalence test-run test-unit test-crypto test-all test-db \
         build-ref tag-dev release check-clean-branch-dev check-clean-branch-release shell-backend shell-db \
-        manifest verify-frontend
+        manifest verify-frontend backup-accounts
 
 ## -----------------------------------------------------------------------------
 ## Help
@@ -81,6 +81,7 @@ help:
 	@echo "Utility Targets:"
 	@echo "  shell-backend Open interactive shell inside backend container"
 	@echo "  shell-db      Open PostgreSQL CLI inside database container"
+	@echo "  backup-accounts  Dump the accounts (never messages) to backups/; restore: docs/operations/disaster-recovery.md"
 
 ## -----------------------------------------------------------------------------
 ## Environment Configuration & Key Generation
@@ -302,3 +303,13 @@ shell-backend:
 
 shell-db:
 	@$(DOCKER_COMPOSE) -f docker-compose.yaml exec postgres psql -U postgres -d noaddx
+
+# Accounts only (users + the pepper commitment in key_checks): messages expire and burned
+# conversations must stay gone, so they are never backed up. Keep it apart from .env.
+backup-accounts:
+	@mkdir -p backups
+	@umask 077; file="backups/accounts-$$(date -u +%Y%m%dT%H%M%SZ).sql"; \
+	$(DOCKER_COMPOSE) -f docker-compose.yaml exec -T postgres sh -c \
+		'pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" --no-owner --table=users --table=key_checks' > "$$file" \
+		|| { rm -f "$$file"; echo "[ERROR] backup failed (is the database running?)"; exit 1; }; \
+	echo "[OK] $$file: store it apart from .env"

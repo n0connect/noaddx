@@ -10,10 +10,10 @@
 ```
 backend/tests/
 |-- auth/                      # Authentication tests (22 test)
-|-- database/                  # Migration tests (10 test)
+|-- database/                  # Migration, schema and session-bound tests (11 test)
 |-- encryption/                # Encryption tests (11 test)
 |-- identity/                  # HKDF / X25519 RFC vectors + derivations + tag separation (5 test)
-|-- integration/               # noaddx end-to-end flows, real E2E ciphertext (23 test)
+|-- integration/               # End-to-end flows, real E2E ciphertext, outages, key check, re-wrap (31 test)
 |-- middleware/                # Middleware tests (21 test)
 |-- testutil/                  # Test utilities
 |   |-- db.go                  # Database setup helpers
@@ -82,14 +82,14 @@ go test -tags=test ./tests/utils -v
 
 | Kategori | Test Sayisi | Durum |
 |---|---|---|
-| **Database Migration** | **10** | Gecti |
+| **Database Migration** | **11** | Gecti |
 | Authentication | 22 | Gecti |
 | Encryption | 11 | Gecti |
 | Middleware | 21 | Gecti |
 | Identity | 5 | Gecti |
-| Integration (noaddx flows) | 23 | Gecti |
+| Integration (noaddx flows) | 31 | Gecti |
 | Utils | 22 | Gecti |
-| **TOPLAM (tests/)** | **114** | Gecti |
+| **TOPLAM (tests/)** | **123** | Gecti |
 
 ## Migration Testleri
 

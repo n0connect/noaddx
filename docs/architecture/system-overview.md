@@ -202,7 +202,7 @@ AAD = "NADM" (4 bytes)
 Ciphertexts do not live forever. The backend launches a supervised background goroutine:
 - **Interval:** Runs immediately on startup, then every **1 hour**.
 - **Configuration:** `MESSAGE_TTL_DAYS` (default: 7 days, maximum: 365 days).
-- **Purge Operation:** Atomically deletes all messages where `expires_on < today_utc` and all unredeemed invites where `expires_at < now_utc`.
+- **Purge Operation:** Caps every stored `expires_on` at `today_utc + MESSAGE_TTL_DAYS` (so a lowered setting also shortens what is stored), then deletes all messages where `expires_on < today_utc` and all unredeemed invites where `expires_at <= now_utc`.
 - **Client Visibility:** `GET /api/v2/me` returns `message_ttl_days` so the client UI can inform the user of room ephemerality.
 
 ---
@@ -233,6 +233,18 @@ data: {}
 - When a message arrives, the server emits a lightweight poke containing only the `conversation_id`.
 - The client receives the poke and refetches the message list via authorized `GET /api/v2/conversations/{id}/messages`.
 - **Advantage:** Exactly one authorized code path evaluates access control and message decryption.
+
+---
+
+## Startup Key Check & Master Key Re-wrapping
+
+Before it serves anything, the backend checks `.env` against the database (`chat.VerifyKeys`):
+- **Master keys:** every `master_key_id` stored in `users`, `conversation_members` and `invites` must be configured, and the key under that id must open sample records (a few per table, so one corrupt row cannot stop the server while a wrong key opens none).
+- **Pepper:** `key_checks` holds an HMAC commitment to `ACCOUNT_LOOKUP_PEPPER`, pinned on the first run. A database that predates the check gets it pinned only once a stored member tag, recomputed with the pepper, proves it; a wrong pepper is therefore never pinned.
+
+A mismatch stops startup with the key it concerns (see [Disaster Recovery](../operations/disaster-recovery.md)).
+
+After a master key rotation a supervised goroutine (`chat.RunRewrap`) re-encrypts every record still under an old key: in primary-key order, 100 rows per batch, each update applied only while the row still names the old key. It logs when no record needs an old key any more.
 
 ---
 

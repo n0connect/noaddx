@@ -6,9 +6,10 @@
 *.md
 !README.md
 
-# Environment files
+# Environment files and account backups (secrets never enter a build context)
 .env
 .env.*
+backups/
 
 # Docker files (don't copy into containers)
 docker-compose.yaml

@@ -48,12 +48,21 @@ func main() {
 
 	database.Init()
 
+	// Fail closed on keys that cannot open this database (a regenerated .env, a master key
+	// dropped too early): starting anyway would answer every account with errors
+	chatService := chat.NewService()
+	if err := chatService.VerifyKeys(); err != nil {
+		mainLogger.Error("Key check failed: %v", err)
+		log.Fatal("Key check failed")
+	}
+
 	// Every goroutine and request context derives from this: a signal cancels them all
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	utils.SafeGoSupervised(ctx, "pow-cleanup", pow.RunCleanup)
-	utils.SafeGoSupervised(ctx, "retention", chat.NewService().RunRetention)
+	utils.SafeGoSupervised(ctx, "retention", chatService.RunRetention)
+	utils.SafeGoSupervised(ctx, "rewrap", chatService.RunRewrap)
 
 	srv := &http.Server{
 		Addr:              ":" + config.GetBackendPort(),

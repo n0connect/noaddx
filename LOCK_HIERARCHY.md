@@ -28,6 +28,8 @@ Locks MUST be acquired in the following order (lowest to highest priority) to pr
   vanished conversations at their next listing instead
 - `conversations` row lock (`ChatRepository.NextSeq`, `UPDATE … RETURNING`): serialises senders of
   one conversation until the transaction ends; never held while acquiring a `users` row lock
+- Master key re-wrapping (`KeyRepository.Rewrap*`): single-row updates outside any transaction,
+  conditional on the row still naming the old key; it holds no lock while taking another
 - Master key initialization lock (`masterKeyOnce`)
 
 ## Acquisition Rules
@@ -36,7 +38,8 @@ Locks MUST be acquired in the following order (lowest to highest priority) to pr
 2. **Never acquire a lower-priority lock while holding a higher-priority lock**
 3. **Release locks in LIFO order (stack discipline)**
 4. **New in-process locks use `utils.SafeMutex` (timeout-bounded); database locks are bounded by
-   their transaction**
+   their transaction**, and every session waits at most `lock_timeout` (5 s) for a row lock and
+   is ended after `idle_in_transaction_session_timeout` (30 s) idle inside a transaction
 
 ## Examples
 

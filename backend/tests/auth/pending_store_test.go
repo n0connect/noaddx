@@ -60,7 +60,7 @@ func TestGeneratePendingID(t *testing.T) {
 	}
 }
 
-func TestStoreAndGetPendingRegistration(t *testing.T) {
+func TestStoreAndPendingRegistration(t *testing.T) {
 	setupPendingStoreEnv(t)
 
 	pending := testutil.NewPendingIdentity(t)
@@ -77,17 +77,17 @@ func TestStoreAndGetPendingRegistration(t *testing.T) {
 	}
 
 	// Retrieve it
-	retrieved, err := auth.GetPendingRegistration(pendingID)
+	retrieved, err := auth.PendingRegistration(pendingID)
 	if err != nil {
-		t.Fatalf("GetPendingRegistration() failed: %v", err)
+		t.Fatalf("PendingRegistration() failed: %v", err)
 	}
 
 	if retrieved != pending {
-		t.Errorf("GetPendingRegistration() = %+v, want %+v", retrieved, pending)
+		t.Errorf("PendingRegistration() = %+v, want %+v", retrieved, pending)
 	}
 }
 
-func TestGetPendingRegistration_NotFound(t *testing.T) {
+func TestPendingRegistration_NotFound(t *testing.T) {
 	setupPendingStoreEnv(t)
 
 	// A freshly generated id that was never stored: exactly what a forged token would carry
@@ -96,40 +96,32 @@ func TestGetPendingRegistration_NotFound(t *testing.T) {
 		t.Fatalf("GeneratePendingID: %v", err)
 	}
 
-	_, err = auth.GetPendingRegistration(nonExistentID)
+	_, err = auth.PendingRegistration(nonExistentID)
 	if err == nil {
-		t.Error("GetPendingRegistration() with non-existent ID should have failed")
+		t.Error("PendingRegistration() with non-existent ID should have failed")
 	}
 	if err != nil && err.Error() != "invalid token" {
-		t.Errorf("GetPendingRegistration() returned unexpected error: %v", err)
+		t.Errorf("PendingRegistration() returned unexpected error: %v", err)
 	}
 }
 
-func TestPendingRegistration_ConsumedOnRead(t *testing.T) {
+// Reading does not use an entry up: a phase 2 that fails for a passing reason is retried
+func TestPendingRegistration_ReadDoesNotUseItUp(t *testing.T) {
 	setupPendingStoreEnv(t)
 
 	pending := testutil.NewPendingIdentity(t)
-
-	// Generate and store
 	pendingID, err := auth.GeneratePendingID()
 	if err != nil {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
-
 	if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
-	// Verify it exists
-	_, err = auth.GetPendingRegistration(pendingID)
-	if err != nil {
-		t.Fatalf("GetPendingRegistration() failed before delete: %v", err)
-	}
-
-	// Verify it's gone: retrieval is one-time use
-	_, err = auth.GetPendingRegistration(pendingID)
-	if err == nil {
-		t.Error("GetPendingRegistration() after delete should have failed")
+	for attempt := 1; attempt <= 2; attempt++ {
+		if retrieved, err := auth.PendingRegistration(pendingID); err != nil || retrieved != pending {
+			t.Fatalf("read %d = %+v, %v; want the stored identity", attempt, retrieved, err)
+		}
 	}
 }
 
@@ -146,46 +138,34 @@ func TestPendingRegistration_Expiration(t *testing.T) {
 	}
 
 	time.Sleep(1100 * time.Millisecond)
-	if _, err := auth.GetPendingRegistration(pendingID); !errors.Is(err, auth.ErrExpiredToken) {
-		t.Fatalf("GetPendingRegistration() after the TTL = %v, want ErrExpiredToken", err)
+	if _, err := auth.PendingRegistration(pendingID); !errors.Is(err, auth.ErrExpiredToken) {
+		t.Fatalf("PendingRegistration() after the TTL = %v, want ErrExpiredToken", err)
 	}
-	if _, err := auth.GetPendingRegistration(pendingID); !errors.Is(err, auth.ErrInvalidToken) {
+	if _, err := auth.PendingRegistration(pendingID); !errors.Is(err, auth.ErrInvalidToken) {
 		t.Fatalf("expired entry was not removed: second read = %v", err)
 	}
 }
 
+// Completing an entry (its account exists) makes it single use
 func TestPendingRegistration_OneTimeUse(t *testing.T) {
 	setupPendingStoreEnv(t)
-
-	pending := testutil.NewPendingIdentity(t)
 
 	pendingID, err := auth.GeneratePendingID()
 	if err != nil {
 		t.Fatalf("GeneratePendingID() failed: %v", err)
 	}
-
-	if err := auth.StorePendingRegistration(pendingID, pending); err != nil {
+	if err := auth.StorePendingRegistration(pendingID, testutil.NewPendingIdentity(t)); err != nil {
 		t.Fatalf("StorePendingRegistration() failed: %v", err)
 	}
 
-	// First retrieval should work
-	retrieved1, err := auth.GetPendingRegistration(pendingID)
-	if err != nil {
-		t.Fatalf("GetPendingRegistration() first call failed: %v", err)
-	}
-	if retrieved1 != pending {
-		t.Errorf("GetPendingRegistration() = %+v, want %+v", retrieved1, pending)
-	}
-
-	// Second retrieval must fail (one-time use)
-	_, err = auth.GetPendingRegistration(pendingID)
-	if err == nil {
-		t.Error("GetPendingRegistration() after delete should have failed (one-time use)")
+	auth.CompletePendingRegistration(pendingID)
+	if _, err := auth.PendingRegistration(pendingID); !errors.Is(err, auth.ErrInvalidToken) {
+		t.Fatalf("read after completion = %v, want ErrInvalidToken", err)
 	}
 }
 
 // The pending-registration store is bounded: once full it refuses (fail closed) instead of
-// growing without limit, and frees capacity as entries are consumed.
+// growing without limit, and frees capacity as entries are completed.
 func TestStorePendingRegistration_IsBounded(t *testing.T) {
 	setupPendingStoreEnv(t)
 	auth.ResetPendingStoreForTesting()
@@ -207,9 +187,7 @@ func TestStorePendingRegistration_IsBounded(t *testing.T) {
 	if err := auth.StorePendingRegistration(overflow, account); !errors.Is(err, auth.ErrPendingStoreFull) {
 		t.Fatalf("entry beyond the cap = %v, want ErrPendingStoreFull", err)
 	}
-	if _, err := auth.GetPendingRegistration(last); err != nil {
-		t.Fatalf("consume: %v", err)
-	}
+	auth.CompletePendingRegistration(last)
 	if err := auth.StorePendingRegistration(overflow, account); err != nil {
 		t.Fatalf("freed capacity not reusable: %v", err)
 	}

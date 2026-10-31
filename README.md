@@ -34,8 +34,9 @@
 - **[Cryptography Specification](docs/security/cryptography.md)** — The two crypto engines, X25519 / HKDF / AES-256-GCM, five padding sizes, PoW
 - **[Verifying the Client](docs/security/verifying-the-client.md)** — Signed frontend manifest per release and `make verify-frontend`
 - **[REST API Reference](docs/api/rest-api.md)** — Every `/api/v2/*` endpoint with its JSON, error codes and Server-Sent Events
-- **[Configuration & Tuning](docs/operations/configuration-and-tuning.md)** — Every environment variable, master key rotation, Argon2id memory tuning
+- **[Configuration & Tuning](docs/operations/configuration-and-tuning.md)** — Every environment variable, master key rotation with re-wrapping, Argon2id memory tuning
 - **[Onion Service (Tor)](docs/operations/onion-service.md)** — `make onion`, per-circuit abuse control, onion key custody
+- **[Disaster Recovery](docs/operations/disaster-recovery.md)** — What each failure does, the startup key check, accounts-only backups
 - **[Troubleshooting](docs/troubleshooting/troubleshooting-guide.md)** — Common errors with copy-paste fixes
 - **[Testing & Development](docs/development/testing-and-contributing.md)** — Test suites, fuzzing, CI, lock hierarchy
 - **[SECURITY.md](SECURITY.md)** — How to report a vulnerability, supported versions and scope
@@ -50,6 +51,7 @@
 - **Anonymous Transport:** `make onion` publishes the app as a Tor onion service. Rate limits, proofs of work (registration and every invite) and connection caps apply per Tor circuit.
 - **Verifiable Client:** each release signs the hashes of every frontend file; `make verify-frontend` checks what an instance serves.
 - **Zero Telemetry:** no access logs, no stored IP addresses, master keys zeroized on shutdown.
+- **Fails Safe:** the backend refuses to start with keys that cannot open its database, completes master key rotation by re-wrapping every old record, and keeps an account number valid through outages; retried sends and signups never duplicate. See [Disaster Recovery](docs/operations/disaster-recovery.md).
 - **Two Equivalent Crypto Engines:** the backend builds against OpenSSL (default) or the Go standard library (`ENGINE=native`), proven byte-for-byte equivalent by a differential suite and a startup self-test.
 
 ## Quick Start
@@ -171,6 +173,9 @@ make build-ref REF=noaddx-native-v1.0.0  # build the image of any tag or commit
 # Verifying a deployment
 make manifest                         # SHA-256 of every served frontend file (signed in each release)
 make verify-frontend URL=https://host # check an instance serves exactly those bytes
+
+# Disaster recovery
+make backup-accounts                  # accounts only (never messages) to backups/, apart from .env
 ```
 
 ---

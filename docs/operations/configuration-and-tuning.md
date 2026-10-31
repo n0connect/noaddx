@@ -19,8 +19,10 @@ All settings can be configured via `.env` or injected directly as environment va
 | `JWT_EXPIRATION_MINUTES` | int | `15` | Session lifespan (1-1440). Active sessions sliding-refresh past half-life. The token lives only in the HttpOnly cookie. |
 | `MASTER_KEY_ACTIVE` | hex/base64 | *Generated* | Active 256-bit key: exactly 32 bytes as 64 hex characters or base64. Text passphrases are rejected. |
 | `MASTER_KEY_ACTIVE_ID` | string | *Generated* | Key id stored next to every record (`[A-Za-z0-9._-]`, 1-32 chars, e.g. `key-2026-01`). |
-| `MASTER_KEY_OLD` | string | *Empty* | Previous keys as `id1:key1,id2:key2`. Any malformed entry, repeated id or reuse of the active key stops startup. |
-| `ACCOUNT_LOOKUP_PEPPER` | hex/base64 | *Generated* | HMAC pepper (>= 32 bytes, hex or base64) for account lookups and pseudonymous tags. |
+| `MASTER_KEY_OLD` | string | *Empty* | Previous keys as `id1:key1,id2:key2`. Any malformed entry, repeated id or reuse of the active key stops startup. Records still under an old key are re-wrapped to the active key in the background; see the [rotation runbook](#master-key-rotation-runbook). |
+| `ACCOUNT_LOOKUP_PEPPER` | hex/base64 | *Generated* | HMAC pepper (>= 32 bytes, hex or base64) for account lookups and pseudonymous tags. **It can never change**: every account is found through it. The database pins a commitment to it, and startup refuses any other pepper. |
+
+At startup the backend checks these keys against the database before it serves anything: every master key id that encrypts records must be configured and must open them, and the pepper must be the one the database was created with. A regenerated `.env`, or an old key removed too early, stops startup with a message naming the key (see [Disaster Recovery](disaster-recovery.md)).
 
 ---
 
@@ -47,10 +49,10 @@ All settings can be configured via `.env` or injected directly as environment va
 | `MAX_JSON_DEPTH` | int | `2` | Maximum JSON nesting depth to defeat recursive parsing attacks. |
 | `INVITE_TTL_SEC` | int | `86400` | Lifetime of unredeemed invites (default 24 hours). |
 | `MAX_ACTIVE_INVITES` | int | `5` | Maximum active, unredeemed invites allowed per account. |
-| `MAX_CONVERSATIONS_PER_USER` | int | `256` | Maximum conversations allowed per account. |
+| `MAX_CONVERSATIONS_PER_USER` | int | `256` | Maximum conversations allowed per account (1-4096). Lowering it only stops new conversations; accounts already above it keep, burn and delete theirs. |
 | `MAX_MESSAGE_BYTES` | int | `8192` | Upper bound for one E2E ciphertext. Messages come in five padded sizes (284 to 4124 bytes), so values above 4124 change nothing; a lower value drops the larger sizes. |
 | `MESSAGE_PAGE_LIMIT` | int | `200` | Maximum messages returned per fetch page (1-1000). |
-| `MESSAGE_TTL_DAYS` | int | `7` | Days to retain ciphertext before day-granular deletion (1-365). |
+| `MESSAGE_TTL_DAYS` | int | `7` | Days to retain ciphertext before day-granular deletion (1-365). Lowering it also shortens what is stored: the hourly retention run caps every stored message at the new limit, counted from that run. Raising it never extends stored messages. |
 | `POW_DIFFICULTY` | int | `20` | Proof-of-work target leading zero bits (18-24). |
 | `POW_CHALLENGE_TTL_SEC` | int | `300` | How long an issued challenge stays valid (1-3600). |
 
@@ -68,8 +70,9 @@ All settings can be configured via `.env` or injected directly as environment va
 |---|---|---|---|
 | `ALLOWED_ORIGINS` | list | `http://localhost,http://127.0.0.1` | Exact origins (scheme, host, port) for CORS and the same-origin check on writes. No wildcard or prefix matching. |
 | `TRUSTED_PROXIES` | list | nginx (`PROXY_IP`) | IPs/CIDRs allowed to supply the client address. Empty in Docker means "nginx only". |
-| `COMPOSE_SUBNET` | CIDR | `172.29.73.0/24` | Docker network range; change it (with `PROXY_IP`) if it collides with another network. |
+| `COMPOSE_SUBNET` | CIDR | `172.29.73.0/24` | Docker network range; change it (with `PROXY_IP`, `BACKEND_IP` and `TOR_IP`) if it collides with another network. |
 | `PROXY_IP` | IP | `172.29.73.10` | nginx's fixed address on that network. |
+| `BACKEND_IP` | IP | `172.29.73.12` | The backend's fixed address. nginx resolves the backend once, at start; a fixed address keeps it reachable after the backend container is recreated. |
 | `TOR_IP` | IP | `172.29.73.11` | The tor container's fixed address (`make onion`): the only peer nginx's onion listener accepts. Keep it inside `COMPOSE_SUBNET`. |
 | `HTTP_PORT` | int | `80` | Loopback port nginx is published on. |
 | `DB_HOST_PORT` | int | `5432` | Loopback port PostgreSQL is published on. |
@@ -97,18 +100,17 @@ Each Argon2id computation allocates `ARGON2_MEMORY_KIB`; `ARGON2_MAX_CONCURRENT`
 
 ## Master Key Rotation Runbook
 
-Master key rotation allows you to replace your database encryption key without losing access to existing user records or encrypted peer public keys.
+Rotation replaces the master key without losing any record. The backend then re-wraps every record that is still under the old key, so the old key stops protecting anything and can be removed.
 
 ### When to Rotate:
 - Scheduled compliance policy (e.g., every 90 or 180 days).
-- Suspected environment credential exposure.
+- Suspected exposure of `.env` or of a copy of it.
 
 ### Step-by-Step Procedure
 
 1. **Generate a fresh 32-byte key:**
    ```bash
    openssl rand -hex 32
-   # Example output: d7a18b...64-hex-chars
    ```
 
 2. **Update your `.env` configuration:**
@@ -126,13 +128,17 @@ Master key rotation allows you to replace your database encryption key without l
 
 3. **Restart the backend container:**
    ```bash
-   docker compose restart backend
+   docker compose up -d backend
    ```
 
-4. **Verify Behavior:**
-   - **New records** (new users, new rooms) are encrypted with `key-2026-04`.
-   - **Existing records** are decrypted with the key named by their stored id (`key-2026-01` from `MASTER_KEY_OLD`); nothing is ever trial-decrypted under every key.
-   - `MASTER_KEY_OLD` supports multiple comma-separated keys (`id1:hex1,id2:hex2`).
+4. **Wait for the re-wrap to finish.** New records use `key-2026-04` at once. Existing records are opened with the key named by their stored id (nothing is ever trial-decrypted under every key) and re-encrypted under the active key in batches of 100. The log says when it is done:
+   ```text
+   Master key rotation: 1234 records re-wrapped; no record uses an old key any more, MASTER_KEY_OLD can be emptied
+   ```
+
+5. **Remove the old key.** Empty `MASTER_KEY_OLD` (or drop that entry) and restart. Removing a key that records still need is refused at startup, so this step cannot lose data by mistake; the startup log also names every old key that encrypts nothing any more.
+
+What rotation does not change: each account's own server key (it wraps that account's conversation list and peer keys) stays the same, only its wrapping changes. Someone who already held both the old master key and a copy of the database keeps what that copy revealed; rotation protects every copy taken afterwards.
 
 ---
 

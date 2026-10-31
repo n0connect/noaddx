@@ -39,3 +39,5 @@ test-results/
 coverage.out
 coverage.txt
 /frontend.sha256
+# make backup-accounts output: account data, never committed
+/backups/

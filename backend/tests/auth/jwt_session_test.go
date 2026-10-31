@@ -102,7 +102,7 @@ func TestTokens_PendingAndSessionAreNotInterchangeable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SignToken: %v", err)
 	}
-	if _, err := auth.VerifyPendingRegistrationToken(session); err == nil {
+	if _, _, err := auth.VerifyPendingRegistrationToken(session); err == nil {
 		t.Fatal("session token accepted as a pending registration")
 	}
 }

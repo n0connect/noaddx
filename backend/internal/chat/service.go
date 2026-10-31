@@ -55,6 +55,7 @@ type Member struct {
 type Service struct {
 	users  store.UserRepository
 	chats  store.ChatRepository
+	keys   store.KeyRepository
 	logger *utils.Logger
 }
 
@@ -63,6 +64,7 @@ func NewService() *Service {
 	return &Service{
 		users:  store.NewUserRepository(),
 		chats:  store.NewChatRepository(),
+		keys:   store.NewKeyRepository(),
 		logger: utils.NewLogger("CHAT_SERVICE"),
 	}
 }
@@ -115,7 +117,7 @@ func openIndex(m *Member, enc string) ([]uuid.UUID, error) {
 		return nil, errCorrupt
 	}
 	var raw []string
-	if err := json.Unmarshal([]byte(plain), &raw); err != nil || len(raw) > config.GetMaxConversationsPerUser() {
+	if err := json.Unmarshal([]byte(plain), &raw); err != nil || len(raw) > config.MaxConversationsPerUserBound {
 		return nil, errCorrupt
 	}
 	ids := make([]uuid.UUID, 0, len(raw))
@@ -162,13 +164,21 @@ func withoutID(ids []uuid.UUID, drop map[uuid.UUID]struct{}) []uuid.UUID {
 
 // ---------- membership records ----------
 
+// The AAD binding each master-key encrypted reference to its row (shared with re-wrapping)
+func memberRefAAD(memberTag string, conversationID uuid.UUID) []byte {
+	return encryption.BuildAAD(memberTag, conversationID, encryption.FieldMemberRef, encryption.PurposeStoredRecord)
+}
+
+func inviteCreatorAAD(lookup string, inviteID uuid.UUID) []byte {
+	return encryption.BuildAAD(lookup, inviteID, encryption.FieldInviteCreator, encryption.PurposeStoredRecord)
+}
+
 func sealMembership(owner *Member, conversationID uuid.UUID, peerPublicKey string) (models.ConversationMember, error) {
 	tag, err := owner.tag(conversationID)
 	if err != nil {
 		return models.ConversationMember{}, err
 	}
-	refAAD := encryption.BuildAAD(tag, conversationID, encryption.FieldMemberRef, encryption.PurposeStoredRecord)
-	refEnc, err := encryption.EncryptWithAAD(owner.UserUUID, encryption.ActiveMasterKey(), refAAD)
+	refEnc, err := encryption.EncryptWithAAD(owner.UserUUID, encryption.ActiveMasterKey(), memberRefAAD(tag, conversationID))
 	if err != nil {
 		return models.ConversationMember{}, err
 	}
@@ -186,16 +196,24 @@ func sealMembership(owner *Member, conversationID uuid.UUID, peerPublicKey strin
 	}, nil
 }
 
-// openMemberRef recovers who a membership row belongs to, and cross-checks the tag.
-func openMemberRef(member *models.ConversationMember) (string, error) {
+// memberRefUUID decrypts who a membership row belongs to (master key only, tag unchecked).
+func memberRefUUID(member *models.ConversationMember) (string, error) {
 	masterKey, ok := encryption.MasterKeyByID(member.MasterKeyID)
 	if !ok {
 		return "", errCorrupt
 	}
-	aad := encryption.BuildAAD(member.MemberTag, member.ConversationID, encryption.FieldMemberRef, encryption.PurposeStoredRecord)
-	userUUID, err := encryption.DecryptWithAAD(member.MemberRefEnc, masterKey, aad)
+	userUUID, err := encryption.DecryptWithAAD(member.MemberRefEnc, masterKey, memberRefAAD(member.MemberTag, member.ConversationID))
 	if err != nil || !utils.ValidateUUID(userUUID) {
 		return "", errCorrupt
+	}
+	return userUUID, nil
+}
+
+// openMemberRef recovers who a membership row belongs to, and cross-checks the tag.
+func openMemberRef(member *models.ConversationMember) (string, error) {
+	userUUID, err := memberRefUUID(member)
+	if err != nil {
+		return "", err
 	}
 	expected, err := identity.ConversationTag(userUUID, member.ConversationID)
 	if err != nil || expected != member.MemberTag {
@@ -283,8 +301,7 @@ func (s *Service) CreateInvite(me *Member) (string, time.Time, error) {
 		return "", time.Time{}, err
 	}
 
-	aad := encryption.BuildAAD(lookup, inviteID, encryption.FieldInviteCreator, encryption.PurposeStoredRecord)
-	creatorEnc, err := encryption.EncryptWithAAD(me.UserUUID, encryption.ActiveMasterKey(), aad)
+	creatorEnc, err := encryption.EncryptWithAAD(me.UserUUID, encryption.ActiveMasterKey(), inviteCreatorAAD(lookup, inviteID))
 	if err != nil {
 		return "", time.Time{}, err
 	}
@@ -309,8 +326,7 @@ func openInviteCreator(invite *models.Invite) (string, error) {
 	if !ok {
 		return "", errCorrupt
 	}
-	aad := encryption.BuildAAD(invite.Lookup, invite.ID, encryption.FieldInviteCreator, encryption.PurposeStoredRecord)
-	creatorUUID, err := encryption.DecryptWithAAD(invite.CreatorRefEnc, masterKey, aad)
+	creatorUUID, err := encryption.DecryptWithAAD(invite.CreatorRefEnc, masterKey, inviteCreatorAAD(invite.Lookup, invite.ID))
 	if err != nil || !utils.ValidateUUID(creatorUUID) {
 		return "", errCorrupt
 	}
@@ -700,9 +716,10 @@ func (s *Service) MarkRead(me *Member, conversationID uuid.UUID, seq int64) erro
 
 // ---------- retention ----------
 
-// PurgeExpired deletes ciphertext past its deletion day and expired invites.
+// PurgeExpired deletes ciphertext past its deletion day and expired invites, and keeps no
+// ciphertext past the deletion day of a message sent now (MESSAGE_TTL_DAYS may have shrunk).
 func (s *Service) PurgeExpired(now time.Time) error {
-	messages, invites, err := s.chats.PurgeExpired(now.UTC().Truncate(day), now.UTC())
+	messages, invites, err := s.chats.PurgeExpired(now.UTC().Truncate(day), expiryDay(now), now.UTC())
 	if err != nil {
 		return err
 	}

@@ -25,6 +25,7 @@ const Chat = (() => {
     let refreshTimer = null;
     let listLoaded = false;           // distinguishes the first load from live additions
     let inviteRun = null;             // { stopScramble } while an invite is paid for and revealed
+    let unsent = null;                // a send whose answer never came: { convId, text, id, counter, ciphertext }
 
     // ---------- plumbing ----------
 
@@ -117,6 +118,7 @@ const Chat = (() => {
         recent = [];
         activeId = null;
         listLoaded = false;
+        unsent = null;
         me = null;
         clearChildren(document.getElementById('conversationList'));
         clearChildren(document.getElementById('messageList'));
@@ -218,7 +220,7 @@ const Chat = (() => {
         conv.seqs = new Set();
         conv.ids = new Set();
         conv.maxSeq = 0;
-        conv.myMaxN = 0;
+        // myMaxN is kept: within a session this device's counter only ever grows
         conv.peerLastN = 0;
         conv.loaded = false;
         setVerifiedState(conv.verified);
@@ -320,13 +322,29 @@ const Chat = (() => {
 
         sendBtn.disabled = true;
         try {
-            const id = NoaddxCrypto.newMessageId();
-            const sentAt = Date.now();
-            const key = await conversationKey(conv);
-            const ciphertext = await NoaddxCrypto.encryptMessage(key, conv.id, id, me.publicKey, validation.sanitized, sentAt, conv.myMaxN + 1);
-            const result = await api('POST', `/conversations/${conv.id}/messages`, { id: id, ciphertext: ciphertext });
+            // Retrying a send whose answer was lost resends the same id and ciphertext: if the
+            // first attempt was stored, the server refuses the duplicate id (409) instead of
+            // delivering the message twice
+            const text = validation.sanitized;
+            let attempt = unsent && unsent.convId === conv.id && unsent.text === text ? unsent : null;
+            if (!attempt) {
+                const id = NoaddxCrypto.newMessageId();
+                const counter = conv.myMaxN + 1;
+                const key = await conversationKey(conv);
+                attempt = {
+                    convId: conv.id, text: text, id: id, counter: counter,
+                    ciphertext: await NoaddxCrypto.encryptMessage(key, conv.id, id, me.publicKey, text, Date.now(), counter)
+                };
+            }
+            const result = await api('POST', `/conversations/${conv.id}/messages`, { id: attempt.id, ciphertext: attempt.ciphertext });
+            const stored = (result.ok && result.data && isSeq(result.data.seq) && result.data.seq > 0) || result.status === 409;
+            // Only a lost answer leaves the outcome open; any other answer settles it
+            unsent = !stored && (result.status === 0 || result.status >= 500) ? attempt : null;
 
-            if (result.ok && result.data && isSeq(result.data.seq) && result.data.seq > 0) {
+            if (stored) {
+                // The counter never repeats, even if the server withholds this message from the
+                // next sync: the peer then sees the gap instead of a reused counter
+                conv.myMaxN = Math.max(conv.myMaxN, attempt.counter);
                 input.value = '';
                 updateComposerMeta();
                 bump(conv.id);

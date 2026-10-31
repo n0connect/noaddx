@@ -42,12 +42,22 @@ const (
 	connMaxLifetime = 30 * time.Minute
 )
 
+// Session bounds: a request stuck behind a row lock gives up instead of queueing for ever, and a
+// transaction left open (stalled client, broken connection) releases its locks and its pooled
+// connection. Every transaction here takes milliseconds, so neither ever fires in normal use.
+const (
+	lockTimeout                     = "5s"
+	idleInTransactionSessionTimeout = "30s"
+)
+
 // ConnectionURL builds the PostgreSQL URL with every component escaped, so credentials can
 // contain any character without altering the connection parameters (no DSN injection).
 func ConnectionURL() string {
 	query := url.Values{}
 	query.Set("sslmode", config.GetDBSSLMode())
 	query.Set("TimeZone", "UTC")
+	query.Set("lock_timeout", lockTimeout)
+	query.Set("idle_in_transaction_session_timeout", idleInTransactionSessionTimeout)
 	u := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(config.GetDBUser(), config.GetDBPassword()),
@@ -85,7 +95,7 @@ func Init() {
 		log.Fatal("Failed to initialize master keys")
 	}
 
-	err = DB.AutoMigrate(&models.User{}, &models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{})
+	err = DB.AutoMigrate(&models.User{}, &models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{}, &models.KeyCheck{})
 	if err != nil {
 		dbLogger.LogError("Database migration", err)
 		log.Fatal("Failed to migrate database")
@@ -146,7 +156,7 @@ func ValidateStartupConfig() error {
 		{"MAX_JSON_DEPTH", config.GetMaxJSONDepth(), 1, 8},
 		{"INVITE_TTL_SEC", seconds(config.GetInviteTTL()), 60, 7 * 24 * 3600},
 		{"MAX_ACTIVE_INVITES", config.GetMaxActiveInvites(), 1, 100},
-		{"MAX_CONVERSATIONS_PER_USER", config.GetMaxConversationsPerUser(), 1, 4096},
+		{"MAX_CONVERSATIONS_PER_USER", config.GetMaxConversationsPerUser(), 1, config.MaxConversationsPerUserBound},
 		{"MAX_MESSAGE_BYTES", config.GetMaxMessageBytes(), 512, 65536},
 		{"MESSAGE_PAGE_LIMIT", config.GetMessagePageLimit(), 1, 1000},
 		{"MESSAGE_TTL_DAYS", config.GetMessageTTLDays(), 1, config.MaxMessageTTLDays()},

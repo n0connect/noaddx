@@ -37,7 +37,7 @@ func TestDatabaseMigration(t *testing.T) {
 		t.Error("users table should exist after migration")
 	}
 
-	for _, table := range []interface{}{&models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{}} {
+	for _, table := range []interface{}{&models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{}, &models.KeyCheck{}} {
 		if !database.DB.Migrator().HasTable(table) {
 			t.Errorf("%T table should exist after migration", table)
 		}
@@ -253,5 +253,24 @@ func TestDatabaseMasterKey(t *testing.T) {
 	}
 	if len(encryption.ActiveMasterKey()) != 32 {
 		t.Errorf("ActiveMasterKey length = %d, want 32", len(encryption.ActiveMasterKey()))
+	}
+}
+
+// A transaction stuck on a lock, or left open by a stalled client of the pool, must not hold
+// one of the few pooled connections (and its row locks) indefinitely
+func TestConnection_BoundsLockWaitsAndIdleTransactions(t *testing.T) {
+	testutil.SetupTestEnv(t)
+	defer testutil.TeardownTestEnv(t)
+	testutil.SetupTestDatabaseEnv()
+	database.Init()
+
+	for setting, want := range map[string]string{"lock_timeout": "5s", "idle_in_transaction_session_timeout": "30s"} {
+		var got string
+		if err := database.DB.Raw("SHOW " + setting).Scan(&got).Error; err != nil {
+			t.Fatalf("SHOW %s: %v", setting, err)
+		}
+		if got != want {
+			t.Errorf("%s = %q, want %q", setting, got, want)
+		}
 	}
 }

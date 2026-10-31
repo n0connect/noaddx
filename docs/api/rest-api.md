@@ -14,7 +14,7 @@ Requests are subject to strict JSON validation:
 - **Session Delivery:** The only credential is an HttpOnly, `SameSite=Strict` cookie: `noaddx_session` in development, `__Host-Session` (Secure, host-only) in production. The token never appears in a response body and the `Authorization` header is ignored, so page script can never read or replay it.
 - **Same-Origin Writes:** `POST`/`PUT`/`PATCH`/`DELETE` requests are refused with `403` unless the browser marks them `Sec-Fetch-Site: same-origin` (or, without that header, sends an `Origin` listed exactly in `ALLOWED_ORIGINS`). Clients that send neither header are not browsers and hold no ambient cookies.
 - **Sliding Expiration:** Sessions expire after `JWT_EXPIRATION_MINUTES` (default: 15m). If an active session is used past its half-life, the backend automatically issues a refreshed cookie.
-- **Saturation:** `POST /api/v2/login` and phase 2 of `POST /api/v2/register` answer `503 Service Unavailable` when every Argon2id slot (`ARGON2_MAX_CONCURRENT`) stays busy for 3 seconds. The answer does not depend on whether the account exists; retry with backoff.
+- **Saturation and outages:** `POST /api/v2/login` and phase 2 of `POST /api/v2/register` answer `503 Service Unavailable` when every Argon2id slot (`ARGON2_MAX_CONCURRENT`) stays busy for 3 seconds. Login also answers `503` while the database is unreachable: `401` always means the auth key matches no account, never that the server could not tell. Neither answer depends on whether the account exists; retry with backoff.
 - **Global Invalidation:** `POST /api/v2/logout` with a live session increments the user's `session_epoch`, instantly invalidating every JWT issued for that account on every device. A token revoked earlier cannot trigger this (it no longer authenticates); if revocation fails the endpoint answers `500` instead of reporting success. The cookie is cleared in every case.
 
 ---
@@ -117,6 +117,7 @@ Requires solving a fresh, single-use PoW challenge.
   "confirmed": true
 }
 ```
+- **Retries:** the user has already saved the account number, so a phase 2 that fails for a passing reason (`5xx`, `503` saturation, a lost connection) leaves the pending registration in place: send phase 2 again with the same `pending_token` and a fresh PoW until `PENDING_TOKEN_TTL_SEC` runs out. Once the account exists the token is spent and phase 2 answers `401`. A client that gets `401` should log in with the account number it holds: that succeeds when an earlier attempt created the account and only its answer was lost, and fails when the registration expired (or the server restarted) before it was confirmed.
 
 ---
 
@@ -306,7 +307,7 @@ Sends an end-to-end encrypted message ciphertext.
   "seq": 15
 }
 ```
-*Note: Returns `409 Conflict` if the client-generated message ID was already used.*
+*Note: Returns `409 Conflict` if the client-generated message ID was already used. That makes sending safe to retry: a client whose answer was lost resends the same `id` and `ciphertext`, and a `409` means the first attempt was stored.*
 
 ---
 

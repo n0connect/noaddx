@@ -44,7 +44,7 @@ type ChatRepository interface {
 	ListLatestMessages(conversationID uuid.UUID, limit int) ([]models.Message, error)
 	AdvanceReadSeq(conversationID uuid.UUID, memberTag string, seq int64) error
 
-	PurgeExpired(today, now time.Time) (int64, int64, error)
+	PurgeExpired(today, latest, now time.Time) (int64, int64, error)
 }
 
 type chatRepository struct {
@@ -329,8 +329,14 @@ func (r *chatRepository) AdvanceReadSeq(conversationID uuid.UUID, memberTag stri
 
 // ---------- retention ----------
 
-// PurgeExpired deletes ciphertext past its deletion day and invites past expiry.
-func (r *chatRepository) PurgeExpired(today, now time.Time) (int64, int64, error) {
+// PurgeExpired deletes ciphertext past its deletion day and invites past expiry. Nothing is
+// kept past latest either: a lowered MESSAGE_TTL_DAYS also shortens what is already stored.
+func (r *chatRepository) PurgeExpired(today, latest, now time.Time) (int64, int64, error) {
+	capped := r.db().Model(&models.Message{}).Where("expires_on > ?", latest).UpdateColumn("expires_on", latest)
+	if capped.Error != nil {
+		chatRepoLogger.LogError("ChatRepository.PurgeExpired (cap)", capped.Error)
+		return 0, 0, capped.Error
+	}
 	messages := r.db().Where("expires_on < ?", today).Delete(&models.Message{})
 	if messages.Error != nil {
 		chatRepoLogger.LogError("ChatRepository.PurgeExpired (messages)", messages.Error)

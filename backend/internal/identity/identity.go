@@ -28,6 +28,7 @@ const (
 	infoConversationTag = "noaddx/conversation-tag"
 	infoInviteCreator   = "noaddx/invite-creator"
 	infoInviteLookup    = "noaddx/invite-lookup"
+	infoPepperCheck     = "noaddx/pepper-check"
 )
 
 var (
@@ -161,4 +162,10 @@ func InviteLookup(rawToken []byte) (string, error) {
 		return "", ErrInvalidKey
 	}
 	return keyedTag(infoInviteLookup, rawToken)
+}
+
+// PepperCheck commits to the configured pepper (server-only, like StreamTag): stored once,
+// it lets startup tell a different pepper apart without revealing anything about it.
+func PepperCheck() (string, error) {
+	return keyedTag(infoPepperCheck, []byte(derivationSalt))
 }

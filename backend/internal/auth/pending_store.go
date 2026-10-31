@@ -121,11 +121,12 @@ func StorePendingRegistration(pendingID string, pending PendingIdentity) error {
 	return nil
 }
 
-// GetPendingRegistration retrieves the pending identity by pending ID
-// SECURITY: Uses write lock from start to prevent race conditions
-// One-time use: deletes entry after retrieval
-func GetPendingRegistration(pendingID string) (PendingIdentity, error) {
-	pendingStore.mu.Lock() // Write lock (we will delete)
+// PendingRegistration returns the identity waiting under pendingID without using it up: the
+// user has already saved the account number, so a phase 2 that fails for a passing reason
+// (database outage, saturated Argon2id) can be retried until the entry expires.
+// Write lock: an expired entry is removed on the spot.
+func PendingRegistration(pendingID string) (PendingIdentity, error) {
+	pendingStore.mu.Lock()
 	defer pendingStore.mu.Unlock()
 
 	pending, exists := pendingStore.store[pendingID]
@@ -134,15 +135,18 @@ func GetPendingRegistration(pendingID string) (PendingIdentity, error) {
 	}
 
 	if time.Now().After(pending.ExpiresAt) {
-		// Expired - remove it
 		delete(pendingStore.store, pendingID)
 		return PendingIdentity{}, ErrExpiredToken
 	}
+	return pending.identity, nil
+}
 
-	// One-time use: delete immediately after retrieval
-	identity := pending.identity
+// CompletePendingRegistration forgets pendingID once its account exists, so the token can
+// never create anything again (single use).
+func CompletePendingRegistration(pendingID string) {
+	pendingStore.mu.Lock()
+	defer pendingStore.mu.Unlock()
 	delete(pendingStore.store, pendingID)
-	return identity, nil
 }
 
 // cleanupExpiredPending removes expired entries (runs in background)

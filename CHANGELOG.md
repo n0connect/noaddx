@@ -51,6 +51,14 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
   for known and unknown accounts alike.
 - **OpenSSL error queue** is cleared on the thread that filled it (cgo calls can change OS
   threads), so no failure detail lingers between calls.
+- **Master key rotation left the old key in charge.** Rotating only changed the key for new
+  records; every existing account key and member reference stayed under the old (possibly
+  exposed) key for good. Records are now re-wrapped under the active key in the background, and
+  the old key can be removed once the log says none remain.
+- **Mismatched `.env` started a broken server.** A regenerated `.env`, a wrong pepper or an old
+  master key removed too early started a server that answered every account with errors. The
+  backend now opens sample records with every key id in use and compares the pepper with a
+  commitment pinned at the first run, and refuses to start on a mismatch.
 
 ### Added
 
@@ -90,6 +98,32 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
 - GitHub Actions: both engines with the race detector and fuzzers, the equivalence suite,
   frontend interop tests, govulncheck, gitleaks over the full history, and both Docker images
   booting as the unprivileged user with the self-test passing.
+
+- `docs/operations/disaster-recovery.md`: what each failure does, what to back up (accounts only,
+  never messages) and how to restore; `make backup-accounts`.
+
+### Fixed
+
+- **Login during a database outage said "invalid credentials".** It now answers 503, so a user is
+  never told that a valid account number is worthless.
+- **A failed signup burned the account number.** Phase 2 used the pending registration up even
+  when it then failed (database outage, saturated Argon2id), so the number the user had just
+  saved never worked. It now stays redeemable until the account exists; the browser stays on the
+  page, says the number is still valid, and on a lost answer logs in with it instead.
+- **Lowering `MAX_CONVERSATIONS_PER_USER` locked accounts out.** Accounts above the new cap could
+  not list, burn or delete their conversations, or delete themselves. The cap now only limits new
+  conversations.
+- **Lowering `MESSAGE_TTL_DAYS` did not shorten stored messages.** Retention now caps every
+  stored message at the new limit.
+- **nginx answered 502 after a backend upgrade** when the recreated container got a new address
+  (nginx resolves it once). The backend now has a fixed address (`BACKEND_IP`).
+- **PostgreSQL did not come back after a crash or reboot** (no restart policy) while the rest of
+  the stack did.
+- **A retried send could deliver a message twice.** A retry after a lost answer reuses the
+  message id and ciphertext, so the server refuses the duplicate; the sender's counter never
+  repeats within a session, so a withheld message shows up as a gap.
+- Database sessions give up on a lock after 5 s and drop transactions idle for 30 s, so a stuck
+  request cannot hold the connection pool.
 
 ### Changed
 

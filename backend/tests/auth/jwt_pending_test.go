@@ -42,20 +42,21 @@ func TestSignPendingRegistrationToken_ContainsPendingID(t *testing.T) {
 		t.Error("SignPendingRegistrationToken() returned empty token")
 	}
 
-	// Verify token and retrieve the pending identity
-	retrieved, err := auth.VerifyPendingRegistrationToken(token)
-	if err != nil {
-		t.Fatalf("VerifyPendingRegistrationToken() failed: %v", err)
+	// Verify token and retrieve the pending identity; verifying alone uses nothing up
+	for attempt := 1; attempt <= 2; attempt++ {
+		gotID, retrieved, err := auth.VerifyPendingRegistrationToken(token)
+		if err != nil {
+			t.Fatalf("VerifyPendingRegistrationToken() attempt %d failed: %v", attempt, err)
+		}
+		if gotID != pendingID || retrieved != pending {
+			t.Errorf("VerifyPendingRegistrationToken() = %s, %+v, want %s, %+v", gotID, retrieved, pendingID, pending)
+		}
 	}
 
-	if retrieved != pending {
-		t.Errorf("VerifyPendingRegistrationToken() = %+v, want %+v", retrieved, pending)
-	}
-
-	// Verify token was deleted (one-time use)
-	_, err = auth.VerifyPendingRegistrationToken(token)
-	if err == nil {
-		t.Error("VerifyPendingRegistrationToken() should fail on second use (one-time use)")
+	// Once its account exists the token is spent (one-time use)
+	auth.CompletePendingRegistration(pendingID)
+	if _, _, err := auth.VerifyPendingRegistrationToken(token); err == nil {
+		t.Error("VerifyPendingRegistrationToken() should fail once the registration is completed")
 	}
 }
 
@@ -84,7 +85,7 @@ func TestSignPendingRegistrationToken_NoAccountNumberInToken(t *testing.T) {
 		}
 	}
 
-	retrieved, err := auth.VerifyPendingRegistrationToken(token)
+	_, retrieved, err := auth.VerifyPendingRegistrationToken(token)
 	if err != nil {
 		t.Fatalf("VerifyPendingRegistrationToken() failed: %v", err)
 	}
@@ -100,7 +101,7 @@ func TestVerifyPendingRegistrationToken_Expired(t *testing.T) {
 	// For now, we test that invalid tokens are rejected
 	invalidToken := "invalid.token.here"
 
-	_, err := auth.VerifyPendingRegistrationToken(invalidToken)
+	_, _, err := auth.VerifyPendingRegistrationToken(invalidToken)
 	if err == nil {
 		t.Error("VerifyPendingRegistrationToken() with invalid token should have failed")
 	}
@@ -122,7 +123,7 @@ func TestVerifyPendingRegistrationToken_InvalidPendingID(t *testing.T) {
 	}
 
 	// Verify should fail because pending ID doesn't exist in store
-	_, err = auth.VerifyPendingRegistrationToken(token)
+	_, _, err = auth.VerifyPendingRegistrationToken(token)
 	if err == nil {
 		t.Error("VerifyPendingRegistrationToken() with non-existent pending ID should have failed")
 	}

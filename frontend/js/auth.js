@@ -19,26 +19,12 @@ function powWorkerURL() {
     return powWorkerPolicy ? powWorkerPolicy.createScriptURL(POW_WORKER_PATH) : POW_WORKER_PATH;
 }
 
-// Get PoW challenge from backend
+// Gets a PoW challenge without ever leaving the page, so callers keep what is on screen.
+// Returns { challenge, status }: challenge is null on failure, status 0 means no connection.
 async function getPowChallenge() {
-    try {
-        const response = await fetchWithErrorHandling(`${API_BASE_URL}/pow/challenge`, { method: 'GET' });
-
-        if (!response) {
-            return null;
-        }
-
-        const data = await response.json();
-        if (!data || !data.success || !data.challenge) {
-            console.error('Invalid PoW challenge response');
-            return null;
-        }
-
-        return data.challenge;
-    } catch (error) {
-        console.error('Error getting PoW challenge:', error);
-        return null;
-    }
+    const result = await apiCall('GET', '/pow/challenge');
+    const challenge = result.ok && result.data && result.data.success ? result.data.challenge : null;
+    return { challenge: challenge || null, status: result.status };
 }
 
 // Solve PoW challenge using Web Worker
@@ -246,7 +232,8 @@ async function copyAccountNumber() {
     if (copyBtn) {
         copyBtn.disabled = true;
     }
-    
+    errorElement.textContent = '';
+
     // Stop the scramble animation
     stopAccountNumberScramble();
     
@@ -262,15 +249,15 @@ async function copyAccountNumber() {
     successElement.textContent = 'Preparing security challenge...';
 
     try {
-        const challenge = await getPowChallenge();
-        if (!challenge) {
+        const issued = await getPowChallenge();
+        if (!issued.challenge) {
             throw new Error('Failed to get PoW challenge');
         }
 
         successElement.textContent = 'Securing your account...';
 
         // Solve the PoW challenge
-        const powSolution = await solvePowChallenge(challenge);
+        const powSolution = await solvePowChallenge(issued.challenge);
 
         successElement.textContent = 'Generating your special Account Number';
 
@@ -385,10 +372,25 @@ function animateInputToMask(inputElement, originalValue) {
     });
 }
 
+// Phase 2 never leaves the page. The account number on screen is already saved by the user,
+// and the server keeps it redeemable until the account exists, so a failure says so and the
+// user presses continue again (with a fresh proof of work).
+const REGISTRATION_RETRY = 'your account number is still valid, press continue again';
+
+function failRegistrationStep(status) {
+    const reason = status === 0 ? 'connection lost'
+        : status === 429 ? 'too many attempts, wait a minute'
+        : status >= 500 ? 'server busy'
+        : 'request refused';
+    document.getElementById('registerSuccess').textContent = '';
+    document.getElementById('registerError').textContent = `${reason} — ${REGISTRATION_RETRY}`;
+}
+
 async function continueWithAccountNumber() {
     const generatedAccountNumber = document.getElementById('generatedAccountNumber').textContent;
     const successElement = document.getElementById('registerSuccess');
     const errorElement = document.getElementById('registerError');
+    const continueBtn = document.getElementById('continueBtn');
 
     // Validate that we have a real AccountNumber (not masked)
     if (!generatedAccountNumber || generatedAccountNumber.includes('*') || generatedAccountNumber.length !== ACCOUNT_NUMBER_LEN) {
@@ -403,85 +405,89 @@ async function continueWithAccountNumber() {
         return;
     }
 
+    // One attempt at a time: a double click would race two confirmations
+    continueBtn.disabled = true;
     successElement.textContent = 'preparing security challenge...';
     errorElement.textContent = '';
 
     try {
         // SECURITY: Phase 2 requires separate PoW (prevents Phase 1 replay)
-        const challenge = await getPowChallenge();
-        if (!challenge) {
-            throw new Error('Failed to get PoW challenge for Phase 2');
+        const issued = await getPowChallenge();
+        if (!issued.challenge) {
+            failRegistrationStep(issued.status);
+            return;
         }
 
         successElement.textContent = 'securing your account...';
-        const powSolution = await solvePowChallenge(challenge);
+        const powSolution = await solvePowChallenge(issued.challenge);
 
         successElement.textContent = 'creating your account...';
 
-        // Phase 2: Create account using pending token (not Account Number from frontend)
-        const response = await fetch(`${API_BASE_URL}/register`, {
-            method: 'POST',
-            credentials: 'same-origin', // the HttpOnly session cookie is set by the response
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                confirm: true,
-                pending_token: pendingRegistrationToken,
-                pow: powSolution
-            })
+        // Phase 2: Create account using pending token (not Account Number from frontend);
+        // the HttpOnly session cookie is set by the response
+        const result = await apiCall('POST', '/register', {
+            confirm: true,
+            pending_token: pendingRegistrationToken,
+            pow: powSolution
         });
 
-        if (!response.ok) {
-            // Handle 409 Conflict specially (no status page for this)
-            if (response.status === 409) {
-                const data = await response.json().catch(() => ({}));
-                // SECURITY: Generic error message
-                const userMsg = getUserFriendlyError(data?.message || 'Unauthorized', response.status);
-                errorElement.textContent = userMsg.toLowerCase();
-                showError('Please try logging in instead.');
-                return;
-            }
-            // For other errors, use error handler (will redirect to status pages)
-            await handleErrorResponse(response, 'register');
-            return;
+        if (result.ok && result.data && result.data.success) {
+            await finishRegistration();
+        } else if (result.status === 401) {
+            await recoverRegistration();
+        } else {
+            failRegistrationStep(result.status);
         }
-
-        const data = await response.json();
-
-        if (!data.success) {
-            // SECURITY: Map API error message to generic user-facing message
-            const userMsg = getUserFriendlyError(data?.message, response.status);
-            errorElement.textContent = userMsg.toLowerCase();
-            showError('Please try again.');
-            return;
-        }
-
-        // Account created: derive the E2E identity locally from the account number we hold
-        successElement.textContent = 'deriving your keys…';
-        const identity = await NoaddxCrypto.deriveIdentity(pendingRegistrationAccountNumber);
-
-        // The account number was copied for the user to save; do not leave it in the clipboard
-        // (clipboard histories and cross-device sync would keep it). Best effort only.
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText('').catch(() => {});
-        }
-
-        // Clear pending state
-        pendingRegistrationAccountNumber = null;
-        pendingRegistrationToken = null;
-        document.getElementById('generatedAccountNumber').textContent = '';
-
-        if (await enterApp(identity, true)) {
-            showSuccess('welcome to noaddx.');
-        }
-
     } catch (error) {
         // SECURITY: Generic error message, detailed error only in console
         console.error('Account creation error:', error && error.name);
-        errorElement.textContent = getUserFriendlyError(null, 500).toLowerCase();
-        showError('Please try again.');
+        failRegistrationStep(0);
+    } finally {
+        continueBtn.disabled = !pendingRegistrationToken;
     }
+}
+
+// Account created: derive the E2E identity locally from the account number we hold
+async function finishRegistration() {
+    const accountNumber = pendingRegistrationAccountNumber;
+    document.getElementById('registerSuccess').textContent = 'deriving your keys…';
+    const identity = await NoaddxCrypto.deriveIdentity(accountNumber);
+
+    // The account number was copied for the user to save; do not leave it in the clipboard
+    // (clipboard histories and cross-device sync would keep it). Best effort only.
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText('').catch(() => {});
+    }
+
+    // Clear pending state
+    pendingRegistrationAccountNumber = null;
+    pendingRegistrationToken = null;
+    document.getElementById('generatedAccountNumber').textContent = '';
+
+    if (await enterApp(identity, true)) {
+        showSuccess('welcome to noaddx.');
+    }
+}
+
+// A 401 means the server no longer holds this registration. Either an earlier attempt created
+// the account and only its answer was lost (then the number logs in), or the registration
+// expired first: that number will never work, so it is replaced rather than kept.
+async function recoverRegistration() {
+    const authKey = await NoaddxCrypto.deriveAuthKey(pendingRegistrationAccountNumber);
+    const login = await apiCall('POST', '/login', { auth_key: authKey });
+    if (login.ok && login.data && login.data.success) {
+        await finishRegistration();
+        return;
+    }
+    if (login.status !== 401) {
+        failRegistrationStep(login.status);
+        return;
+    }
+    pendingRegistrationAccountNumber = null;
+    pendingRegistrationToken = null;
+    showRegisterForm();
+    document.getElementById('registerError').textContent =
+        'that account number expired before the account was created — discard it and copy a new one';
 }
 
 async function logout() {

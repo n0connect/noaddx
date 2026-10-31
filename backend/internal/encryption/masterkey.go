@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"unsafe"
@@ -100,6 +101,19 @@ func ActiveMasterKeyID() string {
 		panic(err)
 	}
 	return masterKeys.activeID
+}
+
+// OldMasterKeyIDs lists the configured MASTER_KEY_OLD ids in sorted order.
+func OldMasterKeyIDs() []string {
+	if err := InitMasterKeys(); err != nil {
+		return nil
+	}
+	ids := make([]string, 0, len(masterKeys.old))
+	for id := range masterKeys.old {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func MasterKeyByID(id string) ([]byte, bool) {

@@ -44,10 +44,13 @@ func (r *userRepository) FindByUUID(uuid string) (*models.User, error) {
 	return &user, nil
 }
 
-// Create creates a new user
+// Create creates a new user; ErrConflict means the account lookup is already taken
 func (r *userRepository) Create(user *models.User) error {
 	err := database.DB.Create(user).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return ErrConflict
+		}
 		userRepoLogger.LogError("UserRepository.Create", err)
 		return err
 	}

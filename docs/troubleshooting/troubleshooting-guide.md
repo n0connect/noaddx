@@ -16,6 +16,8 @@ This guide details real-world pitfalls, diagnostic commands, and immediate copy-
 | `failed to connect to host=localhost:5432` inside container | Container tries connecting to itself instead of Postgres service. | Set `DOCKER_DB_HOST=postgres` in `.env`. |
 | Backend container exits with code `137` | Linux Out-Of-Memory (OOM) Killer killed backend during Argon2id. | Reduce `ARGON2_MEMORY_KIB=32768` and enable host swap. |
 | Session lost immediately upon browser reload | Private/Incognito mode blocked IndexedDB storage. | Normal window or save AccountNumber to log in again. |
+| Backend restarts in a loop with `Key check failed` | `.env` does not belong to this database (regenerated, or an old master key removed too early). | Restore the original `.env`; see section 9. |
+| `pool overlaps` after adding `BACKEND_IP` or changing `COMPOSE_SUBNET` | `PROXY_IP`, `BACKEND_IP` and `TOR_IP` must all lie inside `COMPOSE_SUBNET`. | Move all four together in `.env`. |
 
 ---
 
@@ -190,6 +192,25 @@ In this mode, `keystore.js` keeps private keys in volatile memory only.
 
 ---
 
+## 9. `Key check failed` at Startup
+
+### Symptom
+The backend never becomes ready and restarts in a loop. Its log names the problem:
+```text
+Key check failed: records are encrypted under master key "key-2026-01", which is not configured: restore it as MASTER_KEY_ACTIVE or in MASTER_KEY_OLD
+Key check failed: the key configured as master key "key-2026-01" does not open the records stored under that id
+Key check failed: ACCOUNT_LOOKUP_PEPPER is not the pepper this database was created with: restore the original (it can never change, every account is keyed by it)
+```
+
+### Cause
+The `.env` does not belong to the database in `postgres_data`: it was regenerated (`rm .env && make setup`), copied from another instance, or an old master key was dropped from `MASTER_KEY_OLD` while records still use it. Starting anyway would answer every user with errors, so the backend refuses.
+
+### Fix
+Restore the `.env` that wrote this database (or put the old key back into `MASTER_KEY_OLD`), then `docker compose up -d backend`. If that `.env` is gone for good, the data cannot be read by anyone; see [Disaster Recovery](../operations/disaster-recovery.md) for starting over.
+
+---
+
 ### Next Steps:
 - Review [**Testing & Development**](../development/testing-and-contributing.md) for automated test suites.
 - Read [**Configuration & Tuning**](../operations/configuration-and-tuning.md) for full parameter references.
+- Plan for failures with [**Disaster Recovery**](../operations/disaster-recovery.md).

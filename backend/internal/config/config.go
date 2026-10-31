@@ -190,6 +190,11 @@ func GetMaxActiveInvites() int {
 	return getEnvIntDefault("MAX_ACTIVE_INVITES", defaultMaxActiveInvites)
 }
 
+// MaxConversationsPerUserBound is the highest MAX_CONVERSATIONS_PER_USER accepted. Stored
+// conversation indexes are read up to this bound, not the current setting, so lowering the
+// setting only stops new conversations and never locks an account out of its own.
+const MaxConversationsPerUserBound = 4096
+
 // GetMaxConversationsPerUser returns the cap on conversations per user
 func GetMaxConversationsPerUser() int {
 	return getEnvIntDefault("MAX_CONVERSATIONS_PER_USER", defaultMaxConversationsPerUser)
