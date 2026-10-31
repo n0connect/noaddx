@@ -89,6 +89,26 @@ function validateInviteCode(input) {
 }
 
 /**
+ * Validates what the join field takes: an invite code (noaddx:…) or a room code (noaddx#…)
+ * @param {string} input
+ * @returns {object} - {valid: boolean, kind: 'invite'|'room', sanitized: object|null, error: string}
+ */
+function validateJoinCode(input) {
+    const value = typeof input === 'string' ? input.trim() : '';
+    if (value.length === 0) {
+        return { valid: false, kind: 'invite', sanitized: null, error: 'paste an invite or a room code first' };
+    }
+    if (!value.startsWith(NoaddxRoomCrypto.CODE_PREFIX)) {
+        return Object.assign(validateInviteCode(value), { kind: 'invite' });
+    }
+    try {
+        return { valid: true, kind: 'room', sanitized: NoaddxRoomCrypto.parseRoomCode(value), error: '' };
+    } catch (e) {
+        return { valid: false, kind: 'room', sanitized: null, error: 'invalid room code' };
+    }
+}
+
+/**
  * Validates a conversation or message ID (canonical lowercase UUIDv4)
  * @param {any} id
  * @returns {boolean}

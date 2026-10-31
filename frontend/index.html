@@ -100,6 +100,7 @@
             <section id="homeView" class="home-view">
                 <div class="pair-actions">
                     <button id="newInviteBtn" class="primary-btn">+ invite</button>
+                    <button id="newRoomBtn" class="secondary-btn">+ room</button>
                     <button id="showJoinBtn" class="secondary-btn">join</button>
                 </div>
 
@@ -113,10 +114,26 @@
                     <p class="pair-hint" id="inviteStatus" data-hidden>solving a proof of work · this keeps invite spam expensive</p>
                 </div>
 
+                <div id="roomPanel" class="pair-panel" data-hidden>
+                    <p class="account-number-label">new room</p>
+                    <div id="roomForm" class="room-form">
+                        <label>holds <select id="roomMembersSelect"></select></label>
+                        <label>lives <select id="roomTtlSelect"></select></label>
+                        <button id="createRoomBtn" class="primary-btn">open room</button>
+                    </div>
+                    <div class="account-number-box" id="roomBox" data-hidden>
+                        <code id="roomCode"></code>
+                        <button id="copyRoomBtn" class="copy-btn">copy</button>
+                    </div>
+                    <p class="pair-hint" id="roomHint">whoever holds the code can join until the room is full · nobody else can · it vanishes <span id="roomExpiry">when its time is up</span> · send the code over a channel you trust</p>
+                    <p class="pair-hint" id="roomStatus" data-hidden>solving a proof of work · this keeps room spam expensive</p>
+                    <button id="closeRoomBtn" class="text-btn">cancel</button>
+                </div>
+
                 <div id="joinPanel" class="pair-panel" data-hidden>
-                    <p class="account-number-label">paste an invite</p>
+                    <p class="account-number-label">paste an invite or a room code</p>
                     <div class="join-input-group">
-                        <input type="text" id="inviteInput" placeholder="noaddx:…" maxlength="64" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+                        <input type="text" id="inviteInput" placeholder="noaddx:… or noaddx#…" maxlength="64" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
                         <button id="joinBtn" class="primary-btn">join</button>
                     </div>
                     <button id="closeJoinBtn" class="text-btn">cancel</button>
@@ -143,8 +160,34 @@
                     <span class="aura-name" id="peerName"></span>
                     <span id="peerCode" class="aura-code"></span>
                     <span id="peerVerified" class="verified-mark" title="safety number verified on this device" data-hidden>✓</span>
+                    <span id="roomMeta" class="aura-code room-meta" data-hidden></span>
+                    <button id="membersBtn" class="action-btn" title="Members" data-hidden>members</button>
+                    <button id="roomCodeBtn" class="action-btn" title="Room code" data-hidden>code</button>
                     <button id="verifyBtn" class="action-btn" title="Verify safety number">verify</button>
                     <button id="burnBtn" class="action-btn burn-btn" title="Burn conversation">burn</button>
+                </div>
+
+                <div id="notesPanel" class="pair-panel" data-hidden>
+                    <p class="account-number-label">friend requests</p>
+                    <ul id="noteList" class="member-list"></ul>
+                    <p class="pair-hint">accepting opens a private one-to-one conversation and shows each of you the other's identity. ignoring tells them nothing.</p>
+                </div>
+
+                <div id="membersPanel" class="pair-panel" data-hidden>
+                    <p class="account-number-label">members</p>
+                    <ul id="memberList" class="member-list"></ul>
+                    <p class="account-number-label">room safety number</p>
+                    <div id="roomSafetyNumber" class="safety-number"></div>
+                    <p class="pair-hint">every member sees these digits for the same member list. compare them on another channel: different digits mean the server shows people different rooms. names here exist in this room only.</p>
+                </div>
+
+                <div id="roomCodePanel" class="pair-panel" data-hidden>
+                    <p class="account-number-label">room code</p>
+                    <div class="account-number-box">
+                        <code id="roomCodeShown"></code>
+                        <button id="copyRoomCodeBtn" class="copy-btn">copy</button>
+                    </div>
+                    <p class="pair-hint" id="roomCodeHint"></p>
                 </div>
 
                 <div id="safetyPanel" class="pair-panel" data-hidden>
@@ -155,7 +198,7 @@
                 </div>
 
                 <div id="burnConfirm" class="burn-confirm" data-hidden>
-                    <span>burn for both sides? this cannot be undone.</span>
+                    <span id="burnConfirmText">burn for both sides? this cannot be undone.</span>
                     <button id="burnYesBtn" class="menu-opt burn-yes">burn</button>
                     <button id="burnNoBtn" class="menu-opt">keep</button>
                 </div>
@@ -177,9 +220,11 @@
     <script src="js/utils.js"></script>
     <script src="js/notifications.js"></script>
     <script src="js/crypto.js"></script>
+    <script src="js/room-crypto.js"></script>
     <script src="js/keystore.js"></script>
     <script src="validation.js"></script>
     <script src="js/ui.js"></script>
+    <script src="js/rooms.js"></script>
     <script src="js/chat.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/app.js"></script>

@@ -1170,3 +1170,90 @@ header {
     border: 1px dashed #cc0000;
     background: #fff5f5;
 }
+
+/* ========================================
+   NOADDX — ROOMS
+   ======================================== */
+
+.pair-actions button {
+    min-width: 0;
+}
+
+.room-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.room-form label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 16px;
+    color: var(--muted);
+}
+
+.room-form select {
+    font-family: inherit;
+    font-size: 16px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+}
+
+.room-form button {
+    margin-left: auto;
+}
+
+.chat-header #membersBtn {
+    margin-left: auto;
+}
+
+.member-list {
+    list-style: none;
+    margin-bottom: 12px;
+}
+
+.member-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.member-tag {
+    font-size: 13px;
+    color: var(--muted);
+    border: 1px solid var(--muted);
+    padding: 0 6px;
+}
+
+.member-item .menu-opt {
+    flex: 0 0 auto;
+}
+
+.member-item .member-action {
+    margin-left: auto;
+}
+
+.member-item .menu-opt:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.member-broken {
+    color: #cc0000;
+    font-size: 14px;
+}
+
+.msg-sender {
+    margin-bottom: 2px;
+    font-size: 13px;
+    letter-spacing: 1px;
+    opacity: 0.7;
+}

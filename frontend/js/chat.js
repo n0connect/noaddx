@@ -5,6 +5,7 @@
 // every message is authenticated by AES-GCM + AAD, peer keys from invites are
 // verified against the fingerprint embedded in the invite code, and gaps in the
 // peer's encrypted message counter expose messages the server withheld.
+// Rooms (rooms.js) are conversations too: a room conversation carries `room` and no peer key.
 
 const Chat = (() => {
     'use strict';
@@ -13,8 +14,10 @@ const Chat = (() => {
     const RECONNECT_BASE_MS = 1000;
     const RECONNECT_MAX_MS = 30000;
     const MAX_CIPHERTEXT_CHARS = 11000;
+    // A roster can change between fetching it and sending (412): fetch, re-encrypt, retry, bounded
+    const MAX_ROSTER_RETRIES = 2;
 
-    let me = null;                    // { privateKey, publicKey, aura, ttlDays }
+    let me = null;                    // { privateKey, publicKey, roomsRoot, aura, ttlDays, limits }
     const conversations = new Map();  // id -> conversation state
     let order = [];                   // server order: newest conversation first
     let recent = [];                  // ids with activity this session, most recent first (memory only)
@@ -26,6 +29,9 @@ const Chat = (() => {
     let listLoaded = false;           // distinguishes the first load from live additions
     let inviteRun = null;             // { stopScramble } while an invite is paid for and revealed
     let unsent = null;                // a send whose answer never came: { convId, text, id, counter, ciphertext }
+    let roomRun = null;               // { stopScramble } while a room is paid for and revealed
+    let friendRun = false;            // one friend request (a proof of work) at a time
+    const rejectedRooms = new Set();  // "id vault" pairs that failed verification: warned about once
 
     // ---------- plumbing ----------
 
@@ -82,7 +88,7 @@ const Chat = (() => {
         };
         const items = order.filter(id => conversations.has(id)).map(id => {
             const conv = conversations.get(id);
-            return { id: conv.id, aura: conv.aura, unread: conv.lastSeq > conv.readSeq, verified: conv.verified };
+            return { id: conv.id, aura: conv.aura, unread: conv.lastSeq > conv.readSeq, verified: conv.verified, room: conv.room };
         });
         items.sort((a, b) => (b.unread - a.unread) || (rank(a.id) - rank(b.id)));
         renderConversationList(items, open);
@@ -95,15 +101,18 @@ const Chat = (() => {
 
     // ---------- lifecycle ----------
 
-    async function start(identity, ttlDays) {
+    async function start(identity, ttlDays, limits) {
         me = {
             privateKey: identity.privateKey,
             publicKey: identity.publicKey,
+            roomsRoot: identity.roomsRoot,
             aura: await NoaddxCrypto.aura(identity.publicKey),
-            ttlDays: ttlDays
+            ttlDays: ttlDays,
+            limits: limits
         };
         renderMe(me.aura);
         setComposerHint(ttlDays);
+        setRoomLimits(limits.maxMembers, Rooms.ttlChoices(limits.maxTTLHours));
         showHome();
         showApp();
         await refreshConversations();
@@ -119,6 +128,7 @@ const Chat = (() => {
         activeId = null;
         listLoaded = false;
         unsent = null;
+        rejectedRooms.clear();
         me = null;
         clearChildren(document.getElementById('conversationList'));
         clearChildren(document.getElementById('messageList'));
@@ -126,7 +136,14 @@ const Chat = (() => {
             inviteRun.stopScramble();
             inviteRun = null;
         }
+        if (roomRun) {
+            roomRun.stopScramble();
+            roomRun = null;
+        }
+        friendRun = false;
         resetInvitePanel();
+        resetRoomPanel();
+        hideRoomPanels();
         togglePairPanel(null);
         document.getElementById('inviteInput').value = '';
         document.getElementById('deleteAccountInput').value = '';
@@ -148,7 +165,8 @@ const Chat = (() => {
         const nextOrder = [];
         let joined = false;
         for (const item of result.data.conversations) {
-            if (!item || !validateConversationId(item.id) || !isPublicKey(item.peer_public_key) ||
+            const isRoom = Boolean(item && item.room);
+            if (!item || !validateConversationId(item.id) || (!isRoom && !isPublicKey(item.peer_public_key)) ||
                 !isSeq(item.last_seq) || !isSeq(item.read_seq) || seen.has(item.id)) {
                 continue;
             }
@@ -156,48 +174,42 @@ const Chat = (() => {
             nextOrder.push(item.id);
             const existing = conversations.get(item.id);
             if (existing) {
-                if (existing.peerPublicKey !== item.peer_public_key) {
-                    // A conversation's key can never change; treat as tampering
-                    showError('peer key changed unexpectedly — conversation hidden');
+                // A conversation's kind, peer key and room code can never change; treat as tampering
+                if (isRoom !== Boolean(existing.room) ||
+                    (isRoom ? !Rooms.refreshView(existing.room, item) : existing.peerPublicKey !== item.peer_public_key)) {
+                    showError(isRoom ? 'room data changed unexpectedly — room hidden' : 'peer key changed unexpectedly — conversation hidden');
                     conversations.delete(item.id);
                     continue;
                 }
                 existing.lastSeq = Math.max(existing.lastSeq, item.last_seq);
                 existing.readSeq = Math.max(existing.readSeq, item.read_seq);
-            } else {
-                joined = joined || listLoaded;
-                conversations.set(item.id, {
-                    id: item.id,
-                    peerPublicKey: item.peer_public_key,
-                    aura: await NoaddxCrypto.aura(item.peer_public_key),
-                    verified: await Keystore.isVerified(item.id, item.peer_public_key),
-                    myMaxN: 0,
-                    peerLastN: 0,
-                    lastSeq: item.last_seq,
-                    readSeq: item.read_seq,
-                    maxSeq: 0,
-                    seqs: new Set(),
-                    ids: new Set(),
-                    loaded: false,
-                    key: null,
-                    syncChain: Promise.resolve()
-                });
+                continue;
             }
+            const state = await newConversationState(item, isRoom);
+            if (!me) return;
+            if (!state) continue;
+            joined = joined || (listLoaded && !isRoom);
+            conversations.set(item.id, state);
         }
 
         for (const id of Array.from(conversations.keys())) {
             if (!seen.has(id)) {
+                const gone = conversations.get(id);
                 conversations.delete(id);
                 if (activeId === id) {
                     activeId = null;
                     showHome();
-                    showWarning('this conversation was burned');
+                    showWarning(gone.room ? 'this room is gone — burned or expired' : 'this conversation was burned');
                 }
             }
         }
         order = nextOrder;
         listLoaded = true;
         renderList();
+        const active = conversations.get(activeId);
+        if (active && active.room) {
+            refreshActiveRoom(active);
+        }
 
         // Someone redeemed an invite: the code on screen is spent, so put it away
         // (unless a new one is being made, which nobody can have redeemed yet)
@@ -205,6 +217,46 @@ const Chat = (() => {
             togglePairPanel(null);
             showSuccess('someone joined with your invite');
         }
+    }
+
+    // Verifies a listed conversation once (a room against the code in its vault); null hides it
+    async function newConversationState(item, isRoom) {
+        const state = {
+            id: item.id,
+            peerPublicKey: null,
+            room: null,
+            aura: null,
+            verified: false,
+            myMaxN: 0,
+            peerLastN: 0,
+            lastSeq: item.last_seq,
+            readSeq: item.read_seq,
+            maxSeq: 0,
+            seqs: new Set(),
+            ids: new Set(),
+            loaded: false,
+            key: null,
+            syncChain: Promise.resolve()
+        };
+        if (!isRoom) {
+            state.peerPublicKey = item.peer_public_key;
+            state.aura = await NoaddxCrypto.aura(item.peer_public_key);
+            state.verified = await Keystore.isVerified(item.id, item.peer_public_key);
+            return state;
+        }
+        try {
+            state.room = await Rooms.adopt(me.roomsRoot, item);
+        } catch (e) {
+            const seen = item.id + ' ' + (item.room && item.room.vault);
+            if (!rejectedRooms.has(seen)) {
+                rejectedRooms.add(seen);
+                showError('a room failed verification against its code — hidden');
+            }
+            return null;
+        }
+        state.aura = await Rooms.aura(item.id);
+        state.peerLastN = new Map();  // per sender: their counter in this room
+        return state;
     }
 
     function scheduleRefresh() {
@@ -216,17 +268,25 @@ const Chat = (() => {
         const conv = conversations.get(id);
         if (!conv) return;
         activeId = id;
-        showChatView(conv.aura);
+        showChatView(conv.aura, conv.room);
         conv.seqs = new Set();
         conv.ids = new Set();
         conv.maxSeq = 0;
         // myMaxN is kept: within a session this device's counter only ever grows
-        conv.peerLastN = 0;
+        conv.peerLastN = conv.room ? new Map() : 0;
         conv.loaded = false;
-        setVerifiedState(conv.verified);
+        if (conv.room) {
+            renderRoomHeader(conv.room);
+            setRoomComposerHint(conv.room.expiresAt, me.ttlDays);
+            if (!(await loadRoster(conv))) return;
+            await refreshRoomPanels(conv);
+        } else {
+            setComposerHint(me.ttlDays);
+            setVerifiedState(conv.verified);
+        }
         await sync(conv);
         if (activeId === id) {
-            renderEmptyConversation(me.ttlDays);
+            renderEmptyConversation(me.ttlDays, conv.room);
             document.getElementById('messageInput').focus();
         }
     }
@@ -261,7 +321,7 @@ const Chat = (() => {
         }
         conv.loaded = true;
 
-        const key = await conversationKey(conv);
+        const key = conv.room ? null : await conversationKey(conv);
         const fresh = [];
         for (const raw of result.data.messages) {
             if (!raw || !NoaddxCrypto.isUuidV4(raw.id) || !isSeq(raw.seq) || raw.seq === 0 ||
@@ -271,9 +331,17 @@ const Chat = (() => {
                 // Unknown shape, or a message id seen before (a server re-serving an old ciphertext)
                 continue;
             }
-            const sender = raw.mine ? me.publicKey : conv.peerPublicKey;
             let message;
             try {
+                if (conv.room) {
+                    message = await openRoomMessage(conv, raw, fresh);
+                    conv.seqs.add(raw.seq);
+                    conv.ids.add(raw.id);
+                    conv.maxSeq = raw.seq;
+                    fresh.push(message);
+                    continue;
+                }
+                const sender = raw.mine ? me.publicKey : conv.peerPublicKey;
                 const plain = await NoaddxCrypto.decryptMessage(key, conv.id, raw.id, sender, raw.ciphertext);
                 message = { seq: raw.seq, mine: raw.mine, text: plain.text, sentAt: plain.sentAt };
                 if (raw.mine) {
@@ -300,6 +368,32 @@ const Chat = (() => {
         await markRead(conv);
     }
 
+    // Verifies a room message's sender and counter; gaps are tracked per sender
+    async function openRoomMessage(conv, raw, fresh) {
+        let plain;
+        try {
+            plain = await Rooms.open(conv, raw);
+        } catch (e) {
+            return { seq: raw.seq, mine: raw.mine, broken: true };
+        }
+        const mine = plain.sender === conv.room.member.publicKey;
+        if (mine !== raw.mine) {
+            return { seq: raw.seq, mine: raw.mine, broken: true };
+        }
+        if (mine) {
+            conv.myMaxN = Math.max(conv.myMaxN, plain.counter);
+            return { seq: raw.seq, mine: true, text: plain.text, sentAt: plain.sentAt };
+        }
+        const entry = Rooms.senderOf(conv.room, plain.sender);
+        const aura = entry ? entry.aura : await NoaddxCrypto.aura(plain.sender);
+        const last = conv.peerLastN.get(plain.sender) || 0;
+        if (last > 0 && plain.counter > last + 1) {
+            fresh.push({ gap: plain.counter - last - 1, from: aura.name });
+        }
+        conv.peerLastN.set(plain.sender, Math.max(last, plain.counter));
+        return { seq: raw.seq, mine: false, text: plain.text, sentAt: plain.sentAt, from: aura.name, left: !entry };
+    }
+
     async function markRead(conv) {
         if (conv.maxSeq > conv.readSeq) {
             conv.readSeq = conv.maxSeq;
@@ -320,6 +414,12 @@ const Chat = (() => {
             return;
         }
 
+        if (conv.room && Rooms.expired(conv.room)) {
+            showWarning('this room has expired');
+            return;
+        }
+        if (conv.room && !conv.room.roster && !(await loadRoster(conv))) return;
+
         sendBtn.disabled = true;
         try {
             // Retrying a send whose answer was lost resends the same id and ciphertext: if the
@@ -329,14 +429,16 @@ const Chat = (() => {
             let attempt = unsent && unsent.convId === conv.id && unsent.text === text ? unsent : null;
             if (!attempt) {
                 const id = NoaddxCrypto.newMessageId();
-                const counter = conv.myMaxN + 1;
-                const key = await conversationKey(conv);
-                attempt = {
-                    convId: conv.id, text: text, id: id, counter: counter,
-                    ciphertext: await NoaddxCrypto.encryptMessage(key, conv.id, id, me.publicKey, text, Date.now(), counter)
-                };
+                attempt = { convId: conv.id, text: text, id: id, counter: conv.myMaxN + 1, ciphertext: null };
+                attempt.ciphertext = await sealAttempt(conv, attempt);
             }
-            const result = await api('POST', `/conversations/${conv.id}/messages`, { id: attempt.id, ciphertext: attempt.ciphertext });
+            let result = await api('POST', `/conversations/${conv.id}/messages`, { id: attempt.id, ciphertext: attempt.ciphertext });
+            // Someone joined or left since the roster was fetched: encrypt for the new one
+            for (let retry = 0; conv.room && result.status === 412 && retry < MAX_ROSTER_RETRIES; retry++) {
+                if (!(await loadRoster(conv))) return;
+                attempt.ciphertext = await sealAttempt(conv, attempt);
+                result = await api('POST', `/conversations/${conv.id}/messages`, { id: attempt.id, ciphertext: attempt.ciphertext });
+            }
             const stored = (result.ok && result.data && isSeq(result.data.seq) && result.data.seq > 0) || result.status === 409;
             // Only a lost answer leaves the outcome open; any other answer settles it
             unsent = !stored && (result.status === 0 || result.status >= 500) ? attempt : null;
@@ -362,6 +464,14 @@ const Chat = (() => {
             sendBtn.disabled = false;
             input.focus();
         }
+    }
+
+    function sealAttempt(conv, attempt) {
+        if (conv.room) {
+            return Rooms.seal(conv, attempt.id, attempt.text, attempt.counter);
+        }
+        return conversationKey(conv).then(key =>
+            NoaddxCrypto.encryptMessage(key, conv.id, attempt.id, me.publicKey, attempt.text, Date.now(), attempt.counter));
     }
 
     // ---------- pairing ----------
@@ -436,46 +546,237 @@ const Chat = (() => {
         }
     }
 
+    // The join field takes an invite code or a room code
     async function join() {
         const input = document.getElementById('inviteInput');
-        const validation = validateInviteCode(input.value);
+        const validation = validateJoinCode(input.value);
         if (!validation.valid) {
             showError(validation.error);
             return;
         }
-        const invite = validation.sanitized;
+        const id = validation.kind === 'room' ? await joinRoom(validation.sanitized) : await redeemInvite(validation.sanitized);
+        if (!id || !me) return;
+        input.value = '';
+        togglePairPanel(null);
+        await refreshConversations();
+        await open(id);
+    }
+
+    // Redeems an invite and checks the peer key against its fingerprint. Returns the new
+    // conversation id, or null once the reason has been shown.
+    async function redeemInvite(invite) {
         if (await NoaddxCrypto.fingerprintMatches(invite, me.publicKey)) {
             showWarning('that is your own invite — send it to someone else');
-            return;
+            return null;
         }
-
         const result = await api('POST', '/invites/redeem', { token: invite.token });
         if (result.status === 404) {
             showError('invite expired or already used');
-            return;
+            return null;
         }
         if (result.status === 429) {
             showWarning('too many attempts — wait a moment');
-            return;
+            return null;
         }
         const conv = result.data && result.data.conversation;
         if (!result.ok || !conv || !validateConversationId(conv.id) || !isPublicKey(conv.peer_public_key)) {
             if (result.status !== 401) showError('could not join');
-            return;
+            return null;
         }
-
         // The server chose which key we got; the invite code says which key we should get
         if (!(await NoaddxCrypto.fingerprintMatches(invite, conv.peer_public_key))) {
             await api('DELETE', `/conversations/${conv.id}`);
             showError('verification FAILED: the server substituted the peer key. conversation burned.');
+            return null;
+        }
+        showSuccess('connected');
+        return conv.id;
+    }
+
+    // ---------- rooms ----------
+
+    // Fetches and verifies the active room's member list. Returns false once the reason was shown.
+    async function loadRoster(conv) {
+        try {
+            await Rooms.loadRoster(api, conv);
+        } catch (e) {
+            if (!me) return false;
+            if (e.status === 404) {
+                scheduleRefresh();
+            } else if (e.status !== 401) {
+                showError('the member list failed verification — not sending to it');
+            }
+            return false;
+        }
+        if (activeId === conv.id) {
+            renderRoomHeader(conv.room);
+        }
+        return true;
+    }
+
+    // Someone joined, left or sent a note: refresh what the open room shows
+    async function refreshActiveRoom(conv) {
+        if (await loadRoster(conv) && activeId === conv.id) {
+            await refreshRoomPanels(conv);
+        }
+    }
+
+    async function refreshRoomPanels(conv) {
+        if (!conv.room.roster || activeId !== conv.id) return;
+        if (document.getElementById('membersPanel').style.display !== 'none') {
+            renderMembers(conv.room.roster, conv.room.skipped, conv.room.requested, entry => befriend(conv, entry));
+            renderRoomSafety(await Rooms.safetyNumber(conv));
+        }
+        const notes = conv.room.notes > 0 ? await Rooms.notes(api, conv) : [];
+        if (activeId !== conv.id) return;
+        renderNotes(notes, note => acceptNote(conv, note), note => ignoreNote(conv, note));
+    }
+
+    async function joinRoom(code) {
+        if (Date.now() >= code.expiresHour * 3600000) {
+            showError('this room has expired');
+            return null;
+        }
+        const result = await Rooms.join(api, me.roomsRoot, code);
+        if (result.id) {
+            showSuccess(result.status === 201 ? 'you joined the room' : 'you are already in this room');
+            return result.id;
+        }
+        if (result.status === 404) {
+            showError('no such room — the code is wrong, or the room expired or was burned');
+        } else if (result.status === 409) {
+            showWarning('this room is full');
+        } else if (result.status === 429) {
+            showWarning('too many attempts or too many conversations — wait a moment');
+        } else if (result.status !== 401) {
+            showError('could not join the room');
+        }
+        return null;
+    }
+
+    async function createRoom() {
+        if (roomRun || !me) return;  // one proof of work at a time
+        const owner = me;
+        const maxMembers = Number(document.getElementById('roomMembersSelect').value);
+        const ttlHours = Number(document.getElementById('roomTtlSelect').value);
+        const run = { stopScramble: showRoomGenerating() };
+        roomRun = run;
+        const solve = async () => {
+            const issued = await api('GET', '/pow/challenge');
+            if (me !== owner || !issued.ok || !issued.data || !issued.data.challenge) return null;
+            return solvePowChallenge(issued.data.challenge);
+        };
+        let created = { status: 0 };
+        try {
+            created = await Rooms.create(api, owner.roomsRoot, maxMembers, ttlHours, solve);
+        } catch (e) {
+            created = { status: 0 };
+        }
+        if (me !== owner) return;  // stop() ended this run and put the panel away
+        run.stopScramble();
+        if (!created.code) {
+            roomRun = null;
+            resetRoomPanel();
+            if (created.status === 429) showWarning('too many rooms or attempts — wait a moment');
+            else if (created.status === 400) showError('the server refused the room — check your device clock');
+            else if (created.status !== 401) showError('could not create room');
             return;
         }
+        await revealRoomCode(created.code, NoaddxRoomCrypto.parseRoomCode(created.code).expiresHour * 3600);
+        if (me !== owner) {
+            document.getElementById('roomCode').textContent = '';
+            return;
+        }
+        roomRun = null;
+        scheduleRefresh();
+        try {
+            await copyToClipboard(created.code);
+            showSuccess('room code copied');
+        } catch (e) {
+            showWarning('copy it manually');
+        }
+    }
 
-        input.value = '';
-        togglePairPanel(null);
+    function activeRoom() {
+        const conv = conversations.get(activeId);
+        return conv && conv.room ? conv : null;
+    }
+
+    async function toggleMembers() {
+        const conv = activeRoom();
+        if (!conv) return;
+        if (toggleRoomPanel('membersPanel')) {
+            await refreshRoomPanels(conv);
+        }
+    }
+
+    function toggleRoomCode() {
+        const conv = activeRoom();
+        if (!conv) return;
+        if (toggleRoomPanel('roomCodePanel')) {
+            showRoomCode(Rooms.codeText(conv), conv.room.expiresAt);
+        }
+    }
+
+    async function copyRoomCode() {
+        const conv = activeRoom();
+        if (!conv) return;
+        try {
+            await copyToClipboard(Rooms.codeText(conv));
+            showSuccess('room code copied');
+        } catch (e) {
+            showWarning('copy it manually');
+        }
+    }
+
+    // Sends a member an invite inside the room, sealed for them alone (a proof of work, as any invite)
+    async function befriend(conv, entry) {
+        if (friendRun || !me) return;
+        friendRun = true;
+        const owner = me;
+        showSuccess('preparing a friend request · solving a proof of work');
+        try {
+            const invite = await requestInvite(owner);
+            if (!invite || me !== owner) return;
+            const result = await Rooms.befriend(api, conv, entry, invite.code);
+            if (result.status === 201) {
+                conv.room.requested.add(entry.publicKey);
+                showSuccess(`friend request sent to ${entry.aura.name}`);
+            } else if (result.status === 409) {
+                showWarning('you already have a request waiting with them');
+            } else if (result.status === 404) {
+                showWarning('they are no longer in this room');
+            } else if (result.status !== 401) {
+                showError('friend request not sent');
+            }
+        } catch (e) {
+            if (me === owner) showError('friend request not sent');
+        } finally {
+            friendRun = false;
+            if (me === owner) await refreshRoomPanels(conv);
+        }
+    }
+
+    // Accepting redeems the invite inside the note, with the usual fingerprint check
+    async function acceptNote(conv, note) {
+        const validation = validateInviteCode(note.invite);
+        if (!validation.valid) {
+            showError('that friend request is malformed — ignored');
+            await ignoreNote(conv, note);
+            return;
+        }
+        const id = await redeemInvite(validation.sanitized);
+        if (!id || !me) return;
+        await Rooms.dismissNote(api, conv, note.id);
+        showSuccess('you are now friends — a private conversation opened');
         await refreshConversations();
-        showSuccess('connected');
-        await open(conv.id);
+        await open(id);
+    }
+
+    async function ignoreNote(conv, note) {
+        await Rooms.dismissNote(api, conv, note.id);
+        conv.room.notes = Math.max(0, conv.room.notes - 1);
+        await refreshRoomPanels(conv);
     }
 
     // ---------- conversation actions ----------
@@ -506,21 +807,26 @@ const Chat = (() => {
     }
 
     function askBurn(show) {
+        const conv = conversations.get(activeId);
+        setBurnConfirm(conv ? conv.room : null);
         document.getElementById('burnConfirm').style.display = show ? 'flex' : 'none';
     }
 
+    // A pair is burned for both sides; a room is burned by its owner and left by anyone else
     async function burn() {
         const id = activeId;
+        const conv = conversations.get(id);
+        const leaving = Boolean(conv && conv.room && !conv.room.owner);
         askBurn(false);
         if (!id) return;
         const result = await api('DELETE', `/conversations/${id}`);
         if (result.status === 204 || result.status === 404) {
             conversations.delete(id);
             backToList();
-            showSuccess('burned');
+            showSuccess(leaving ? 'you left the room' : 'burned');
             scheduleRefresh();
         } else if (result.status !== 401) {
-            showError('could not burn conversation');
+            showError(leaving ? 'could not leave the room' : 'could not burn conversation');
         }
     }
 
@@ -614,7 +920,8 @@ const Chat = (() => {
     }
 
     return Object.freeze({
-        start, stop, open, backToList, send, createInvite, join,
+        start, stop, open, backToList, send, createInvite, join, createRoom,
+        toggleMembers, toggleRoomCode, copyRoomCode,
         showSafety, toggleVerified, askBurn, burn, onVisible,
         isActive: () => me !== null,
         publicKey: () => (me ? me.publicKey : null)

@@ -182,7 +182,7 @@ function showHome() {
     document.getElementById('homeView').style.display = 'block';
 }
 
-const PAIR_PANELS = ['invitePanel', 'joinPanel', 'deletePanel'];
+const PAIR_PANELS = ['invitePanel', 'roomPanel', 'joinPanel', 'deletePanel'];
 
 // Opens panelId alone, or closes every pair panel when it is already open (or null)
 function togglePairPanel(panelId) {
@@ -242,7 +242,7 @@ function resetInvitePanel() {
     document.getElementById('newInviteBtn').disabled = false;
 }
 
-// items: [{ id, aura, unread, verified }] in display order
+// items: [{ id, aura, unread, verified, room }] in display order
 function renderConversationList(items, onOpen) {
     const list = document.getElementById('conversationList');
     clearChildren(list);
@@ -250,7 +250,7 @@ function renderConversationList(items, onOpen) {
     if (items.length === 0) {
         const empty = document.createElement('li');
         empty.className = 'empty-message';
-        empty.textContent = 'no conversations yet — create an invite and send it to someone you trust';
+        empty.textContent = 'no conversations yet — invite someone you trust, or open a room and share its code';
         list.appendChild(empty);
         return;
     }
@@ -263,15 +263,15 @@ function renderConversationList(items, onOpen) {
 
         const name = document.createElement('span');
         name.className = 'aura-name';
-        name.textContent = item.aura.name;
+        name.textContent = item.room ? roomName(item.aura) : item.aura.name;
 
         const code = document.createElement('span');
         code.className = 'aura-code';
-        code.textContent = '·' + item.aura.code;
+        code.textContent = item.room ? roomMeta(item.room) : '·' + item.aura.code;
 
         const marker = document.createElement('span');
         marker.className = 'unread-marker';
-        marker.textContent = item.unread ? 'new' : '›';
+        marker.textContent = item.unread ? 'new' : (item.room && item.room.notes > 0 ? 'request' : '›');
 
         row.appendChild(createGlyph(item.aura.grid));
         row.appendChild(name);
@@ -294,12 +294,22 @@ function renderConversationList(items, onOpen) {
 
 // ---------- chat ----------
 
-function showChatView(aura) {
+function showChatView(aura, room) {
     drawGlyph(document.getElementById('peerGlyph'), aura.grid);
-    document.getElementById('peerName').textContent = aura.name;
-    document.getElementById('peerCode').textContent = '·' + aura.code;
+    document.getElementById('peerName').textContent = room ? roomName(aura) : aura.name;
+    document.getElementById('peerCode').textContent = room ? '' : '·' + aura.code;
     document.getElementById('safetyPanel').style.display = 'none';
     document.getElementById('burnConfirm').style.display = 'none';
+    hideRoomPanels();
+    // A room has members, a code and a member list; a pair has a safety number
+    ['roomMeta', 'membersBtn', 'roomCodeBtn'].forEach(id => {
+        document.getElementById(id).style.display = room ? 'inline' : 'none';
+    });
+    document.getElementById('verifyBtn').style.display = room ? 'none' : 'inline';
+    document.getElementById('peerVerified').style.display = 'none';
+    const burnButton = document.getElementById('burnBtn');
+    burnButton.textContent = room && !room.owner ? 'leave' : 'burn';
+    burnButton.title = room && !room.owner ? 'Leave room' : (room ? 'Burn room for everyone' : 'Burn conversation');
     clearChildren(document.getElementById('messageList'));
     document.getElementById('homeView').style.display = 'none';
     document.getElementById('chatView').style.display = 'block';
@@ -322,14 +332,15 @@ function renderSafetyNumber(groups) {
     });
 }
 
-// A gap in the peer's counter: the server withheld, delayed or deleted their messages
-function createGapElement(missing) {
+// A gap in a sender's counter: the server withheld, delayed or deleted their messages
+function createGapElement(missing, from) {
     const item = document.createElement('li');
     item.className = 'msg-gap';
-    // The count comes from the peer's own counter; cap what we repeat back
+    const who = from || 'them';
+    // The count comes from the sender's own counter; cap what we repeat back
     item.textContent = missing === 1
-        ? '⚠ 1 message from them never arrived'
-        : missing <= 999 ? `⚠ ${missing} messages from them never arrived` : '⚠ messages from them never arrived';
+        ? `⚠ 1 message from ${who} never arrived`
+        : missing <= 999 ? `⚠ ${missing} messages from ${who} never arrived` : `⚠ messages from ${who} never arrived`;
     return item;
 }
 
@@ -337,6 +348,14 @@ function createMessageElement(message) {
     const item = document.createElement('li');
     item.className = 'msg ' + (message.mine ? 'mine' : 'theirs') + (message.broken ? ' broken' : '');
     item.dataset.seq = String(message.seq);
+
+    // In a room, every message from someone else says who (their name in this room only)
+    if (message.from && !message.broken) {
+        const sender = document.createElement('div');
+        sender.className = 'msg-sender';
+        sender.textContent = message.left ? message.from + ' · left' : message.from;
+        item.appendChild(sender);
+    }
 
     const text = document.createElement('div');
     text.className = 'msg-text';
@@ -361,18 +380,20 @@ function appendMessages(messages) {
         empty.remove();
     }
     messages.forEach(message => list.appendChild(
-        message.gap ? createGapElement(message.gap) : createMessageElement(message)));
+        message.gap ? createGapElement(message.gap, message.from) : createMessageElement(message)));
     if (pinned || messages.some(m => m.mine)) {
         list.scrollTop = list.scrollHeight;
     }
 }
 
-function renderEmptyConversation(ttlDays) {
+function renderEmptyConversation(ttlDays, room) {
     const list = document.getElementById('messageList');
     if (list.children.length === 0) {
         const empty = document.createElement('li');
         empty.className = 'empty-message';
-        empty.textContent = `end-to-end encrypted. messages vanish after ${ttlDays} days. say hello.`;
+        empty.textContent = room
+            ? `encrypted for exactly the members listed. you only see what was sent after you joined. the room vanishes ${formatTimeLeft(room.expiresAt)}.`
+            : `end-to-end encrypted. messages vanish after ${ttlDays} days. say hello.`;
         list.appendChild(empty);
     }
 }
@@ -380,6 +401,13 @@ function renderEmptyConversation(ttlDays) {
 function setComposerHint(ttlDays) {
     document.getElementById('composerHint').textContent =
         `vanishes after ${ttlDays} days · enter to send · shift+enter for a new line`;
+}
+
+// Messages go with the room, or after the usual retention if that comes first
+function setRoomComposerHint(expiresAt, ttlDays) {
+    const vanish = Math.min(expiresAt, Date.now() + ttlDays * 86400000);
+    document.getElementById('composerHint').textContent =
+        `vanishes ${formatTimeLeft(vanish)} · enter to send · shift+enter for a new line`;
 }
 
 function updateComposerMeta() {
@@ -401,7 +429,221 @@ function formatTime(ms) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + hhmm;
 }
 
+// "in 5h", "in 3d", "within the hour", "now"
+function formatTimeLeft(atMs) {
+    const left = atMs - Date.now();
+    if (left <= 0) return 'now';
+    const hours = Math.floor(left / 3600000);
+    if (hours >= 48) return `in ${Math.floor(hours / 24)}d`;
+    return hours >= 1 ? `in ${hours}h` : 'within the hour';
+}
+
 function formatExpiry(expiresAtSeconds) {
     const hours = Math.max(0, Math.round((expiresAtSeconds * 1000 - Date.now()) / 3600000));
     return hours >= 1 ? `in ${hours}h` : 'within the hour';
+}
+
+// ---------- rooms ----------
+// A room's name comes from its id (the same for every member); people in it have their own
+// per-room auras, which link to nothing outside the room.
+
+function roomName(aura) {
+    return '#' + aura.name;
+}
+
+function roomMeta(room) {
+    return `${room.members}/${room.maxMembers} · ${formatTimeLeft(room.expiresAt)}`;
+}
+
+const ROOM_PANELS = ['membersPanel', 'notesPanel', 'roomCodePanel'];
+
+function hideRoomPanels() {
+    ROOM_PANELS.forEach(id => {
+        document.getElementById(id).style.display = 'none';
+    });
+}
+
+// Opens panelId alone (the notes panel stays as it is); returns whether it is now open
+function toggleRoomPanel(panelId) {
+    const panel = document.getElementById(panelId);
+    const opening = panel.style.display === 'none';
+    ['membersPanel', 'roomCodePanel', 'safetyPanel', 'burnConfirm'].forEach(id => {
+        document.getElementById(id).style.display = 'none';
+    });
+    panel.style.display = opening ? 'block' : 'none';
+    return opening;
+}
+
+function renderRoomHeader(room) {
+    document.getElementById('roomMeta').textContent = roomMeta(room);
+    const burnButton = document.getElementById('burnBtn');
+    burnButton.textContent = room.owner ? 'burn' : 'leave';
+}
+
+function setBurnConfirm(room) {
+    document.getElementById('burnConfirmText').textContent = !room
+        ? 'burn for both sides? this cannot be undone.'
+        : room.owner
+            ? 'burn this room for everyone? this cannot be undone.'
+            : 'leave this room? you can come back with the code while a seat is free.';
+    document.getElementById('burnYesBtn').textContent = room && !room.owner ? 'leave' : 'burn';
+}
+
+// The creator's choices, within what this server allows
+function setRoomLimits(maxMembers, ttlChoices) {
+    const members = document.getElementById('roomMembersSelect');
+    clearChildren(members);
+    for (let n = NoaddxRoomCrypto.MIN_MEMBERS; n <= maxMembers; n++) {
+        const option = document.createElement('option');
+        option.value = String(n);
+        option.textContent = `${n} people`;
+        option.selected = n === Math.min(8, maxMembers);
+        members.appendChild(option);
+    }
+    const ttl = document.getElementById('roomTtlSelect');
+    clearChildren(ttl);
+    ttlChoices.forEach(hours => {
+        const option = document.createElement('option');
+        option.value = String(hours);
+        option.textContent = hours === 1 ? '1 hour' : hours % 24 === 0 ? `${hours / 24} day${hours === 24 ? '' : 's'}` : `${hours} hours`;
+        option.selected = hours === 24 || ttlChoices.length === 1;
+        ttl.appendChild(option);
+    });
+}
+
+// While the proof of work runs the room code scrambles, as invites and account numbers do
+function showRoomGenerating() {
+    const codeElement = document.getElementById('roomCode');
+    codeElement.classList.remove('masking', 'revealed');
+    codeElement.classList.add('generating');
+    document.getElementById('roomBox').style.display = 'flex';
+    document.getElementById('roomBox').classList.add('show');
+    document.getElementById('roomForm').style.display = 'none';
+    document.getElementById('newRoomBtn').disabled = true;
+    document.getElementById('copyRoomBtn').disabled = true;
+    document.getElementById('roomHint').style.display = 'none';
+    document.getElementById('roomStatus').style.display = 'block';
+    showPairPanel('roomPanel');
+    return startScramble(codeElement, NoaddxRoomCrypto.CODE_CHARS - NoaddxRoomCrypto.CODE_PREFIX.length, NoaddxRoomCrypto.CODE_PREFIX);
+}
+
+async function revealRoomCode(code, expiresAtSeconds) {
+    const codeElement = document.getElementById('roomCode');
+    codeElement.classList.remove('generating');
+    codeElement.classList.add('masking');
+    await animateToMask(codeElement, NoaddxRoomCrypto.CODE_PREFIX);
+    await revealText(codeElement, code, NoaddxRoomCrypto.CODE_PREFIX);
+    codeElement.classList.remove('masking');
+    codeElement.classList.add('revealed');
+    document.getElementById('roomExpiry').textContent = formatTimeLeft(expiresAtSeconds * 1000);
+    document.getElementById('roomStatus').style.display = 'none';
+    document.getElementById('roomHint').style.display = 'block';
+    document.getElementById('copyRoomBtn').disabled = false;
+    document.getElementById('newRoomBtn').disabled = false;
+}
+
+// Puts the room panel away and forgets the code it showed
+function resetRoomPanel() {
+    const codeElement = document.getElementById('roomCode');
+    codeElement.classList.remove('generating', 'masking', 'revealed');
+    codeElement.textContent = '';
+    document.getElementById('roomPanel').style.display = 'none';
+    document.getElementById('roomBox').style.display = 'none';
+    document.getElementById('roomForm').style.display = 'flex';
+    document.getElementById('roomStatus').style.display = 'none';
+    document.getElementById('roomHint').style.display = 'block';
+    document.getElementById('roomExpiry').textContent = 'when its time is up';
+    document.getElementById('copyRoomBtn').disabled = false;
+    document.getElementById('newRoomBtn').disabled = false;
+}
+
+function showRoomCode(code, expiresAt) {
+    document.getElementById('roomCodeShown').textContent = code;
+    document.getElementById('roomCodeHint').textContent =
+        `anyone holding this code can join while a seat is free · the room vanishes ${formatTimeLeft(expiresAt)} · share it only over a channel you trust`;
+}
+
+function memberRow(entry) {
+    const row = document.createElement('li');
+    row.className = 'member-item';
+    row.appendChild(createGlyph(entry.aura.grid));
+    const name = document.createElement('span');
+    name.className = 'aura-name';
+    name.textContent = entry.aura.name;
+    row.appendChild(name);
+    const code = document.createElement('span');
+    code.className = 'aura-code';
+    code.textContent = '·' + entry.aura.code;
+    row.appendChild(code);
+    return row;
+}
+
+function memberTag(text) {
+    const tag = document.createElement('span');
+    tag.className = 'member-tag';
+    tag.textContent = text;
+    return tag;
+}
+
+// entries: verified roster; skipped: cards that failed to open (shown, never written to)
+function renderMembers(entries, skipped, requested, onBefriend) {
+    const list = document.getElementById('memberList');
+    clearChildren(list);
+    entries.forEach(entry => {
+        const row = memberRow(entry);
+        if (entry.mine) row.appendChild(memberTag('you'));
+        if (entry.owner) row.appendChild(memberTag('owner'));
+        if (!entry.mine) {
+            const button = document.createElement('button');
+            button.className = 'menu-opt member-action';
+            const asked = requested.has(entry.publicKey);
+            button.textContent = asked ? 'request sent' : 'befriend';
+            button.disabled = asked;
+            button.title = 'send them an invite only they can open';
+            button.addEventListener('click', () => onBefriend(entry));
+            row.appendChild(button);
+        }
+        list.appendChild(row);
+    });
+    if (skipped > 0) {
+        const row = document.createElement('li');
+        row.className = 'member-item member-broken';
+        row.textContent = skipped === 1
+            ? '⚠ 1 member card failed verification — nothing is encrypted for it'
+            : `⚠ ${skipped} member cards failed verification — nothing is encrypted for them`;
+        list.appendChild(row);
+    }
+}
+
+function renderRoomSafety(groups) {
+    const box = document.getElementById('roomSafetyNumber');
+    clearChildren(box);
+    groups.forEach(group => {
+        const cell = document.createElement('span');
+        cell.textContent = group;
+        box.appendChild(cell);
+    });
+}
+
+// notes: [{ id, aura, from }] friend requests addressed to this member
+function renderNotes(notes, onAccept, onIgnore) {
+    const panel = document.getElementById('notesPanel');
+    const list = document.getElementById('noteList');
+    clearChildren(list);
+    panel.style.display = notes.length > 0 ? 'block' : 'none';
+    notes.forEach(note => {
+        const row = memberRow({ aura: note.aura });
+        row.appendChild(memberTag(note.from ? 'wants to be friends' : 'left · wants to be friends'));
+        const accept = document.createElement('button');
+        accept.className = 'menu-opt member-action';
+        accept.textContent = 'accept';
+        accept.addEventListener('click', () => onAccept(note));
+        const ignore = document.createElement('button');
+        ignore.className = 'menu-opt';
+        ignore.textContent = 'ignore';
+        ignore.addEventListener('click', () => onIgnore(note));
+        row.appendChild(accept);
+        row.appendChild(ignore);
+        list.appendChild(row);
+    });
 }

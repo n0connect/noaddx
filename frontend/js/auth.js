@@ -73,10 +73,28 @@ function solvePowChallenge(challenge) {
 
 // Verifies the server holds the same public key this device derived, then opens the app.
 // A mismatch means the server (or something in between) swapped the identity key.
+// Everything the browser keeps for a session, derived from the account number once
+async function deriveSession(accountNumber) {
+    const identity = await NoaddxCrypto.deriveIdentity(accountNumber);
+    identity.roomsRoot = await NoaddxRoomCrypto.deriveRoomsRoot(accountNumber);
+    return identity;
+}
+
+function roomLimits(data) {
+    const members = data && data.room_max_members;
+    const hours = data && data.room_max_ttl_hours;
+    if (!Number.isSafeInteger(members) || members < NoaddxRoomCrypto.MIN_MEMBERS || members > NoaddxRoomCrypto.MAX_MEMBERS ||
+        !Number.isSafeInteger(hours) || hours < 1 || hours > 720) {
+        return null;
+    }
+    return { maxMembers: members, maxTTLHours: hours };
+}
+
 async function enterApp(identity, persist) {
     const check = await apiCall('GET', '/me');
     const ttlDays = check.data && Number.isSafeInteger(check.data.message_ttl_days) ? check.data.message_ttl_days : 0;
-    if (!check.ok || !check.data || check.data.public_key !== identity.publicKey || ttlDays < 1 || ttlDays > 365) {
+    const limits = roomLimits(check.data);
+    if (!check.ok || !check.data || check.data.public_key !== identity.publicKey || ttlDays < 1 || ttlDays > 365 || !limits) {
         await Keystore.wipe();
         if (check.ok) {
             showError('identity mismatch — the server returned a different public key');
@@ -88,7 +106,7 @@ async function enterApp(identity, persist) {
     if (persist) {
         await Keystore.save(identity);
     }
-    await Chat.start(identity, ttlDays);
+    await Chat.start(identity, ttlDays, limits);
     return true;
 }
 
@@ -168,7 +186,7 @@ async function login() {
 
         if (data.success) {
             successElement.textContent = 'deriving your keys…';
-            const identity = await NoaddxCrypto.deriveIdentity(normalizedAccountNumber);
+            const identity = await deriveSession(normalizedAccountNumber);
             accountNumberInputElement.value = '';
             errorElement.textContent = '';
             successElement.textContent = '';
@@ -451,7 +469,7 @@ async function continueWithAccountNumber() {
 async function finishRegistration() {
     const accountNumber = pendingRegistrationAccountNumber;
     document.getElementById('registerSuccess').textContent = 'deriving your keys…';
-    const identity = await NoaddxCrypto.deriveIdentity(accountNumber);
+    const identity = await deriveSession(accountNumber);
 
     // The account number was copied for the user to save; do not leave it in the clipboard
     // (clipboard histories and cross-device sync would keep it). Best effort only.

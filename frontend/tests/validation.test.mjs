@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const context = vm.createContext({ crypto: globalThis.crypto, TextEncoder, TextDecoder, atob, btoa });
-for (const file of ['../js/crypto.js', '../validation.js']) {
+for (const file of ['../js/crypto.js', '../js/room-crypto.js', '../validation.js']) {
     vm.runInContext(readFileSync(new URL(file, import.meta.url), 'utf8'), context);
 }
 const neutralize = (text) => vm.runInContext('neutralizeReceivedText', context)(text);
@@ -28,5 +28,20 @@ test('received text: bidi overrides and control characters become U+FFFD', () =>
 test('received text: newlines, tabs, emoji and right-to-left scripts are untouched', () => {
     for (const text of ['line one\nline two', 'col\tcol', 'merhaba 👋 <b>&', 'שלום עולם', 'مرحبا']) {
         assert.equal(neutralize(text), text);
+    }
+});
+
+test('the join field tells invite codes and room codes apart, and refuses everything else', () => {
+    const validate = vm.runInContext('validateJoinCode', context);
+    const R = vm.runInContext('NoaddxRoomCrypto', context);
+    const room = R.buildRoomCode(R.newRoomCode(4, 500000));
+    const parsed = validate('  ' + room + '\n');
+    assert.equal(parsed.valid, true);
+    assert.equal(parsed.kind, 'room');
+    assert.equal(parsed.sanitized.maxMembers, 4);
+    const invite = 'noaddx:' + 'A'.repeat(43);
+    assert.equal(validate(invite).kind, 'invite');
+    for (const bad of ['', '   ', room.slice(0, -1), room + 'A', 'noaddx#hello', 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8']) {
+        assert.equal(validate(bad).valid, false, `accepted ${JSON.stringify(bad)}`);
     }
 });

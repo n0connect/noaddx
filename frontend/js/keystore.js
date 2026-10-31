@@ -1,9 +1,10 @@
 // ========================================
 // KEYSTORE (IndexedDB)
 // ========================================
-// Persists ONLY the non-extractable X25519 CryptoKey and its public key, so a reload
-// does not require re-entering the account number. Raw key bytes cannot be read back
-// out of a non-extractable CryptoKey, not even by script running on this page.
+// Persists ONLY the non-extractable X25519 CryptoKey, its public key and the non-extractable
+// rooms root (an HKDF key every room key derives from), so a reload does not require
+// re-entering the account number. Raw key bytes cannot be read back out of a
+// non-extractable CryptoKey, not even by script running on this page.
 // The AccountNumber itself is never stored anywhere.
 // It also remembers which conversations the user verified (safety number compared),
 // bound to the peer key that was verified. None of this ever reaches the server.
@@ -56,7 +57,8 @@ const Keystore = (() => {
         try {
             await transact('readwrite', store => store.put({
                 privateKey: identity.privateKey,
-                publicKey: identity.publicKey
+                publicKey: identity.publicKey,
+                roomsRoot: identity.roomsRoot
             }, RECORD));
             return true;
         } catch (e) {
@@ -69,11 +71,12 @@ const Keystore = (() => {
     async function load() {
         try {
             const record = await transact('readonly', store => store.get(RECORD));
+            // A record from before rooms has no rooms root: logging in again derives it
             if (!record || !(record.privateKey instanceof CryptoKey) || record.privateKey.extractable ||
-                typeof record.publicKey !== 'string') {
+                typeof record.publicKey !== 'string' || !NoaddxRoomCrypto.isRoomsRoot(record.roomsRoot)) {
                 return null;
             }
-            return { privateKey: record.privateKey, publicKey: record.publicKey };
+            return { privateKey: record.privateKey, publicKey: record.publicKey, roomsRoot: record.roomsRoot };
         } catch (e) {
             return null;
         }

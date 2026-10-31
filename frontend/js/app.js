@@ -121,6 +121,27 @@ function setupEventListeners() {
         }
     });
     document.getElementById('joinBtn').addEventListener('click', () => Chat.join());
+
+    // App: rooms
+    document.getElementById('newRoomBtn').addEventListener('click', () => {
+        resetRoomPanel();
+        togglePairPanel('roomPanel');
+    });
+    document.getElementById('closeRoomBtn').addEventListener('click', () => resetRoomPanel());
+    document.getElementById('createRoomBtn').addEventListener('click', () => Chat.createRoom());
+    document.getElementById('copyRoomBtn').addEventListener('click', async () => {
+        const code = document.getElementById('roomCode').textContent;
+        if (!code || !code.startsWith(NoaddxRoomCrypto.CODE_PREFIX)) return;
+        try {
+            await copyToClipboard(code);
+            showSuccess('room code copied');
+        } catch (e) {
+            showWarning('copy it manually');
+        }
+    });
+    document.getElementById('membersBtn').addEventListener('click', () => Chat.toggleMembers());
+    document.getElementById('roomCodeBtn').addEventListener('click', () => Chat.toggleRoomCode());
+    document.getElementById('copyRoomCodeBtn').addEventListener('click', () => Chat.copyRoomCode());
     document.getElementById('inviteInput').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') Chat.join();
     });
