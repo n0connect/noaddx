@@ -47,8 +47,9 @@
 - **Zero-Knowledge Identity:** an identity is a single 256-bit CSPRNG `AccountNumber`. The server shows it once at signup and never stores it; the browser derives the login key and the X25519 identity from it.
 - **Client-Side E2E Encryption:** messages are encrypted in the browser with WebCrypto (X25519 + HKDF-SHA256 + AES-256-GCM) and padded to one of five sizes (256 to 4096 bytes); the server accepts no other size.
 - **Graph Unlinkability:** every participant has a distinct HMAC tag per conversation, so even a full database dump cannot tell whether one user is in two conversations.
+- **Rooms:** code-based group conversations for people who do not know each other. The creator picks how many people a room holds and how long it lives; only holders of its 256-bit code can join, and the server never sees the code. Each message is encrypted for exactly the members the sender sees and authenticates the sender; members appear under a different key and name in every room. A member can send another a friend request that only they can open. See [Rooms](docs/architecture/rooms.md).
 - **Erasable by Design:** messages expire after `MESSAGE_TTL_DAYS` (default 7), **burn** erases a conversation for both sides, and **delete** erases a whole identity, re-proven by its account number.
-- **Anonymous Transport:** `make onion` publishes the app as a Tor onion service. Rate limits, proofs of work (registration and every invite) and connection caps apply per Tor circuit.
+- **Anonymous Transport:** `make onion` publishes the app as a Tor onion service. Rate limits, proofs of work (registration, every invite and every room) and connection caps apply per Tor circuit.
 - **Verifiable Client:** each release signs the hashes of every frontend file; `make verify-frontend` checks what an instance serves.
 - **Zero Telemetry:** no access logs, no stored IP addresses, master keys zeroized on shutdown.
 - **Fails Safe:** the backend refuses to start with keys that cannot open its database, completes master key rotation by re-wrapping every old record, and keeps an account number valid through outages; retried sends and signups never duplicate. See [Disaster Recovery](docs/operations/disaster-recovery.md).
@@ -105,6 +106,8 @@ Alice (Creator)                         Server                                  
 ```
 
 The fingerprint never touches the server. Because it binds to the single-use token, two invites created by the same person share no bytes. Every invite costs a fresh, single-use proof of work.
+
+**Rooms** work without pairing: a room code (`noaddx#…`) carries a secret from which the room id, a lookup (the only value the server sees, stored as an HMAC) and a card key are derived. Members announce per-room keys in cards only code holders can make; every message has its own key, wrapped for each member with `X25519(ephemeral, R) || X25519(sender, R)` so the wrap also proves the sender. Details: [Rooms](docs/architecture/rooms.md), [Cryptography](docs/security/cryptography.md#room-messaging-encryption).
 
 ### 3. Message Framing & AAD Binding
 

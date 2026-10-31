@@ -62,6 +62,16 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
 
 ### Added
 
+- **Rooms.** Code-based group conversations for 2 to `ROOM_MAX_MEMBERS` (default 16, up to 32)
+  people, living 1 hour to `ROOM_MAX_TTL_HOURS` (default 7 days). The 256-bit room code never
+  reaches the server: it stores an HMAC of a derived lookup and checks seats, lifetime and order.
+  Every message has its own key, wrapped for each member the sender saw with an ephemeral and a
+  static X25519 secret (which also authenticates the sender, deniably), committed against key
+  substitution, and bound to a roster digest the server checks (`412` on a stale roster). Late
+  joiners read only what was sent after they joined. Members carry a different key and name in
+  every room, compare a room safety number, and can send each other friend requests: an invite
+  sealed for one member, accepted through the usual fingerprint check. Go (`internal/e2e`) and
+  the browser open each other's vectors. See [docs/architecture/rooms.md](docs/architecture/rooms.md).
 - **Two byte-for-byte equivalent crypto engines.** The OpenSSL engine (libcrypto >= 3.2 through
   cgo, now with HKDF and X25519) returns alongside the native Go engine; `ENGINE=openssl|native`
   picks one at build time and OpenSSL is the default. Input validation is shared, known-answer
@@ -127,6 +137,12 @@ All notable changes to noaddx. are recorded here. Security fixes are always list
 
 ### Changed
 
+- The retention run purges every five minutes instead of hourly, so expired rooms do not linger.
+- nginx revalidates the page and its assets on every load (`Cache-Control: no-cache`, mostly
+  `304`): with a one-hour cache, browsers ran a new page with old scripts after an upgrade.
+- Sessions saved before rooms ask for the account number once more, to derive the rooms key.
+- The delete button sits on the same line as logout and turns red on hover; one red token
+  (`--danger`) is used for every destructive or failed state.
 - The project is now **noaddx.** (formerly noaddress.). Protocol labels changed with the name, so
   identities created under the old name do not carry over.
 - `make setup` generates the database password and works with any `openssl`; `make test` runs the

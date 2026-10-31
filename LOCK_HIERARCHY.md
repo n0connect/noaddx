@@ -23,11 +23,19 @@ Locks MUST be acquired in the following order (lowest to highest priority) to pr
   **before** any `users` row lock in the same transaction (redeem, account deletion) — the reverse
   order would deadlock a redemption against the deletion of its creator
 - `users` row locks (`SELECT … FOR UPDATE`, `ChatRepository.LockUsers`): always taken in ascending
-  `uuid` order inside one transaction (redeem, burn, index prune, account deletion) — a global order
-  rules out deadlocks. Account deletion locks only its own row: peers' encrypted indexes drop the
-  vanished conversations at their next listing instead
-- `conversations` row lock (`ChatRepository.NextSeq`, `UPDATE … RETURNING`): serialises senders of
-  one conversation until the transaction ends; never held while acquiring a `users` row lock
+  `uuid` order inside one transaction (redeem, burn, index prune, account deletion, room create,
+  join and leave) — a global order rules out deadlocks. Account deletion locks only its own row:
+  peers' encrypted indexes drop the vanished conversations at their next listing instead
+- `rooms` row lock (`ChatRepository.LockRoom`, and the delete in `DeleteConversation` / retention):
+  taken **after** any `users` row lock and **before** the room's conversation row lock. Joins of
+  one room are serialised by it (seats, duplicate cards). `DeleteConversation` deletes the `rooms`
+  row before anything else for the same reason
+- `conversations` row lock (`ChatRepository.NextSeq`, `UPDATE … RETURNING`, and
+  `ChatRepository.LockConversation`): serialises senders of one conversation until the transaction
+  ends. Room joins, leaves and notes take it too, so a message is always checked against the roster
+  it is stored under. Never held while acquiring a `users` or `rooms` row lock
+
+Order in one transaction: `invites` → `users` → `rooms` → `conversations`.
 - Master key re-wrapping (`KeyRepository.Rewrap*`): single-row updates outside any transaction,
   conditional on the row still naming the old key; it holds no lock while taking another
 - Master key initialization lock (`masterKeyOnce`)
@@ -82,5 +90,5 @@ rl.mu.Lock()
 
 ---
 
-**Last Updated**: 2026-10-27
+**Last Updated**: 2026-10-31
 **Next Review**: Every sprint or when adding new locks

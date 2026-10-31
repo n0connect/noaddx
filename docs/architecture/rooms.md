@@ -60,6 +60,8 @@ It is stored in IndexedDB beside the identity key and, like it, cannot be export
 
 The member key differs per room and cannot be linked to the account's identity key or to its key in any other room without the AccountNumber. It is deterministic, so every device that logs in to the account recovers the same key for the same room.
 
+A browser that kept a session from before rooms existed has no rooms root in its keystore; it asks for the account number once more and derives it.
+
 ### Card
 
 A member's card announces their member public key to the room and proves they hold the code:
@@ -68,7 +70,7 @@ A member's card announces their member public key to the room and proves they ho
 card = nonce (12) || AES-256-GCM(K_card, nonce, member_public_key (32), AAD = "NADC" || 0x01 || room_id (16))   // 60 bytes
 ```
 
-The server cannot open or forge a card. It stores each member's card and serves the roster as the list of cards, sorted by their bytes (no join order).
+The server cannot open or forge a card. It stores each member's card and serves the roster as the list of cards, sorted by their bytes (no join order). Cards are sealed under a random nonce, so the card a device derives at login differs in bytes from the one stored when the account joined; clients use the stored one, because others address notes to it.
 
 ### Vault
 
@@ -156,7 +158,7 @@ A client accepts a message only if every check passes, in this order: the size i
 | Operation | Rule |
 |---|---|
 | Create | Costs a proof of work (as invites do). The client sends the derived id, `L`, the limit, the hour-aligned expiry (1 hour to `ROOM_MAX_TTL_HOURS` ahead), its card and its vault. |
-| Join | The room must exist, be unexpired, have a free seat, and `HMAC(L)` must match in constant time; otherwise `404`, without saying which. A full room answers `409`. Joining again with the same account refreshes the vault and is harmless. The member can read messages sent after it joined (`joined_seq`). |
+| Join | The room must exist, be unexpired, have a free seat, and `HMAC(L)` must match in constant time; otherwise `404`, without saying which. A full room answers `409`. Joining again with the same account refreshes the vault and is harmless. The member can read messages sent after it joined (`joined_seq`); leaving and joining again starts from the new join. |
 | Send | As in one-to-one conversations, plus the structure check and the roster digest check (`412`). |
 | Leave | Any member except the owner leaves: their membership goes, their messages stay readable to the others. |
 | Burn | The owner burns the room for everyone, as in one-to-one conversations. |

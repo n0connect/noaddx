@@ -36,7 +36,7 @@
 |  - Middleware: Headers -> CORS -> SameOrigin -> ContentType -> JWT     |
 |  - In-Memory Realtime Hub (SSE subscriber management & stream tags)    |
 |  - Master Key Management with dual-key rotation support                |
-|  - Background Retention Daemon (hourly expiration purge)               |
+|  - Background Retention Daemon (expiration purge every five minutes)   |
 +-----------------------------------+------------------------------------+
                                     | SQL (Port 5432)
                                     v
@@ -72,7 +72,7 @@ AccountNumber (256-bit CSPRNG, base64url, 43 chars)
 ```
 
 ### In-Browser Key Storage (`keystore.js`)
-- The private key is saved to **IndexedDB** as a **non-extractable `CryptoKey`**.
+- The private key is saved to **IndexedDB** as a **non-extractable `CryptoKey`**, next to the non-extractable HKDF key every room key derives from (the rooms root).
 - Even if malicious script or an XSS attempt were executed in the browser context, WebCrypto prohibits reading the raw private key bytes (`extractable: false`).
 - On logout, `Keystore.wipe()` completely deletes the IndexedDB database.
 
@@ -114,6 +114,12 @@ Alice (Creator)                           Server                               B
 
 ### Why This Defeats Key Substitution:
 Even if a compromised server attempted a Man-In-The-Middle (MITM) attack by returning a forged public key to Bob, Bob's client immediately recomputes `SHA-256("noaddx/invite-fp" || token || returnedPub)[0:16]`. Since the forged key will produce a different fingerprint, Bob instantly rejects the connection and burns the room.
+
+---
+
+## Rooms (Code-Based Group Conversations)
+
+A room is a conversation with up to `ROOM_MAX_MEMBERS` people who need no invite from each other: holding the room code is the admission. The code's secret never reaches the server, which stores only a keyed hash of a derived lookup, the seat limit, the deletion hour and the owner's per-room tag. Members announce per-room X25519 keys in cards sealed under a code-derived key; each message gets its own key, wrapped for every member the sender saw, and the server refuses a message encrypted for a stale member list (`412`). Rooms reuse the conversation tables (member tags, encrypted index, per-room sequence numbers, burn) and add `rooms` and `room_notes`. Full design: [Rooms](rooms.md).
 
 ---
 
@@ -200,9 +206,9 @@ AAD = "NADM" (4 bytes)
 ## Ephemeral Retention Daemon (`RunRetention`)
 
 Ciphertexts do not live forever. The backend launches a supervised background goroutine:
-- **Interval:** Runs immediately on startup, then every **1 hour**.
+- **Interval:** Runs immediately on startup, then every **5 minutes** (rooms expire on the hour and should not linger).
 - **Configuration:** `MESSAGE_TTL_DAYS` (default: 7 days, maximum: 365 days).
-- **Purge Operation:** Caps every stored `expires_on` at `today_utc + MESSAGE_TTL_DAYS` (so a lowered setting also shortens what is stored), then deletes all messages where `expires_on < today_utc` and all unredeemed invites where `expires_at <= now_utc`.
+- **Purge Operation:** Caps every stored `expires_on` at `today_utc + MESSAGE_TTL_DAYS` (so a lowered setting also shortens what is stored), then deletes all messages where `expires_on < today_utc`, all unredeemed invites and room notes where `expires_at <= now_utc`, and every room past its `expires_at` with all its members, messages and notes. An expired room already stops answering at that instant; the purge only removes its rows.
 - **Client Visibility:** `GET /api/v2/me` returns `message_ttl_days` so the client UI can inform the user of room ephemerality.
 
 ---
@@ -211,7 +217,7 @@ Ciphertexts do not live forever. The backend launches a supervised background go
 
 The account owner can erase an identity completely; a live session alone cannot.
 - **Re-proof:** the request carries the auth key derived from the AccountNumber, checked inside the transaction against the locked row that is deleted. The browser first checks that the pasted number derives *this* identity's public key, so the server never sees another account's key (which would link the two).
-- **What goes:** the account's invites, every conversation it is in (members and all ciphertext, for both sides) and the `users` row with its credentials, keys and encrypted index. Peers receive a `conv` poke and see the conversation disappear; the account's other devices are disconnected.
+- **What goes:** the account's invites, every conversation it is in (members and all ciphertext, for both sides), every room it owns (for everyone), its seat in every room it joined (its messages there stay) and the `users` row with its credentials, keys and encrypted index. Peers receive a `conv` poke and see the conversation disappear; the account's other devices are disconnected.
 - **Locks:** invites first, then the account's own row (the order `RedeemInvite` uses); peers' rows are not locked. Their encrypted indexes drop the vanished conversations at their next listing.
 
 ---

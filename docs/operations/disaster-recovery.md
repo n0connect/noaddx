@@ -38,9 +38,10 @@ new instance.
 Back up `.env` offline, **apart from** any copy of the database: together they reveal the
 social graph.
 
-Never back up messages or conversations. Messages expire after `MESSAGE_TTL_DAYS`, and a burned
-conversation must stay gone; restoring a full dump would bring both back. What is worth
-keeping is the accounts, so that users keep their identities after a lost disk:
+Never back up messages, conversations or rooms. Messages expire after `MESSAGE_TTL_DAYS`, rooms
+at the hour their code names, and a burned conversation must stay gone; restoring a full dump
+would bring them back. What is worth keeping is the accounts, so that users keep their
+identities after a lost disk:
 
 ```bash
 make backup-accounts

@@ -210,6 +210,25 @@ Restore the `.env` that wrote this database (or put the old key back into `MASTE
 
 ---
 
+## 10. Rooms
+
+### "a room failed verification against its code — hidden"
+The server listed a room whose vault does not open for this account, or whose member limit or expiry differ from the code inside it. The browser hides it rather than trusting the server's numbers. On an honest server this does not happen; if it does, report it with the time it appeared.
+
+### "the member list failed verification — not sending to it"
+The roster lacked this member's own card, listed more members than the code allows, or attributed a card wrongly. Nothing is encrypted for such a list. Reload; if it persists, the server is tampering with the room.
+
+### "no such room — the code is wrong, or the room expired or was burned"
+The server answers a wrong code, an unknown room and an expired room the same way (`404`), so it cannot tell you which. Check the code was copied whole (57 characters starting with `noaddx#`); a room also stops answering at the hour its code names.
+
+### A message to a room is not sent and the member list changes
+Someone joined or left between fetching the member list and sending (`412`). The browser fetches the list again and re-encrypts under the same message id, twice at most. If it still fails the room is changing faster than that; send again.
+
+### After an upgrade the page asks for the account number again
+Sessions saved before rooms existed do not hold the rooms key; logging in once more derives and keeps it.
+
+---
+
 ### Next Steps:
 - Review [**Testing & Development**](../development/testing-and-contributing.md) for automated test suites.
 - Read [**Configuration & Tuning**](../operations/configuration-and-tuning.md) for full parameter references.

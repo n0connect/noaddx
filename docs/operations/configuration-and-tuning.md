@@ -50,9 +50,11 @@ At startup the backend checks these keys against the database before it serves a
 | `INVITE_TTL_SEC` | int | `86400` | Lifetime of unredeemed invites (default 24 hours). |
 | `MAX_ACTIVE_INVITES` | int | `5` | Maximum active, unredeemed invites allowed per account. |
 | `MAX_CONVERSATIONS_PER_USER` | int | `256` | Maximum conversations allowed per account (1-4096). Lowering it only stops new conversations; accounts already above it keep, burn and delete theirs. |
-| `MAX_MESSAGE_BYTES` | int | `8192` | Upper bound for one E2E ciphertext. Messages come in five padded sizes (284 to 4124 bytes), so values above 4124 change nothing; a lower value drops the larger sizes. |
+| `MAX_MESSAGE_BYTES` | int | `8192` | Upper bound for one E2E ciphertext in a one-to-one conversation. Messages come in five padded sizes (284 to 4124 bytes), so values above 4124 change nothing; a lower value drops the larger sizes. Room messages are bounded by their structure instead (`ROOM_MAX_MEMBERS`). |
 | `MESSAGE_PAGE_LIMIT` | int | `200` | Maximum messages returned per fetch page (1-1000). |
-| `MESSAGE_TTL_DAYS` | int | `7` | Days to retain ciphertext before day-granular deletion (1-365). Lowering it also shortens what is stored: the hourly retention run caps every stored message at the new limit, counted from that run. Raising it never extends stored messages. |
+| `MESSAGE_TTL_DAYS` | int | `7` | Days to retain ciphertext before day-granular deletion (1-365). Lowering it also shortens what is stored: the retention run (every five minutes) caps every stored message at the new limit, counted from that run. Raising it never extends stored messages. |
+| `ROOM_MAX_MEMBERS` | int | `16` | Largest room a member may create (2-32). A room message carries one 48-byte wrap per member, so this also bounds its size (5810 bytes at 32); the server refuses to start if such a message would not fit in `MAX_REQUEST_BODY_BYTES`. Lowering it affects new rooms only. |
+| `ROOM_MAX_TTL_HOURS` | int | `168` | Longest room lifetime, in hours (1-720). The browser offers 1 hour, 1 day and 7 days within it. A room is deleted, with everything in it, at the hour its code names. |
 | `POW_DIFFICULTY` | int | `20` | Proof-of-work target leading zero bits (18-24). |
 | `POW_CHALLENGE_TTL_SEC` | int | `300` | How long an issued challenge stays valid (1-3600). |
 

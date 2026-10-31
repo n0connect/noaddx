@@ -13,7 +13,7 @@ backend/tests/
 |-- database/                  # Migration, schema and session-bound tests (11 test)
 |-- encryption/                # Encryption tests (11 test)
 |-- identity/                  # HKDF / X25519 RFC vectors + derivations + tag separation (5 test)
-|-- integration/               # End-to-end flows, real E2E ciphertext, outages, key check, re-wrap (31 test)
+|-- integration/               # End-to-end flows, real E2E ciphertext, rooms, outages, key check, re-wrap (45 test)
 |-- middleware/                # Middleware tests (21 test)
 |-- testutil/                  # Test utilities
 |   |-- db.go                  # Database setup helpers
@@ -23,8 +23,8 @@ backend/tests/
 `-- utils/                     # Utils, SafeMutex, supervised goroutines, logger (22 test)
 ```
 
-Paket ici testler: `internal/pow` (13, gercek cozum/gercek sure dolumu, bosta kalan istemcinin unutulmasi), `internal/realtime` (3, SSE hub), `internal/handlers` (2, rota/sorgu beyaz listesi), `internal/e2e` (6, Go istemci protokolu + tarayici ciphertext'i + bes padding boyutu).
-Frontend testleri: `frontend/tests/` (crypto.test.mjs 10, validation.test.mjs 2, pow-worker.test.mjs 3) -> `node --test frontend/tests/*.test.mjs`
+Paket ici testler: `internal/pow` (13, gercek cozum/gercek sure dolumu, bosta kalan istemcinin unutulmasi), `internal/realtime` (3, SSE hub), `internal/handlers` (2, rota/sorgu beyaz listesi), `internal/e2e` (22, Go istemci protokolu + tarayici ciphertext'i + bes padding boyutu + oda protokolu ve tarayici oda vektorleri).
+Frontend testleri: `frontend/tests/` (crypto.test.mjs 10, room-crypto.test.mjs 14, validation.test.mjs 3, pow-worker.test.mjs 3) -> `node --test frontend/tests/*.test.mjs`
 Kripto motoru: `internal/cryptoengine` (10, bilinen-cevap vektorleri, secili motorda), `internal/cryptoengine/equivalence` (9, iki motoru ayni binary'de karsilastirir; `-tags openssl` ile).
 Fuzz hedefleri: `internal/e2e`, `internal/pow`, `tests/auth`, `tests/utils` (`go test -tags test -run '^$' -fuzz '^FuzzX$' -fuzztime 30s <paket>`).
 
@@ -87,9 +87,9 @@ go test -tags=test ./tests/utils -v
 | Encryption | 11 | Gecti |
 | Middleware | 21 | Gecti |
 | Identity | 5 | Gecti |
-| Integration (noaddx flows) | 31 | Gecti |
+| Integration (noaddx flows) | 45 | Gecti |
 | Utils | 22 | Gecti |
-| **TOPLAM (tests/)** | **123** | Gecti |
+| **TOPLAM (tests/)** | **137** | Gecti |
 
 ## Migration Testleri
 
@@ -158,6 +158,7 @@ Bkz: `tests/database/README.md` ve `tests/MIGRATION_TEST_GUIDE.md`
 - Uye olmayan erisimi (IDOR), girdi beyaz listesi, burn, oturum iptali, davet limiti
 - SSE: mesajda durtme, logout'ta akisin kapanmasi
 - DB'de sosyal graf ve sekli sizmamasi (konusma basina takma ad, padding'li sifreli liste, konusma basina seq)
+- Odalar: kodla katilma (kod olmadan 404), koltuk siniri, gec katilanin yalnizca sonraki mesajlari gormesi, eski uye listesine 412, yapi beyaz listesi, ayrilma/yakma, sure dolumu ve temizlik, hesap silmede sahip olunan odanin yakilmasi, SSE durtmesi, arkadaslik notunun yalnizca alicisina ulasmasi
 - Saklama suresi (gun hassasiyetli silinme, purge), dolu kullanicida davetin geri alinmasi, burn sonrasi liste temizligi
 - Davet basina PoW (eksik govde 415, eksik cozum 412, zayif/tekrar cozum 403; reddedilen istek davet olusturmaz)
 - Kimlik silme: hesap numarasi yeniden kanitlanir, yanlis anahtar islemi geri alir (davetler kalir), iki taraf icin konusmalar silinir, karsi taraf SSE ile haberdar olur

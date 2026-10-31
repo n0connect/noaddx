@@ -143,9 +143,62 @@ Wire Format = base64url( Nonce [12 bytes] || Ciphertext [N bytes] || GCM Tag [16
 
 ---
 
+## Room Messaging Encryption
+
+Rooms ([design](../architecture/rooms.md)) use the same primitives and frame padding, with no shared group key: every message gets a fresh 32-byte key `mk`, wrapped for each member the sender sees.
+
+### 1. From the room code
+
+```text
+code = "noaddx#" || base64url( S (32 random bytes) || max_members (1) || expires_hour (4, big-endian) )
+
+room id  = UUIDv4 bits over HKDF(S, salt "noaddx.v1", info "noaddx/room/id",     16)
+lookup   =                  HKDF(S, salt "noaddx.v1", info "noaddx/room/lookup", 32)   → server stores HMAC(pepper, lookup)
+card key =                  HKDF(S, salt "noaddx.v1", info "noaddx/room/card",   32)   → never leaves members' devices
+```
+
+### 2. From the account
+
+```text
+rooms root = HKDF(AccountNumber, salt "noaddx.v1", info "noaddx/rooms", 32)          (browser: non-extractable HKDF key)
+vault key  = HKDF(rooms root, salt "noaddx.v1", info "noaddx/rooms/vault", 32)
+member key = X25519 scalar HKDF(rooms root, salt = room id (16), info "noaddx/rooms/member/x25519", 32)
+
+card  = nonce || AES-256-GCM(card key,  member public key, AAD "NADC" || 0x01 || room id)   (60 bytes)
+vault = nonce || AES-256-GCM(vault key, S || max_members || expires_hour, AAD "NADV" || 0x01 || room id)   (65 bytes)
+```
+
+The member key differs per room, so nothing links an account's presence in two rooms. A client keeps using the card stored when it joined: cards are sealed under a random nonce, so a re-derived card differs in bytes.
+
+### 3. Message (`NADR` v1; a note is the same with `NADN` and exactly one wrap)
+
+```text
+header = "NADR" || 0x01 || sender card (60) || E (32, fresh ephemeral X25519) || SHA-256("noaddx/room/commit/v1" || mk) (32)
+         || roster digest (32) || n (1)
+body   = AES-256-GCM(mk, nonce 0^12, frame(payload), AAD = room id || message id || header)
+
+for each recipient R (sender member key a, public A):
+  KEK_R  = HKDF(X25519(e, R) || X25519(a, R), salt = message id,
+                info = "noaddx/room/wrap/v1" || room id || E || A || R, 32)
+  wrap_R = AES-256-GCM(KEK_R, nonce 0^12, mk, AAD = SHA-256(room id || message id || header || body))   (48 bytes)
+
+wire   = base64url( header || shuffled wraps || body )
+roster digest = SHA-256("noaddx/room/roster/v1" || cards as served, sorted by bytes)
+```
+
+- `X25519(a, R)` authenticates the sender to each recipient (and only to them: messages are deniable).
+- The wrap's AAD hashes header and body, so a member who learned `mk` cannot swap the body under genuine wraps.
+- The commitment makes `mk` binding: AES-GCM alone is not key-committing.
+- Every AES-GCM key in a message seals exactly one plaintext, hence the zero nonces.
+- The server checks only the structure (magic, version, 1 to 32 wraps, one of the five frame sizes) and the roster digest; it opens nothing.
+
+Both implementations (`frontend/js/room-crypto.js`, `backend/internal/e2e/room.go`) open each other's vectors in their test suites.
+
+---
+
 ## Proof of Work (PoW) Hashcash
 
-To prevent registration floods and Denial-of-Service attacks against server-side Argon2id hashing, registration requires solving a SHA-256 hashcash puzzle in a client Web Worker (`frontend/js/pow-worker.js`). Creating an invite costs one fresh puzzle as well, so mass-producing pairing tokens stays expensive even for a logged-in client.
+To prevent registration floods and Denial-of-Service attacks against server-side Argon2id hashing, registration requires solving a SHA-256 hashcash puzzle in a client Web Worker (`frontend/js/pow-worker.js`). Creating an invite or a room costs one fresh puzzle as well, so mass-producing pairing tokens or rooms stays expensive even for a logged-in client.
 
 ### Challenge Structure
 - **Challenge:** 16 random bytes (hex-encoded string, 32 chars).

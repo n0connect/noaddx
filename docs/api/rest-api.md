@@ -23,19 +23,24 @@ Requests are subject to strict JSON validation:
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/v2/pow/challenge` | Public | Request SHA-256 hashcash puzzle (registration and invites) |
+| `GET` | `/api/v2/pow/challenge` | Public | Request SHA-256 hashcash puzzle (registration, invites and rooms) |
 | `POST` | `/api/v2/register` | Public | Phase 1 (generate account number) & Phase 2 (confirm account) |
 | `POST` | `/api/v2/login` | Public | Authenticate with derived `auth_key` |
 | `POST` | `/api/v2/logout` | Session | Revoke all active sessions and wipe cookies |
-| `GET` | `/api/v2/me` | Session | Fetch user public key and server retention policy |
-| `DELETE` | `/api/v2/me` | Session + auth key | Erase the account, its invites and every conversation (both sides) |
+| `GET` | `/api/v2/me` | Session | Fetch user public key, retention policy and room limits |
+| `DELETE` | `/api/v2/me` | Session + auth key | Erase the account, its invites and every conversation (both sides); leave joined rooms |
 | `POST` | `/api/v2/invites` | Session | Generate single-use pairing token (requires PoW) |
 | `POST` | `/api/v2/invites/redeem` | Session | Redeem pairing token and start conversation |
-| `GET` | `/api/v2/conversations` | Session | List active conversations |
-| `DELETE` | `/api/v2/conversations/{id}` | Session | Burn conversation and erase all messages bilaterally |
+| `POST` | `/api/v2/rooms` | Session | Create a room from client-derived values (requires PoW) |
+| `POST` | `/api/v2/rooms/join` | Session | Take a seat in a room whose code the caller holds |
+| `GET` | `/api/v2/conversations` | Session | List active conversations and rooms |
+| `DELETE` | `/api/v2/conversations/{id}` | Session | Burn a conversation (a room: owner burns, others leave) |
 | `GET` | `/api/v2/conversations/{id}/messages` | Session | Fetch encrypted messages (supports `?after=seq`) |
 | `POST` | `/api/v2/conversations/{id}/messages` | Session | Send E2E encrypted message ciphertext |
 | `POST` | `/api/v2/conversations/{id}/read` | Session | Update read sequence marker |
+| `GET` | `/api/v2/conversations/{id}/members` | Session | A room's member cards |
+| `GET` / `POST` | `/api/v2/conversations/{id}/notes` | Session | Sealed notes (friend requests) to / from a room member |
+| `DELETE` | `/api/v2/conversations/{id}/notes/{note}` | Session | Remove a note addressed to the caller |
 | `GET` | `/api/v2/events` | Session | Server-Sent Events (SSE) realtime poke stream |
 
 ---
@@ -160,14 +165,16 @@ Retrieves caller's public key and server retention policy.
 ```json
 {
   "public_key": "X25519-public-key-base64url",
-  "message_ttl_days": 7
+  "message_ttl_days": 7,
+  "room_max_members": 16,
+  "room_max_ttl_hours": 168
 }
 ```
 
 ---
 
 ### `DELETE /api/v2/me`
-Erases the caller's account: pending invites, every conversation it belongs to (all ciphertext, for both sides; peers get a `conv` event) and the account row. Every session of the account ends and the cookie is cleared.
+Erases the caller's account: pending invites, every conversation it belongs to (all ciphertext, for both sides; peers get a `conv` event), every room it owns, its seat in every room it joined (its messages there stay readable to the others) and the account row. Every session of the account ends and the cookie is cleared.
 
 A live session is not enough: the request re-proves the account number with its derived auth key, exactly as login does. The client checks that the number derives this identity's public key before sending anything, so the server never sees a second account's key.
 
@@ -245,7 +252,7 @@ Redeems an invite token and creates an isolated two-party conversation.
 ## 3. Conversations & Messages
 
 ### `GET /api/v2/conversations`
-Lists all conversations for the authenticated user, ordered by most recent activity.
+Lists the caller's conversations, newest first (the server keeps no recency across conversations). A room carries `room` and an empty `peer_public_key`; an expired room is no longer listed.
 
 - **Response (200 OK):**
 ```json
@@ -256,15 +263,30 @@ Lists all conversations for the authenticated user, ordered by most recent activ
       "peer_public_key": "peer-public-key-base64url",
       "last_seq": 14,
       "read_seq": 14
+    },
+    {
+      "id": "bcde36b2-87a3-43c6-8748-ee62ca2f2939",
+      "peer_public_key": "",
+      "last_seq": 3,
+      "read_seq": 2,
+      "room": {
+        "vault": "the room code, sealed for the caller's account (65 bytes, base64url)",
+        "max_members": 5,
+        "expires_at": 1793559600,
+        "owner": false,
+        "members": 3,
+        "notes": 1
+      }
     }
   ]
 }
 ```
+*The client opens the vault, recomputes the room id from the code inside, and hides the room if the id, `max_members` or `expires_at` differ from the code.*
 
 ---
 
 ### `DELETE /api/v2/conversations/{id}`
-**Burn:** Bilaterally deletes the conversation, all memberships, and all stored ciphertexts from the database.
+**Burn:** Bilaterally deletes the conversation, all memberships, and all stored ciphertexts from the database. In a room only the owner burns (for everyone); any other member **leaves**: their seat goes, their messages stay readable to the others, notes to and from them go. Members get a `conv` event either way.
 
 - **Response:** `204 No Content`
 
@@ -274,6 +296,7 @@ Lists all conversations for the authenticated user, ordered by most recent activ
 Fetches encrypted messages for a conversation.
 - If `?after=seq` is omitted, returns the latest page of messages up to `MESSAGE_PAGE_LIMIT`.
 - If `?after=seq` is provided, returns messages with sequence numbers greater than `seq`.
+- In a room, only messages sent after the caller joined are returned: nothing earlier was encrypted for them.
 
 - **Response (200 OK):**
 ```json
@@ -309,6 +332,8 @@ Sends an end-to-end encrypted message ciphertext.
 ```
 *Note: Returns `409 Conflict` if the client-generated message ID was already used. That makes sending safe to retry: a client whose answer was lost resends the same `id` and `ciphertext`, and a `409` means the first attempt was stored.*
 
+In a room the ciphertext must have the room format (`NADR`, docs/architecture/rooms.md), with at most one wrap per member, and its roster digest must match the current members. A member who joined or left since the sender fetched the roster makes it `412 Precondition Failed`: fetch `/members` again, re-encrypt under the same `id`, and send again.
+
 ---
 
 ### `POST /api/v2/conversations/{id}/read`
@@ -324,7 +349,86 @@ Advances the caller's read marker. Cannot be moved backwards or past `last_seq`.
 
 ---
 
-## 4. Realtime Server-Sent Events (SSE)
+## 4. Rooms
+
+Every value below is derived on the client from a room secret the server never sees ([Rooms](../architecture/rooms.md)). Binary values are unpadded base64url.
+
+### `POST /api/v2/rooms`
+Stores a new room. Costs a fresh proof of work, like an invite.
+
+- **Request Body:**
+```json
+{
+  "id": "UUIDv4 derived from the room secret",
+  "lookup": "32 bytes derived from the room secret",
+  "max_members": 5,
+  "expires_at": 1793559600,
+  "card": "the creator's member card (60 bytes)",
+  "vault": "the room code, sealed for the creator's account (65 bytes)",
+  "pow": { "challenge": "…", "salt": "…", "solution": "…", "difficulty": 20, "timestamp": 1729731200, "ttl": 300 }
+}
+```
+- `max_members` is 2 to `ROOM_MAX_MEMBERS`. `expires_at` is on the hour, at least 50 minutes and at most `ROOM_MAX_TTL_HOURS` + 1 hours (plus 10 minutes of clock skew) ahead.
+- **Errors:** `400` any field out of shape or range, `412` / `403` proof of work missing or invalid, `409` the id exists (draw a new secret), `429` too many conversations or requests.
+- **Response (201 Created):** `{"conversation": { … "room": { … "owner": true, "members": 1 } }}`
+
+---
+
+### `POST /api/v2/rooms/join`
+Takes a seat. A wrong lookup, an unknown room and an expired room all answer `404`, so the answer says nothing about which. Joining a room the caller is already in refreshes their vault and answers `200`.
+
+- **Request Body:**
+```json
+{
+  "id": "UUIDv4 derived from the room secret",
+  "lookup": "32 bytes derived from the room secret",
+  "card": "the caller's member card (60 bytes)",
+  "vault": "the room code, sealed for the caller's account (65 bytes)"
+}
+```
+- **Errors:** `400` out of shape (or a copy of a member's card), `404` no such room for this code, `409` the room is full, `429` too many conversations or requests.
+- **Response:** `201 Created` (new seat) or `200 OK` (already a member), with the room as in the listing.
+
+---
+
+### `GET /api/v2/conversations/{id}/members`
+The room's members, sorted by card so the order does not reveal who joined first.
+
+- **Response (200 OK):**
+```json
+{
+  "members": [
+    { "card": "60 bytes, base64url", "mine": true, "owner": true },
+    { "card": "60 bytes, base64url", "mine": false, "owner": false }
+  ]
+}
+```
+
+---
+
+### `POST /api/v2/conversations/{id}/notes`
+Delivers a sealed note (a friend request carrying an invite) to the one member whose card is `to`. At most one note waits per sender and addressee; it expires with the invite or the room.
+
+- **Request Body:**
+```json
+{
+  "id": "client-generated UUIDv4, bound into the note's encryption",
+  "to": "the addressee's card",
+  "blob": "NADN note: exactly one wrap, roster digest over the addressee's card"
+}
+```
+- **Errors:** `400` malformed, sealed for someone else, or addressed to the caller; `404` no member has that card; `409` a note from the caller already waits for them.
+- **Response:** `201 Created`. The addressee gets a `conv` event.
+
+### `GET /api/v2/conversations/{id}/notes`
+The notes waiting for the caller in this room: `{"notes": [{"id": "…", "blob": "…"}]}`.
+
+### `DELETE /api/v2/conversations/{id}/notes/{note}`
+Removes a note addressed to the caller (after accepting or ignoring it). `204`, or `404` if no such note is addressed to them.
+
+---
+
+## 5. Realtime Server-Sent Events (SSE)
 
 ### `GET /api/v2/events`
 Opens an unbuffered, content-free SSE stream.
@@ -332,8 +436,8 @@ Opens an unbuffered, content-free SSE stream.
 - **Headers:** `Accept: text/event-stream`
 - **Stream Events:**
   - `event: msg` with `data: {"c": "<conversation_id>"}` (signals a new message arrived).
-  - `event: conv` with `data: {}` (signals conversation list or membership changed).
-  - `: ping` (keepalive comment sent every 15 seconds).
+  - `event: conv` with `data: {}` (signals the conversation list, a room's members, or the caller's notes changed).
+  - `: ping` (keepalive comment sent every 25 seconds).
 - **Authentication:** Validated via session cookie. If session is revoked, the stream closes with `401 Unauthorized`.
 
 ---
