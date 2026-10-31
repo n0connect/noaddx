@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -63,6 +64,11 @@ func writeChatError(w http.ResponseWriter, err error, op string) {
 		http.Error(w, "Too many requests", http.StatusTooManyRequests)
 	case errors.Is(err, chat.ErrConflict):
 		http.Error(w, "Conflict", http.StatusConflict)
+	case errors.Is(err, chat.ErrRoomFull):
+		http.Error(w, "Room full", http.StatusConflict)
+	case errors.Is(err, chat.ErrStale):
+		// The roster changed since the sender fetched it: fetch it again and re-encrypt
+		http.Error(w, "Roster changed", http.StatusPreconditionFailed)
 	case errors.Is(err, chat.ErrIdentityUnset):
 		http.Error(w, "Forbidden", http.StatusForbidden)
 	case errors.Is(err, chat.ErrForbidden):
@@ -106,7 +112,12 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 		deleteAccount(w, r, me)
 		return
 	}
-	utils.EncodeJSONResponse(w, models.MeResponse{PublicKey: me.PublicKey, MessageTTLDays: config.GetMessageTTLDays()}, http.StatusOK)
+	utils.EncodeJSONResponse(w, models.MeResponse{
+		PublicKey:       me.PublicKey,
+		MessageTTLDays:  config.GetMessageTTLDays(),
+		RoomMaxMembers:  config.GetRoomMaxMembers(),
+		RoomMaxTTLHours: config.GetRoomMaxTTLHours(),
+	}, http.StatusOK)
 }
 
 // deleteAccount erases the caller once the request re-proves the account number (as its auth
@@ -184,34 +195,48 @@ func RedeemInviteHandler(w http.ResponseWriter, r *http.Request) {
 	utils.EncodeJSONResponse(w, models.ConversationResponse{Conversation: *conversation}, http.StatusCreated)
 }
 
-// parseConversationRoute whitelists: "", "/{id}", "/{id}/messages", "/{id}/read".
-func parseConversationRoute(path string) (uuid.UUID, string, bool) {
+// conversationRoute is a whitelisted /api/v2/conversations path: id, sub-resource, item id.
+type conversationRoute struct {
+	id   uuid.UUID
+	sub  string
+	item uuid.UUID
+}
+
+// parseConversationRoute whitelists: "", "/{id}", "/{id}/messages", "/{id}/read",
+// "/{id}/members", "/{id}/notes", "/{id}/notes/{note id}".
+func parseConversationRoute(path string) (conversationRoute, bool) {
 	rest := strings.TrimPrefix(path, conversationsPath)
 	if rest == "" {
-		return uuid.Nil, "", true
+		return conversationRoute{}, true
 	}
 	parts := strings.Split(strings.TrimPrefix(rest, "/"), "/")
-	if !strings.HasPrefix(rest, "/") || len(parts) > 2 {
-		return uuid.Nil, "", false
+	if !strings.HasPrefix(rest, "/") || len(parts) > 3 {
+		return conversationRoute{}, false
 	}
 	id, ok := utils.ParseCanonicalUUIDv4(parts[0])
 	if !ok {
-		return uuid.Nil, "", false
+		return conversationRoute{}, false
 	}
 	if len(parts) == 1 {
-		return id, "", true
+		return conversationRoute{id: id}, true
 	}
-	switch parts[1] {
-	case "messages", "read":
-		return id, parts[1], true
+	switch {
+	case len(parts) == 2 && (parts[1] == "messages" || parts[1] == "read" || parts[1] == "members" || parts[1] == "notes"):
+		return conversationRoute{id: id, sub: parts[1]}, true
+	case len(parts) == 3 && parts[1] == "notes":
+		item, ok := utils.ParseCanonicalUUIDv4(parts[2])
+		if !ok {
+			return conversationRoute{}, false
+		}
+		return conversationRoute{id: id, sub: "notes", item: item}, true
 	default:
-		return uuid.Nil, "", false
+		return conversationRoute{}, false
 	}
 }
 
 // ConversationsHandler routes every /api/v2/conversations[/...] request.
 func ConversationsHandler(w http.ResponseWriter, r *http.Request) {
-	id, sub, ok := parseConversationRoute(r.URL.Path)
+	route, ok := parseConversationRoute(r.URL.Path)
 	if !ok {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
@@ -221,6 +246,7 @@ func ConversationsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	id, sub := route.id, route.sub
 	switch {
 	case id == uuid.Nil && r.Method == http.MethodGet:
 		listConversations(w, r, me)
@@ -232,6 +258,14 @@ func ConversationsHandler(w http.ResponseWriter, r *http.Request) {
 		sendMessage(w, r, me, id)
 	case sub == "read" && r.Method == http.MethodPost:
 		markRead(w, r, me, id)
+	case sub == "members" && r.Method == http.MethodGet:
+		roomMembers(w, r, me, id)
+	case sub == "notes" && route.item == uuid.Nil && r.Method == http.MethodGet:
+		listNotes(w, r, me, id)
+	case sub == "notes" && route.item == uuid.Nil && r.Method == http.MethodPost:
+		sendNote(w, r, me, id)
+	case sub == "notes" && route.item != uuid.Nil && r.Method == http.MethodDelete:
+		deleteNote(w, r, me, id, route.item)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -329,6 +363,133 @@ func markRead(w http.ResponseWriter, r *http.Request, me *chat.Member, id uuid.U
 	}
 	if err := chatService.MarkRead(me, id, req.Seq); err != nil {
 		writeChatError(w, err, "MarkRead")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---------- rooms ----------
+
+// CreateRoomHandler stores a room the client derived from a fresh room code (POST /api/v2/rooms).
+// Each room costs a proof of work, like each invite.
+func CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	me, ok := resolveMe(w, r)
+	if !ok || rejectQuery(w, r) || !allowOrTooMany(w, "room", me) {
+		return
+	}
+	var req models.CreateRoomRequest
+	if err := utils.DecodeJSONRequest(r, &req); err != nil {
+		chatLogger.LogError("DecodeJSONRequest", err)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	in, err := chat.ParseRoomInput(req.ID, req.Lookup, req.Card, req.Vault)
+	if err != nil {
+		writeChatError(w, err, "CreateRoom")
+		return
+	}
+	in.MaxMembers = req.MaxMembers
+	in.ExpiresAt = time.Unix(req.ExpiresAt, 0)
+	if !requireProofOfWork(w, req.PoW, "room") {
+		return
+	}
+	conversation, err := chatService.CreateRoom(me, in)
+	if err != nil {
+		writeChatError(w, err, "CreateRoom")
+		return
+	}
+	realtime.Default.Publish([]string{me.StreamTag}, realtime.Event{Kind: realtime.KindConversation})
+	utils.EncodeJSONResponse(w, models.ConversationResponse{Conversation: *conversation}, http.StatusCreated)
+}
+
+// JoinRoomHandler takes a seat in a room whose code the caller holds (POST /api/v2/rooms/join):
+// 201 for a new seat, 200 when the caller was already a member.
+func JoinRoomHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	me, ok := resolveMe(w, r)
+	if !ok || rejectQuery(w, r) || !allowOrTooMany(w, "join", me) {
+		return
+	}
+	var req models.JoinRoomRequest
+	if err := utils.DecodeJSONRequest(r, &req); err != nil {
+		chatLogger.LogError("DecodeJSONRequest", err)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	in, err := chat.ParseRoomInput(req.ID, req.Lookup, req.Card, req.Vault)
+	if err != nil {
+		writeChatError(w, err, "JoinRoom")
+		return
+	}
+	conversation, created, peers, err := chatService.JoinRoom(me, in)
+	if err != nil {
+		writeChatError(w, err, "JoinRoom")
+		return
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+		realtime.Default.Publish(append(peers, me.StreamTag), realtime.Event{Kind: realtime.KindConversation})
+	}
+	utils.EncodeJSONResponse(w, models.ConversationResponse{Conversation: *conversation}, status)
+}
+
+func roomMembers(w http.ResponseWriter, r *http.Request, me *chat.Member, id uuid.UUID) {
+	if rejectQuery(w, r) {
+		return
+	}
+	members, err := chatService.RoomMembers(me, id)
+	if err != nil {
+		writeChatError(w, err, "RoomMembers")
+		return
+	}
+	utils.EncodeJSONResponse(w, models.RoomMembersResponse{Members: members}, http.StatusOK)
+}
+
+func listNotes(w http.ResponseWriter, r *http.Request, me *chat.Member, id uuid.UUID) {
+	if rejectQuery(w, r) {
+		return
+	}
+	notes, err := chatService.ListNotes(me, id)
+	if err != nil {
+		writeChatError(w, err, "ListNotes")
+		return
+	}
+	utils.EncodeJSONResponse(w, models.NotesResponse{Notes: notes}, http.StatusOK)
+}
+
+func sendNote(w http.ResponseWriter, r *http.Request, me *chat.Member, id uuid.UUID) {
+	if rejectQuery(w, r) || !allowOrTooMany(w, "note", me) {
+		return
+	}
+	var req models.SendNoteRequest
+	if err := utils.DecodeJSONRequest(r, &req); err != nil {
+		chatLogger.LogError("DecodeJSONRequest", err)
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	recipient, err := chatService.SendNote(me, id, req.ID, req.To, req.Blob)
+	if err != nil {
+		writeChatError(w, err, "SendNote")
+		return
+	}
+	realtime.Default.Publish([]string{recipient}, realtime.Event{Kind: realtime.KindConversation})
+	w.WriteHeader(http.StatusCreated)
+}
+
+func deleteNote(w http.ResponseWriter, r *http.Request, me *chat.Member, id, noteID uuid.UUID) {
+	if rejectQuery(w, r) {
+		return
+	}
+	if err := chatService.DeleteNote(me, id, noteID); err != nil {
+		writeChatError(w, err, "DeleteNote")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -171,6 +171,62 @@ func ValidateCiphertext(encoded string) bool {
 	return err == nil && len(raw) <= maxBytes && isPaddedFrame(len(raw)-ciphertextOverhead)
 }
 
+// Room wire format (docs/architecture/rooms.md): header(162) || n wraps(48 each) || body
+// (frame + tag). The header is magic(4) version(1) card(60) ephemeral key(32) commitment(32)
+// roster digest(32) n(1).
+const (
+	RoomLookupBytes  = 32
+	RoomCardBytes    = cryptoengine.GCMNonceSize + 32 + cryptoengine.GCMTagSize
+	RoomVaultBytes   = cryptoengine.GCMNonceSize + 37 + cryptoengine.GCMTagSize
+	RoomMessageMagic = "NADR"
+	RoomNoteMagic    = "NADN"
+	roomVersion      = 0x01
+	roomHeaderBytes  = 4 + 1 + RoomCardBytes + 3*32 + 1
+	roomWrapBytes    = 32 + cryptoengine.GCMTagSize
+	roomDigestOffset = roomHeaderBytes - 1 - 32
+)
+
+// DecodeExact whitelists canonical base64url (no padding) of exactly size bytes.
+func DecodeExact(encoded string, size int) ([]byte, bool) {
+	if size <= 0 || len(encoded) != base64.RawURLEncoding.EncodedLen(size) || !accountNumberPattern.MatchString(encoded) {
+		return nil, false
+	}
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
+	if err != nil || len(raw) != size {
+		return nil, false
+	}
+	return raw, true
+}
+
+// RoomBlob is what the server can check of a room message or note without any key.
+type RoomBlob struct {
+	Wraps  int
+	Digest []byte // the roster digest the sender encrypted for
+}
+
+// RoomMaxBlobBytes is the largest room message a room of maxMembers can carry.
+func RoomMaxBlobBytes(maxMembers int) int {
+	return roomHeaderBytes + maxMembers*roomWrapBytes + maxFrameBytes + cryptoengine.GCMTagSize
+}
+
+// ParseRoomBlob whitelists a room message or note by structure: magic, version, 1..maxWraps
+// wraps, and a body of one of the padded frame sizes (so its length says nothing more).
+func ParseRoomBlob(encoded, magic string, maxWraps int) (*RoomBlob, bool) {
+	if maxWraps < 1 || maxWraps > config.MaxRoomMembersBound || len(encoded) > base64.RawURLEncoding.EncodedLen(RoomMaxBlobBytes(maxWraps)) ||
+		!accountNumberPattern.MatchString(encoded) {
+		return nil, false
+	}
+	raw, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
+	if err != nil || len(raw) < roomHeaderBytes || string(raw[:len(magic)]) != magic || raw[len(magic)] != roomVersion {
+		return nil, false
+	}
+	wraps := int(raw[roomHeaderBytes-1])
+	if wraps < 1 || wraps > maxWraps || !isPaddedFrame(len(raw)-roomHeaderBytes-wraps*roomWrapBytes-cryptoengine.GCMTagSize) {
+		return nil, false
+	}
+	return &RoomBlob{Wraps: wraps, Digest: append([]byte(nil), raw[roomDigestOffset:roomHeaderBytes-1]...)}, true
+}
+
 func isPaddedFrame(n int) bool {
 	return n >= minFrameBytes && n <= maxFrameBytes && n&(n-1) == 0
 }

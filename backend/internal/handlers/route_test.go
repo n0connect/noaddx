@@ -3,33 +3,48 @@ package handlers
 import (
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestParseConversationRoute_Whitelist(t *testing.T) {
 	const id = "3b241101-e2bb-4255-8caf-4136c566a962"
-	ok := map[string]string{
-		"/api/v2/conversations":                     "",
-		"/api/v2/conversations/" + id:               "",
-		"/api/v2/conversations/" + id + "/messages": "messages",
-		"/api/v2/conversations/" + id + "/read":     "read",
+	const note = "8e7d6c5b-4a39-4281-9f0e-0d1c2b3a4958"
+	ok := map[string][2]string{
+		"/api/v2/conversations":                          {"", ""},
+		"/api/v2/conversations/" + id:                    {"", ""},
+		"/api/v2/conversations/" + id + "/messages":      {"messages", ""},
+		"/api/v2/conversations/" + id + "/read":          {"read", ""},
+		"/api/v2/conversations/" + id + "/members":       {"members", ""},
+		"/api/v2/conversations/" + id + "/notes":         {"notes", ""},
+		"/api/v2/conversations/" + id + "/notes/" + note: {"notes", note},
 	}
-	for path, wantSub := range ok {
-		_, sub, valid := parseConversationRoute(path)
-		if !valid || sub != wantSub {
-			t.Errorf("%s: valid=%v sub=%q", path, valid, sub)
+	for path, want := range ok {
+		route, valid := parseConversationRoute(path)
+		item := ""
+		if route.item != uuid.Nil {
+			item = route.item.String()
+		}
+		if !valid || route.sub != want[0] || item != want[1] {
+			t.Errorf("%s: valid=%v sub=%q item=%q", path, valid, route.sub, item)
 		}
 	}
 	for _, path := range []string{
 		"/api/v2/conversations/",
 		"/api/v2/conversations/" + id + "/",
 		"/api/v2/conversations/" + id + "/messages/x",
-		"/api/v2/conversations/" + id + "/members",
+		"/api/v2/conversations/" + id + "/messages/" + note,
+		"/api/v2/conversations/" + id + "/members/" + note,
+		"/api/v2/conversations/" + id + "/notes/",
+		"/api/v2/conversations/" + id + "/notes/x",
+		"/api/v2/conversations/" + id + "/notes/" + note + "/x",
+		"/api/v2/conversations/" + id + "/roster",
 		"/api/v2/conversations/3B241101-E2BB-4255-8CAF-4136C566A962",   // non-canonical case
 		"/api/v2/conversations/3b241101-e2bb-1255-8caf-4136c566a962",   // not v4
 		"/api/v2/conversations/{3b241101-e2bb-4255-8caf-4136c566a962}", // braces
 		"/api/v2/conversations/../me",
 	} {
-		if _, _, valid := parseConversationRoute(path); valid {
+		if _, valid := parseConversationRoute(path); valid {
 			t.Errorf("%s accepted", path)
 		}
 	}

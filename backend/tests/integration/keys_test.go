@@ -125,6 +125,9 @@ func TestRewrap_RetiresTheOldMasterKey(t *testing.T) {
 	expectStatus(t, rr, http.StatusCreated, "invite")
 	var invite models.InviteResponse
 	decode(t, rr, &invite)
+	room := createRoom(t, alice, 4, 24)
+	inRoom := joinRoom(t, bob, room.code)
+	room.say(t, "room before rotation", 1)
 
 	oldID, oldKey, fresh := os.Getenv("MASTER_KEY_ACTIVE_ID"), os.Getenv("MASTER_KEY_ACTIVE"), newKeyHex(t)
 	setMasterKeys(t, "k2", fresh, oldID+":"+oldKey)
@@ -150,6 +153,11 @@ func TestRewrap_RetiresTheOldMasterKey(t *testing.T) {
 	}
 	expectStatus(t, carol.do("POST", "/api/v2/invites/redeem", models.RedeemInviteRequest{Token: invite.Token}),
 		http.StatusCreated, "redeem an invite made before rotation")
+	if got := inRoom.read(t); len(got) != 1 || got[0].text != "room before rotation" {
+		t.Fatalf("room after rotation: %+v", got)
+	}
+	inRoom.say(t, "room after rotation", 1)
+	joinRoom(t, carol, room.code)
 	expectStatus(t, newClient(t, mux).do("POST", "/api/v2/login", models.LoginRequest{AuthKey: alice.authKey}),
 		http.StatusOK, "login after rotation")
 }

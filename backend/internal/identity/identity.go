@@ -29,6 +29,8 @@ const (
 	infoInviteCreator   = "noaddx/invite-creator"
 	infoInviteLookup    = "noaddx/invite-lookup"
 	infoPepperCheck     = "noaddx/pepper-check"
+	infoRoomLookup      = "noaddx/room-lookup"
+	roomLookupSize      = 32
 )
 
 var (
@@ -162,6 +164,14 @@ func InviteLookup(rawToken []byte) (string, error) {
 		return "", ErrInvalidKey
 	}
 	return keyedTag(infoInviteLookup, rawToken)
+}
+
+// RoomLookup maps the lookup a room code derives to its storage key; codes are never seen.
+func RoomLookup(lookup []byte) (string, error) {
+	if len(lookup) != roomLookupSize {
+		return "", ErrInvalidKey
+	}
+	return keyedTag(infoRoomLookup, lookup)
 }
 
 // PepperCheck commits to the configured pepper (server-only, like StreamTag): stored once,

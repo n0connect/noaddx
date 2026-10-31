@@ -39,6 +39,8 @@ func NewMux() *http.ServeMux {
 		{"/api/v2/me", protected(handlers.MeHandler)},
 		{"/api/v2/invites", protected(handlers.CreateInviteHandler)},
 		{"/api/v2/invites/redeem", protected(handlers.RedeemInviteHandler)},
+		{"/api/v2/rooms", protected(handlers.CreateRoomHandler)},
+		{"/api/v2/rooms/join", protected(handlers.JoinRoomHandler)},
 		{"/api/v2/conversations", protected(handlers.ConversationsHandler)},
 		{"/api/v2/conversations/", protected(handlers.ConversationsHandler)},
 		{"/api/v2/events", protected(handlers.EventsHandler)},

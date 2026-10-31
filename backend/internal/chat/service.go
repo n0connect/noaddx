@@ -4,6 +4,9 @@
 //   - who that member is lives only in master-key-encrypted references,
 //   - a user's conversation list is a padded blob encrypted with their own server key,
 //   - sequence numbers are per conversation, and ciphertext is deleted after MESSAGE_TTL_DAYS.
+//
+// Rooms (rooms.go) reuse all of this: a room is a conversation with more members, a code the
+// server never sees, and a lifetime.
 package chat
 
 import (
@@ -464,13 +467,26 @@ func (s *Service) ListConversations(me *Member) ([]models.ConversationDTO, error
 	if err != nil {
 		return nil, err
 	}
+	rooms, counts, notes, err := s.roomDetails(ids, tags)
+	if err != nil {
+		return nil, err
+	}
 
 	result := make([]models.ConversationDTO, 0, len(ids))
 	stale := make(map[uuid.UUID]struct{})
+	now := time.Now()
 	for i, id := range ids {
 		member, ok := memberships[id]
 		if !ok || member.MemberTag != tags[i] {
 			stale[id] = struct{}{}
+			continue
+		}
+		if room, isRoom := rooms[id]; isRoom {
+			if !roomAlive(&room, now) {
+				stale[id] = struct{}{}
+				continue
+			}
+			result = append(result, roomDTO(&room, &member, counts[id], notes[id], lastSeqs[id]))
 			continue
 		}
 		peerKey, err := s.openPeerKey(me, &member)
@@ -489,6 +505,32 @@ func (s *Service) ListConversations(me *Member) ([]models.ConversationDTO, error
 		s.pruneIndex(me, stale)
 	}
 	return result, nil
+}
+
+// roomDetails loads, for the rooms among ids, the room rows, member counts and the caller's
+// waiting notes (tags are the caller's per-conversation tags, in the order of ids).
+func (s *Service) roomDetails(ids []uuid.UUID, tags []string) (map[uuid.UUID]models.Room, map[uuid.UUID]int, map[uuid.UUID]int, error) {
+	rooms, err := s.chats.FindRooms(ids)
+	if err != nil || len(rooms) == 0 {
+		return rooms, nil, nil, err
+	}
+	roomIDs := make([]uuid.UUID, 0, len(rooms))
+	roomTags := make([]string, 0, len(rooms))
+	for i, id := range ids {
+		if _, isRoom := rooms[id]; isRoom {
+			roomIDs = append(roomIDs, id)
+			roomTags = append(roomTags, tags[i])
+		}
+	}
+	counts, err := s.chats.CountMembers(roomIDs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	notes, err := s.chats.CountNotesFor(roomTags, time.Now().UTC())
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return rooms, counts, notes, nil
 }
 
 // pruneIndex drops ids whose conversation no longer exists (burned by the peer elsewhere).
@@ -510,10 +552,24 @@ func (s *Service) pruneIndex(me *Member, stale map[uuid.UUID]struct{}) {
 }
 
 // BurnConversation deletes a conversation and all its ciphertext for every member,
-// and removes it from every member's encrypted index.
+// and removes it from every member's encrypted index. In a room only the owner burns;
+// any other member leaves instead.
 func (s *Service) BurnConversation(me *Member, conversationID uuid.UUID) ([]string, error) {
+	room, err := s.liveRoom(s.chats, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	if room != nil {
+		tag, err := me.tag(conversationID)
+		if err != nil {
+			return nil, err
+		}
+		if tag != room.OwnerTag {
+			return s.leaveRoom(me, conversationID)
+		}
+	}
 	var streams []string
-	err := s.chats.Transaction(func(tx store.ChatRepository) error {
+	err = s.chats.Transaction(func(tx store.ChatRepository) error {
 		if _, err := s.requireMembership(tx, me, conversationID); err != nil {
 			return err
 		}
@@ -556,7 +612,8 @@ func (s *Service) BurnConversation(me *Member, conversationID uuid.UUID) ([]stri
 }
 
 // DeleteAccount erases the caller once authKey proves the account: its invites, every
-// conversation it is in (all ciphertext, for both sides) and the account row. Returns the
+// conversation it is in (all ciphertext, for both sides; rooms it owns likewise, rooms it
+// joined it only leaves) and the account row. Returns the
 // peers' live-event addresses. The key is checked against the locked row that is deleted; the
 // lookup is HMAC(pepper, auth key), so a match proves the key without an Argon2 run.
 // Lock order is RedeemInvite's (invites, then users), so the invites go first; a wrong key
@@ -588,7 +645,8 @@ func (s *Service) DeleteAccount(me *Member, authKey string) ([]string, error) {
 			return err
 		}
 		for _, id := range ids {
-			if _, err := s.requireMembership(tx, me, id); errors.Is(err, ErrNotFound) {
+			member, err := s.requireMembership(tx, me, id)
+			if errors.Is(err, ErrNotFound) {
 				continue // the peer burned it already
 			} else if err != nil {
 				return err
@@ -597,7 +655,7 @@ func (s *Service) DeleteAccount(me *Member, authKey string) ([]string, error) {
 			if err != nil {
 				return err
 			}
-			if err := tx.DeleteConversation(id); err != nil && !errors.Is(err, store.ErrNotFound) {
+			if err := s.forget(tx, id, member); err != nil {
 				return err
 			}
 			streams = append(streams, peers...)
@@ -617,20 +675,43 @@ func (s *Service) DeleteAccount(me *Member, authKey string) ([]string, error) {
 	return streams, nil
 }
 
+// forget removes one of a deleted account's conversations: a room it joined loses only its
+// membership (taken under the conversation lock, as leaving does), anything else is burned.
+func (s *Service) forget(tx store.ChatRepository, id uuid.UUID, member *models.ConversationMember) error {
+	room, err := tx.FindRoom(id)
+	if err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	if room != nil && room.OwnerTag != member.MemberTag {
+		if _, err := tx.LockConversation(id); err != nil {
+			return err
+		}
+		return tx.DeleteMember(id, member.MemberTag)
+	}
+	if err := tx.DeleteConversation(id); err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	return nil
+}
+
 // ---------- messages ----------
 
-// ListMessages returns messages after `after`, or the latest page when after is nil.
+// ListMessages returns messages after `after`, or the latest page when after is nil. A room
+// member never gets what was sent before they joined: it was not encrypted for them.
 func (s *Service) ListMessages(me *Member, conversationID uuid.UUID, after *int64) ([]models.MessageDTO, error) {
 	member, err := s.requireMembership(s.chats, me, conversationID)
 	if err != nil {
 		return nil, err
 	}
+	if _, err := s.liveRoom(s.chats, conversationID); err != nil {
+		return nil, err
+	}
 	limit := config.GetMessagePageLimit()
 	var messages []models.Message
 	if after == nil {
-		messages, err = s.chats.ListLatestMessages(conversationID, limit)
+		messages, err = s.chats.ListLatestMessages(conversationID, member.JoinedSeq, limit)
 	} else {
-		messages, err = s.chats.ListMessagesAfter(conversationID, *after, limit)
+		messages, err = s.chats.ListMessagesAfter(conversationID, max(*after, member.JoinedSeq), limit)
 	}
 	if err != nil {
 		return nil, err
@@ -653,13 +734,26 @@ func expiryDay(now time.Time) time.Time {
 }
 
 // SendMessage stores one opaque ciphertext under the conversation's next sequence number.
+// A room message must have the room format and be encrypted for the current roster.
 func (s *Service) SendMessage(me *Member, conversationID uuid.UUID, rawID, ciphertext string) (int64, []string, error) {
 	messageID, ok := utils.ParseCanonicalUUIDv4(rawID)
-	if !ok || !utils.ValidateCiphertext(ciphertext) {
+	if !ok {
+		return 0, nil, ErrInvalidInput
+	}
+	room, err := s.liveRoom(s.chats, conversationID)
+	if err != nil {
+		return 0, nil, err
+	}
+	var blob *utils.RoomBlob
+	if room != nil {
+		if blob, ok = utils.ParseRoomBlob(ciphertext, utils.RoomMessageMagic, room.MaxMembers); !ok {
+			return 0, nil, ErrInvalidInput
+		}
+	} else if !utils.ValidateCiphertext(ciphertext) {
 		return 0, nil, ErrInvalidInput
 	}
 	var seq int64
-	err := s.chats.Transaction(func(tx store.ChatRepository) error {
+	err = s.chats.Transaction(func(tx store.ChatRepository) error {
 		member, err := s.requireMembership(tx, me, conversationID)
 		if err != nil {
 			return err
@@ -669,6 +763,11 @@ func (s *Service) SendMessage(me *Member, conversationID uuid.UUID, rawID, ciphe
 				return ErrNotFound
 			}
 			return err
+		}
+		if blob != nil {
+			if err := checkRoomMessage(tx, conversationID, blob); err != nil {
+				return err
+			}
 		}
 		err = tx.CreateMessage(&models.Message{
 			ConversationID: conversationID,
@@ -716,24 +815,28 @@ func (s *Service) MarkRead(me *Member, conversationID uuid.UUID, seq int64) erro
 
 // ---------- retention ----------
 
-// PurgeExpired deletes ciphertext past its deletion day and expired invites, and keeps no
-// ciphertext past the deletion day of a message sent now (MESSAGE_TTL_DAYS may have shrunk).
+// PurgeExpired deletes ciphertext past its deletion day, expired invites and notes, and expired
+// rooms with everything in them, and keeps no ciphertext past the deletion day of a message
+// sent now (MESSAGE_TTL_DAYS may have shrunk).
 func (s *Service) PurgeExpired(now time.Time) error {
-	messages, invites, err := s.chats.PurgeExpired(now.UTC().Truncate(day), expiryDay(now), now.UTC())
+	counts, err := s.chats.PurgeExpired(now.UTC().Truncate(day), expiryDay(now), now.UTC())
 	if err != nil {
 		return err
 	}
-	s.logger.Debug("PurgeExpired: removed %d messages, %d invites", messages, invites)
+	s.logger.Debug("PurgeExpired: removed %d messages, %d invites, %d notes, %d rooms",
+		counts.Messages, counts.Invites, counts.Notes, counts.Rooms)
 	return nil
 }
 
 const (
-	retentionInterval = time.Hour
-	// maxRetentionCycles bounds the loop (RULES.md §8.1); hourly, it outlives any deployment
-	maxRetentionCycles = 1 << 20
+	// Rooms expire on the hour and stop answering at once; this bounds how long their rows
+	// stay on disk afterwards
+	retentionInterval = 5 * time.Minute
+	// maxRetentionCycles bounds the loop (RULES.md §8.1); every five minutes it outlives any deployment
+	maxRetentionCycles = 1 << 22
 )
 
-// RunRetention purges expired ciphertext and invites now and then hourly until ctx ends.
+// RunRetention purges expired data now and then every five minutes until ctx ends.
 func (s *Service) RunRetention(ctx context.Context) {
 	ticker := time.NewTicker(retentionInterval)
 	defer ticker.Stop()

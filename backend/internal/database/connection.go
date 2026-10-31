@@ -95,7 +95,8 @@ func Init() {
 		log.Fatal("Failed to initialize master keys")
 	}
 
-	err = DB.AutoMigrate(&models.User{}, &models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{}, &models.KeyCheck{})
+	err = DB.AutoMigrate(&models.User{}, &models.Invite{}, &models.Conversation{}, &models.ConversationMember{}, &models.Message{},
+		&models.KeyCheck{}, &models.Room{}, &models.RoomNote{})
 	if err != nil {
 		dbLogger.LogError("Database migration", err)
 		log.Fatal("Failed to migrate database")
@@ -160,6 +161,8 @@ func ValidateStartupConfig() error {
 		{"MAX_MESSAGE_BYTES", config.GetMaxMessageBytes(), 512, 65536},
 		{"MESSAGE_PAGE_LIMIT", config.GetMessagePageLimit(), 1, 1000},
 		{"MESSAGE_TTL_DAYS", config.GetMessageTTLDays(), 1, config.MaxMessageTTLDays()},
+		{"ROOM_MAX_MEMBERS", config.GetRoomMaxMembers(), config.MinRoomMembers, config.MaxRoomMembersBound},
+		{"ROOM_MAX_TTL_HOURS", config.GetRoomMaxTTLHours(), 1, config.MaxRoomTTLHoursBound},
 		{"POW_CHALLENGE_TTL_SEC", seconds(config.GetPoWChallengeTTL()), 1, 3600},
 		{"POW_DIFFICULTY", config.GetPoWDifficulty(), config.MinPoWDifficulty(), config.MaxPoWDifficulty()},
 		{"INTERNAL_ID_LENGTH", config.GetInternalIDLength(), 16, 24}, // users.uuid is size:24
@@ -200,6 +203,9 @@ func ValidateStartupConfig() error {
 	}
 	if config.GetMaxMessageBytes() > config.GetMaxRequestBodyBytes()/2 {
 		return fmt.Errorf("MAX_MESSAGE_BYTES must fit (base64) inside MAX_REQUEST_BODY_BYTES")
+	}
+	if utils.RoomMaxBlobBytes(config.GetRoomMaxMembers()) > config.GetMaxRequestBodyBytes()/2 {
+		return fmt.Errorf("a message to a room of ROOM_MAX_MEMBERS must fit (base64) inside MAX_REQUEST_BODY_BYTES")
 	}
 
 	if config.GetDBHost() == "" || config.GetDBPort() == "" || config.GetDBUser() == "" ||

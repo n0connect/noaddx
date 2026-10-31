@@ -60,8 +60,10 @@ type RegisterResponse struct {
 // ---- messaging ----
 
 type MeResponse struct {
-	PublicKey      string `json:"public_key"`
-	MessageTTLDays int    `json:"message_ttl_days"` // ciphertext is deleted after this many days
+	PublicKey       string `json:"public_key"`
+	MessageTTLDays  int    `json:"message_ttl_days"`   // ciphertext is deleted after this many days
+	RoomMaxMembers  int    `json:"room_max_members"`   // largest room a member may create
+	RoomMaxTTLHours int    `json:"room_max_ttl_hours"` // longest room lifetime, in hours
 }
 
 type CreateInviteRequest struct {
@@ -78,10 +80,64 @@ type RedeemInviteRequest struct {
 }
 
 type ConversationDTO struct {
-	ID            string `json:"id"`
-	PeerPublicKey string `json:"peer_public_key"`
-	LastSeq       int64  `json:"last_seq"`
-	ReadSeq       int64  `json:"read_seq"`
+	ID            string   `json:"id"`
+	PeerPublicKey string   `json:"peer_public_key"` // empty in a room
+	LastSeq       int64    `json:"last_seq"`
+	ReadSeq       int64    `json:"read_seq"`
+	Room          *RoomDTO `json:"room,omitempty"` // present for rooms only
+}
+
+// RoomDTO is the caller's view of a room; the vault is theirs alone (sealed for their account)
+type RoomDTO struct {
+	Vault      string `json:"vault"`
+	MaxMembers int    `json:"max_members"`
+	ExpiresAt  int64  `json:"expires_at"` // Unix seconds, on the hour
+	Owner      bool   `json:"owner"`
+	Members    int    `json:"members"`
+	Notes      int    `json:"notes"` // sealed notes waiting for the caller
+}
+
+// CreateRoomRequest: every value is derived on the client from a room secret the server never sees
+type CreateRoomRequest struct {
+	ID         string       `json:"id"`          // UUIDv4 derived from the secret
+	Lookup     string       `json:"lookup"`      // 32 bytes derived from the secret, base64url
+	MaxMembers int          `json:"max_members"` // 2..ROOM_MAX_MEMBERS
+	ExpiresAt  int64        `json:"expires_at"`  // Unix seconds on the hour, 1h..ROOM_MAX_TTL_HOURS ahead
+	Card       string       `json:"card"`        // the creator's member card
+	Vault      string       `json:"vault"`       // the code, sealed for the creator's account
+	PoW        *PoWSolution `json:"pow"`
+}
+
+type JoinRoomRequest struct {
+	ID     string `json:"id"`
+	Lookup string `json:"lookup"`
+	Card   string `json:"card"`
+	Vault  string `json:"vault"`
+}
+
+type RoomMemberDTO struct {
+	Card  string `json:"card"`
+	Mine  bool   `json:"mine"`
+	Owner bool   `json:"owner"`
+}
+
+type RoomMembersResponse struct {
+	Members []RoomMemberDTO `json:"members"`
+}
+
+type SendNoteRequest struct {
+	ID   string `json:"id"`   // Client-generated UUIDv4, bound into the note's encryption
+	To   string `json:"to"`   // the addressee's card
+	Blob string `json:"blob"` // base64url sealed note
+}
+
+type NoteDTO struct {
+	ID   string `json:"id"`
+	Blob string `json:"blob"`
+}
+
+type NotesResponse struct {
+	Notes []NoteDTO `json:"notes"`
 }
 
 type ConversationResponse struct {

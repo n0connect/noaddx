@@ -32,6 +32,8 @@ const (
 	defaultMessagePageLimit        = 200
 	defaultMessageTTLDays          = 7 // Messages vanish after TTL..TTL+1 days (day-granular)
 	maxMessageTTLDays              = 365
+	defaultRoomMaxMembers          = 16
+	defaultRoomMaxTTLHours         = 168 // A room lives at most a week by default
 	// Argon2id parameters follow OWASP recommendations (2023)
 	// Memory: 64MiB (65536 KiB) - recommended for password hashing
 	// Time: 3 iterations - balance between security and performance
@@ -198,6 +200,24 @@ const MaxConversationsPerUserBound = 4096
 // GetMaxConversationsPerUser returns the cap on conversations per user
 func GetMaxConversationsPerUser() int {
 	return getEnvIntDefault("MAX_CONVERSATIONS_PER_USER", defaultMaxConversationsPerUser)
+}
+
+// Room limits accepted at startup: a room message carries one 48-byte wrap per member, so the
+// member bound also bounds its size (RoomMaxBlobBytes).
+const (
+	MinRoomMembers       = 2
+	MaxRoomMembersBound  = 32
+	MaxRoomTTLHoursBound = 720
+)
+
+// GetRoomMaxMembers returns the largest room a member may create
+func GetRoomMaxMembers() int {
+	return getEnvIntDefault("ROOM_MAX_MEMBERS", defaultRoomMaxMembers)
+}
+
+// GetRoomMaxTTLHours returns the longest lifetime a room may be created with
+func GetRoomMaxTTLHours() int {
+	return getEnvIntDefault("ROOM_MAX_TTL_HOURS", defaultRoomMaxTTLHours)
 }
 
 // GetMaxMessageBytes returns the max raw ciphertext size of one message
