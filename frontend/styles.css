@@ -30,6 +30,9 @@
     --muted: #666666;
     --hover-bg: #000000;
     --hover-fg: #ffffff;
+    /* One red for everything destructive or failed: deep enough to sit with the monochrome UI */
+    --danger: #cc0000;
+    --danger-bg: #fff5f5;
 }
 
 body {
@@ -414,12 +417,12 @@ button:disabled {
 
 .account-number-warning {
     font-size: 14px;
-    color: #cc0000;
+    color: var(--danger);
     margin-bottom: 16px;
     line-height: 1.6;
     padding: 8px 12px;
-    background: #fff5f5;
-    border-left: 3px solid #cc0000;
+    background: var(--danger-bg);
+    border-left: 3px solid var(--danger);
 }
 
 .continue-btn {
@@ -451,10 +454,10 @@ button:disabled {
 
 .error {
     font-size: 14px;
-    color: #cc0000;
+    color: var(--danger);
     padding: 12px;
-    border: 1px solid #cc0000;
-    background: #fff5f5;
+    border: 1px solid var(--danger);
+    background: var(--danger-bg);
     margin: 0;
     text-align: center;
 }
@@ -501,16 +504,31 @@ header {
     text-transform: lowercase;
 }
 
+/* Header actions: plain text that takes a frame on hover, on one baseline */
+#deleteIdentityBtn,
 #logoutBtn {
     font-size: 16px;
     padding: 8px 16px;
     margin-top: 0;
     border: 1px solid transparent;
+    box-shadow: none;
 }
 
-#logoutBtn:hover {
+#deleteIdentityBtn {
+    margin-right: 4px;
+}
+
+#logoutBtn:hover,
+#logoutBtn:focus-visible {
     border-color: var(--border);
     color: var(--fg);
+}
+
+#deleteIdentityBtn:hover,
+#deleteIdentityBtn:focus-visible {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: var(--danger-bg);
 }
 
 /* ========================================
@@ -820,7 +838,7 @@ header {
 }
 
 .action-btn.burn-btn:hover {
-    color: #ef4444;
+    color: var(--danger);
 }
 
 /* ========================================
@@ -1051,9 +1069,9 @@ header {
     padding: 10px 12px;
     margin-bottom: 12px;
     font-size: 14px;
-    color: #cc0000;
-    background: #fff5f5;
-    border-left: 3px solid #cc0000;
+    color: var(--danger);
+    background: var(--danger-bg);
+    border-left: 3px solid var(--danger);
 }
 
 .burn-confirm span {
@@ -1065,12 +1083,12 @@ header {
 }
 
 .menu-opt.burn-yes {
-    border-color: #cc0000;
-    color: #cc0000;
+    border-color: var(--danger);
+    color: var(--danger);
 }
 
 .menu-opt.burn-yes:hover {
-    background: #cc0000;
+    background: var(--danger);
     color: #ffffff;
 }
 
@@ -1113,8 +1131,8 @@ header {
 
 .msg.broken {
     border-style: dashed;
-    background: #fff5f5;
-    color: #cc0000;
+    background: var(--danger-bg);
+    color: var(--danger);
 }
 
 .msg-text {
@@ -1166,9 +1184,9 @@ header {
     align-self: center;
     padding: 4px 10px;
     font-size: 13px;
-    color: #cc0000;
-    border: 1px dashed #cc0000;
-    background: #fff5f5;
+    color: var(--danger);
+    border: 1px dashed var(--danger);
+    background: var(--danger-bg);
 }
 
 /* ========================================
@@ -1247,7 +1265,7 @@ header {
 }
 
 .member-broken {
-    color: #cc0000;
+    color: var(--danger);
     font-size: 14px;
 }
 
