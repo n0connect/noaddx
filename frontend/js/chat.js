@@ -164,6 +164,7 @@ const Chat = (() => {
         const seen = new Set();
         const nextOrder = [];
         let joined = false;
+        let reopen = false;  // the open room was verified again: rebuild its view
         for (const item of result.data.conversations) {
             const isRoom = Boolean(item && item.room);
             if (!item || !validateConversationId(item.id) || (!isRoom && !isPublicKey(item.peer_public_key)) ||
@@ -172,7 +173,14 @@ const Chat = (() => {
             }
             seen.add(item.id);
             nextOrder.push(item.id);
-            const existing = conversations.get(item.id);
+            let existing = conversations.get(item.id);
+            // Joining again (from another device) re-seals this account's vault: verify the new
+            // one from scratch instead of taking the change for tampering
+            if (existing && isRoom && existing.room && item.room.vault !== existing.room.vault) {
+                conversations.delete(item.id);
+                existing = null;
+                reopen = reopen || activeId === item.id;
+            }
             if (existing) {
                 // A conversation's kind, peer key and room code can never change; treat as tampering
                 if (isRoom !== Boolean(existing.room) ||
@@ -207,7 +215,9 @@ const Chat = (() => {
         listLoaded = true;
         renderList();
         const active = conversations.get(activeId);
-        if (active && active.room) {
+        if (active && reopen) {
+            open(active.id);
+        } else if (active && active.room) {
             refreshActiveRoom(active);
         }
 
